@@ -149,6 +149,16 @@ h1 { font-size: 18px; letter-spacing: 0.04em; text-transform: uppercase; }
   letter-spacing: 0.08em;
 }
 
+.banner {
+  padding: 10px 20px;
+  font-size: 13px;
+  line-height: 1.4;
+  background: rgba(255, 176, 32, 0.12);
+  border-bottom: 1px solid rgba(255, 176, 32, 0.35);
+  color: var(--warn);
+}
+.banner.hidden { display: none; }
+
 .feed-note { font-size: 11px; color: var(--faint); padding: 10px 12px 16px; }
 
 .stage { padding: 20px 24px 48px; max-width: 980px; }

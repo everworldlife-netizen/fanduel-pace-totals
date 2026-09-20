@@ -1,6 +1,6 @@
 # Pace Totals — FanDuel companion
 
-Live basketball **game / quarter / half / team totals** from pace and shot volume. Paste FanDuel lines; the app never scrapes FanDuel and never invents a number. It does not place bets. Not gambling advice.
+Live basketball **game / quarter / half / team totals** from pace and shot volume. Paste FanDuel **lines** yourself — the app never scrapes or invents odds. Live **scores, period, and clock** for boards FanDuel is showing in-play come from FanDuel’s public sportsbook JSON. It does not place bets. Not gambling advice.
 
 Target boards FanDuel carries internationally: **NBA, WNBA, Australian NBL, EuroLeague, German BBL, Lithuania LKL, FIBA Champions League, Mexico LNBP**. eBasketball / virtual / sim games are dropped.
 
@@ -78,12 +78,23 @@ Probed 2026-09-20 against ESPN Site API `https://site.api.espn.com/apis/site/v2/
 | NCAA men | yes | ESPN `mens-college-basketball` | Halves. Set `SKIP_NCAAB=1` to hide |
 | EuroLeague | yes | **api-live.euroleague.net** (free, no key) | ESPN `euroleague` slug exists but is often empty |
 | EuroCup | extra | same EuroLeague API (`U`) | |
-| German BBL | yes | **API-Basketball** (key) | ESPN has **no** `bbl` slug (HTTP 400) |
-| Lithuania LKL | yes | **API-Basketball** (key) | ESPN has **no** `lkl` slug |
-| FIBA Champions League | yes | **API-Basketball** (key) | ESPN `fiba` is World Cup, not BCL |
-| Mexico LNBP | yes | **API-Basketball** (key) | ESPN has **no** `lnbp` slug |
+| German BBL | yes | **FanDuel live scoreboard** (no key) + optional API-Basketball box | ESPN has **no** `bbl` slug (HTTP 400) |
+| Lithuania LKL | yes | **FanDuel live scoreboard** (no key) + optional API-Basketball box | ESPN has **no** `lkl` slug |
+| FIBA Champions League | yes | **FanDuel live scoreboard** when listed in-play + optional API-Basketball | ESPN `fiba` is World Cup, not BCL |
+| Mexico LNBP | yes | **FanDuel live scoreboard** when listed in-play + optional API-Basketball | ESPN has **no** `lnbp` slug |
+| Other live FanDuel basketball | extra | **FanDuel live scoreboard** | Real in-play hoops FanDuel is showing (Nordic, etc.). eBasketball / GG League / H2H GG / ACE / JUDGEMENT sims are dropped |
 | FIBA World Cup | extra | ESPN `fiba` | Off-cycle most of the year |
 | G League / summer / Olympics | extra | ESPN | Off by default in the rail |
+
+### FanDuel live scoreboard (scores / clock only)
+
+When `API_BASKETBALL_KEY` is unset, live German BBL / LKL (and any other real basketball FanDuel has in-play) still appear. The feed is `src/feeds/fanduelLive.js`:
+
+1. Discover live basketball events from FanDuel’s public in-play JSON (`https://sportsbook.fanduel.com/live?tab=basketball` → `sbapi.{state}.sportsbook.fanduel.com/api/in-play`).
+2. Attach score, period, and remaining clock from `api.sportsbook.fanduel.com/ips/inplayservice/v1.0/livedata`.
+3. Merge into `/api/games` **ahead of ESPN/Euro rows** for the same matchup so the UI matches FanDuel’s live board.
+
+This feed **does not** read totals, spreads, or moneylines. Pace for these games is score+clock (LOW confidence) until you set `API_BASKETBALL_KEY` for a box. `/api/health` reports `fanduelLive: true`.
 
 See `docs/feeds.md` after `npm run probe`.
 
@@ -94,7 +105,7 @@ Copy `.env.example` to `.env`:
 | Variable | Required | What it does |
 |---|---|---|
 | `PORT` | no | Default `3000` |
-| `API_BASKETBALL_KEY` | for BBL / LKL / BCL / LNBP | [API-Sports](https://dashboard.api-sports.io/) Basketball product. Free tier ~100 calls/day. Scoreboard cached **5 minutes** (not a 15s poller). Stats fetched only when you open a game. |
+| `API_BASKETBALL_KEY` | for BBL / LKL / BCL / LNBP **box stats** | [API-Sports](https://dashboard.api-sports.io/) Basketball product. Live scores for those leagues still come from the FanDuel in-play board without a key. Free tier ~100 calls/day. Scoreboard cached **5 minutes**. Stats fetched only when you open a game. |
 | `ODDS_API_KEY` | unused in v1 | Reserved; FanDuel totals stay paste-only |
 | `SKIP_NCAAB` | no | `1` to skip college boards |
 
@@ -108,8 +119,8 @@ API-Basketball league ids are resolved via `GET /leagues` (name + country) and f
 - `GET /api/leagues` — coverage JSON
 - `GET /api/health`
 
-Game ids look like `espn:nba:401809123`, `euro:euroleague:E2026:12`, `apib:bbl:99`.
+Game ids look like `espn:nba:401809123`, `euro:euroleague:E2026:12`, `apib:bbl:99`, `fd:bbl:36086255`.
 
 ## Tests
 
-`npm test` covers possessions, clock (NBA / FIBA / NCAAM / OT), fair total, edge, Pass rules, shrinkage, virtual filter, and the NBL hyphenated box parser.
+`npm test` covers possessions, clock (NBA / FIBA / NCAAM / OT), fair total, edge, Pass rules, shrinkage, virtual filter (including GG / ACE / JUDGEMENT sims), the NBL hyphenated box parser, and the FanDuel live mapper (scores/clock only — no odds).

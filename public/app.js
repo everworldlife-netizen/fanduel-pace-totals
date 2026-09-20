@@ -98,7 +98,7 @@ function renderList() {
   const el = $('game-list');
   const list = visibleGames();
   if (!list.length) {
-    el.innerHTML = `<div class="skeleton">No games in this filter. Try All, or wait for tip-off. Intl boards (BBL/LKL/BCL/LNBP) need API_BASKETBALL_KEY.</div>`;
+    el.innerHTML = `<div class="skeleton">No games in this filter. Try All or Live. BBL/LKL/BCL/LNBP live scores come from FanDuel’s in-play board; set API_BASKETBALL_KEY for box stats.</div>`;
     return;
   }
   el.innerHTML = list.map((g) => {
@@ -241,8 +241,19 @@ async function refresh() {
     games = data.games || [];
     renderList();
     const note = [];
+    const fdOk = data.fanduelLive && data.fanduelLive.ok;
+    const fdCount = data.fanduelLive && data.fanduelLive.liveCount;
+    const banner = $('feed-banner');
     if (data.apiBasketball && !data.apiBasketball.enabled) {
-      note.push('BBL / LKL / BCL / LNBP idle — set API_BASKETBALL_KEY (5 min cache).');
+      banner.classList.remove('hidden');
+      banner.textContent = fdOk
+        ? `API-Basketball key is off. Live BBL / LKL / BCL / LNBP scores and clocks come from FanDuel’s public in-play board${fdCount ? ` (${fdCount} live)` : ''}. Paste totals yourself — this app never invents odds. Set API_BASKETBALL_KEY for box stats.`
+        : 'API-Basketball key is off. BBL / LKL / BCL / LNBP need API_BASKETBALL_KEY or FanDuel’s live scoreboard feed (scores and clock only; lines stay paste-only).';
+      note.push(fdOk
+        ? 'FanDuel live scoreboard on (scores/clock). Box stats for BBL/LKL need API_BASKETBALL_KEY.'
+        : 'FanDuel live scoreboard unreachable. Set API_BASKETBALL_KEY for BBL/LKL/BCL/LNBP.');
+    } else {
+      banner.classList.add('hidden');
     }
     $('feed-note').textContent = note.join(' ');
     $('updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;

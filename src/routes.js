@@ -2,9 +2,14 @@ const express = require('express');
 const router = express.Router();
 const games = require('./games');
 const apib = require('./feeds/apiBasketball');
+const fdLive = require('./feeds/fanduelLive');
 
 router.get('/health', (req, res) => {
-  res.json({ ok: true, apiBasketball: apib.enabled(), fanduelLive: true });
+  res.json({
+    ok: true,
+    apiBasketball: apib.enabled(),
+    fanduelLive: fdLive.enabled(),
+  });
 });
 
 router.get('/leagues', (req, res) => {
@@ -14,8 +19,8 @@ router.get('/leagues', (req, res) => {
     notes: {
       espn: 'Primary free feed. Confirmed slugs: nba, wnba, nbl, mens-college-basketball, womens-college-basketball, fiba (World Cup), nba-development, euroleague (often empty). No BBL / LKL / BCL / LNBP.',
       euroleague: 'api-live.euroleague.net — free official EuroLeague + EuroCup scoreboard and box stats.',
-      apiBasketball: 'Optional. Set API_BASKETBALL_KEY for box stats on BBL/LKL/BCL/LNBP.',
-      fanduelLive: 'Primary for FanDuel in-play basketball (BBL, LKL, …) via public sbapi. eBasketball filtered. Scores often need paste until FanDuel exposes them.',
+      fanduelLive: 'Public FanDuel sportsbook JSON (in-play + IPS livedata). Live basketball scores, period, and clock only — never odds. Covers BBL / LKL and other boards FanDuel is showing live, including when API_BASKETBALL_KEY is unset.',
+      apiBasketball: 'Optional. Set API_BASKETBALL_KEY for German BBL, LKL, FIBA Champions League, LNBP box stats. Cached ≥5 min. Live scores still come from FanDuel without a key.',
     },
   });
 });
