@@ -1,0 +1,38 @@
+# Hostinger VPS (Ubuntu 24.04 + Docker + Traefik)
+# From this folder:  docker compose up -d --build
+# Public for now:    http://<VPS-IP>:3000
+#
+# If Hostinger VPS_createNewProjectV1 only receives this YAML (no local
+# Dockerfile), swap the build block for a git context:
+#   build:
+#     context: https://github.com/everworldlife-netizen/Projections.git#fanduel-pace-totals:fanduel-pace-totals
+#     dockerfile: Dockerfile
+
+services:
+  fanduel-pace-totals:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fanduel-pace-totals:latest
+    container_name: fanduel-pace-totals
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      API_BASKETBALL_KEY: ${API_BASKETBALL_KEY:-}
+      SKIP_NCAAB: ${SKIP_NCAAB:-0}
+    # --- Traefik (uncomment + join your proxy network; change the Host) ---
+    # networks:
+    #   - proxy
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.http.routers.fanduel-pace-totals.rule=Host(`pace.example.com`)
+    #   - traefik.http.routers.fanduel-pace-totals.entrypoints=websecure
+    #   - traefik.http.routers.fanduel-pace-totals.tls.certresolver=letsencrypt
+    #   - traefik.http.services.fanduel-pace-totals.loadbalancer.server.port=3000
+
+# networks:
+#   proxy:
+#     external: true

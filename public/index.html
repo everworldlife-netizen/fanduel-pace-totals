@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pace Totals — FanDuel companion</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true"></div>
+      <div>
+        <h1>Pace Totals</h1>
+        <p class="tag">Live basketball totals from possessions &amp; shot volume</p>
+      </div>
+    </div>
+    <div class="top-meta">
+      <span class="pill warn">Not betting advice · no bets placed</span>
+      <span id="updated" class="muted">—</span>
+      <span id="pulse" class="pulse" title="Auto-refresh"></span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="rail">
+      <div class="filters" id="filters"></div>
+      <div class="game-list" id="game-list">
+        <div class="skeleton">Loading boards…</div>
+      </div>
+      <p class="feed-note" id="feed-note"></p>
+    </aside>
+
+    <main class="stage" id="stage">
+      <section class="empty" id="empty">
+        <h2>Select a live game</h2>
+        <p>Paste the FanDuel total after you open a game. Lines are never scraped or invented.</p>
+      </section>
+
+      <section id="detail" class="hidden">
+        <div class="hero" id="hero"></div>
+        <div class="pace-strip" id="pace-strip"></div>
+
+        <form class="lines" id="lines-form">
+          <div class="lines-head">
+            <h3>FanDuel lines</h3>
+            <span>Paste from the board. Required: game total.</span>
+          </div>
+          <div class="line-grid">
+            <label>Game total *
+              <input id="line-game" inputmode="decimal" placeholder="paste" autocomplete="off" />
+            </label>
+            <label>Quarter / period
+              <input id="line-q" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            </label>
+            <label>1st half
+              <input id="line-h" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            </label>
+            <label id="label-away">Away team
+              <input id="line-away" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            </label>
+            <label id="label-home">Home team
+              <input id="line-home" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            </label>
+          </div>
+          <div class="line-actions">
+            <button type="submit" class="btn">Evaluate vs pasted lines</button>
+            <p class="hint">Over / Under / Pass · Pass if |edge| &lt; 1.5, confidence LOW, OT, garbage time, or virtual.</p>
+          </div>
+        </form>
+
+        <div id="advice"></div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    Free feeds: ESPN (NBA, WNBA, NBL, college) · EuroLeague API · optional API-Basketball for BBL / LKL / BCL / LNBP.
+    eBasketball is ignored. <a href="/api/leagues">League coverage JSON</a>
+  </footer>
+  <script src="/app.js"></script>
+</body>
+</html>
