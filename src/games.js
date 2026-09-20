@@ -86,7 +86,7 @@ async function listGames() {
 
   return {
     games: sortGames(games),
-    errors: [...(espnRes.errors || []), *(fdRes.error ? [`fanduel: ${fdRes.error}`] : [])],
+    errors: [...(espnRes.errors || []), ...(fdRes.error ? [`fanduel: ${fdRes.error}`] : [])],
     fanduelLive: { count: (fdRes.games || []).length, error: fdRes.error },
     apiBasketball: {
       enabled: apib.enabled(),
