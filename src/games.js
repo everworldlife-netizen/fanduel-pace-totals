@@ -3,6 +3,7 @@ const espnBoard = require('./espn/scoreboard');
 const espnBox = require('./espn/boxscore');
 const euro = require('./feeds/euroleague');
 const apib = require('./feeds/apiBasketball');
+const fanduelLive = require('./feeds/fanduelLive');
 const { buildSnapshot } = require('./model/totals');
 const { evaluate } = require('./model/advice');
 const { isVirtualGame } = require('./model/virtual');
@@ -38,6 +39,7 @@ function parseId(id) {
   if (source === 'espn') return { source, leagueId: parts[1], eventId: parts.slice(2).join(':') };
   if (source === 'euro') return { source, leagueId: parts[1], seasonCode: parts[2], gameCode: parts[3] };
   if (source === 'apib') return { source, leagueId: parts[1], gameId: parts[2] };
+  if (source === 'fd') return { source, leagueId: parts[1], eventId: parts[2] };
   throw new Error(`Unknown game id ${id}`);
 }
 
@@ -56,9 +58,11 @@ async function listGames() {
     ? Promise.all(apibIds.map((id) => apib.listLeagueGames(id)))
     : Promise.resolve(apibIds.map((id) => ({ games: [], skipped: true, leagueId: id })));
 
-  const [espnRes, euroLists, apibLists] = await Promise.all([espnP, euroP, apibP]);
+  const fdP = fanduelLive.listLiveGames();
+  const [espnRes, euroLists, apibLists, fdRes] = await Promise.all([espnP, euroP, apibP, fdP]);
 
-  let games = [...espnRes.games];
+  let games = [...(fdRes.games || [])];
+  games.push(...espnRes.games);
   for (const list of euroLists) games.push(...list);
   const apibMeta = [];
   apibLists.forEach((res, i) => {
@@ -82,7 +86,8 @@ async function listGames() {
 
   return {
     games: sortGames(games),
-    errors: espnRes.errors || [],
+    errors: [...(espnRes.errors || []), *(fdRes.error ? [`fanduel: ${fdRes.error}`] : [])],
+    fanduelLive: { count: (fdRes.games || []).length, error: fdRes.error },
     apiBasketball: {
       enabled: apib.enabled(),
       skipped: apibMeta,
@@ -99,6 +104,11 @@ async function getGame(id) {
     game = await espnBox.getBoxscore(parsed.leagueId, parsed.eventId);
   } else if (parsed.source === 'euro') {
     game = await euro.getGameDetail(parsed.leagueId, parsed.seasonCode, parsed.gameCode);
+  } else if (parsed.source === 'fd') {
+    const board = await fanduelLive.listLiveGames();
+    game = (board.games || []).find((g) => g.sourceId === parsed.eventId || g.id === id);
+    if (!game) throw new Error('FanDuel live event not found (may have ended)');
+    game.box = null;
   } else if (parsed.source === 'apib') {
     const boards = await apib.listLeagueGames(parsed.leagueId);
     game = (boards.games || []).find((g) => g.sourceId === parsed.gameId);
