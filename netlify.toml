@@ -1,0 +1,16 @@
+# Optional static hosting for the Courtside Arcade PWA (HTTPS = installable on Android).
+# The /db/* rewrite proxies DataBallr (it sends no CORS headers).
+[build]
+  publish = "public/live"
+  command = ""
+
+[[redirects]]
+  from = "/db/*"
+  to = "https://api.databallr.com/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"

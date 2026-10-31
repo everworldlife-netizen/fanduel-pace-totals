@@ -98,6 +98,25 @@ This feed **does not** read totals, spreads, or moneylines. Pace for these games
 
 See `docs/feeds.md` after `npm run probe`.
 
+## Courtside Arcade — live NBA player projections (installable phone app)
+
+Mobile-first PWA at **`/live/`** that runs on DataBallr data only: live games, play-by-play, season stats, injuries and props. Install it on Android (Pixel 9a): open the site in Chrome → menu ⋮ → **Install app**. Chrome builds a real app (WebAPK) when the page is served over HTTPS.
+
+**Screens:** Games (live/up next/final, projected score, win chance, BLOWOUT/CLUTCH stickers) → Game Center (LED scoreboard, starters-sit risk, pace, per-player now → projected PTS/REB/AST/3PM, minutes bar, usage, fouls, Playing/Out overrides, *Check X* button) → player sheet (over-chance ladders, book line vs model, shot profile, minutes by quarter) · Picks (value overs vs the DataBallr consensus line + 75%+ safe ladder, skip-blowouts toggle) · Combos (2-leg over tickets at a chosen payout: each player once / repeats allowed) · Settings (refresh, sim depth, confidence floor, accuracy card).
+
+**Model** (`public/live/engine.js`, runs on the phone in a Web Worker):
+- Season game logs rebuilt from DataBallr play-by-play: minutes by quarter, FGA/3PA/FTA, makes, usage, each coach's 4th-quarter blowout habit.
+- Usage = (FGA + 0.44 FTA + TOV) share of team plays on court; this season + last season + tonight (80/20), renormalized to 100% on the floor so absent players' shots are redistributed.
+- Shots = remaining possessions × plays-per-possession (offensive rebounds) × on-court share × usage; makes at shrunk shooting %s adjusted for the opponent's defense, with hot/cold night variance.
+- Minutes = quarter patterns + tonight's share + foul trouble + simulated margin path (blowout scenarios); each team fills exactly 5 × time left.
+- Injuries: DataBallr report, plus a 20+ mpg player who missed his team's last game is presumed out (DataBallr's feed can miss outs), plus one-tap overrides. *Check X* opens the 15-account X search for the game.
+
+**Accuracy:** `npm run backtest -- 2026-10-28 2026-10-29 2026-10-30` replays finished games at pregame / Q1 / half / Q3. Results in [`docs/accuracy.md`](docs/accuracy.md): average miss from end of Q3 is 2.4 pts / 1.1 reb / 0.7 ast / 0.4 3PM, beating the naive baseline at every checkpoint; over-probabilities are calibrated (70–80% rungs hit 74%).
+
+**Hosting:** DataBallr sends no CORS headers, so the app calls `./db/...`:
+- Express (this server / Docker on Hostinger): `src/databallrProxy.js` forwards `GET /live/db/v1/nba/*` with short caching. App at `http://<host>:3000/live/` (put it behind HTTPS, e.g. the Traefik labels in `docker-compose.yml`, to enable Install).
+- Static HTTPS (Netlify): `netlify.toml` publishes `public/live` and rewrites `/db/*` to DataBallr.
+
 ## Optional env
 
 Copy `.env.example` to `.env`:

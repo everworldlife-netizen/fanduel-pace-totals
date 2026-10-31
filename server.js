@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const routes = require('./src/routes');
+const databallrProxy = require('./src/databallrProxy');
 
 function loadEnv() {
   const envPath = path.join(__dirname, '.env');
@@ -26,11 +27,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+// Courtside Arcade PWA: DataBallr proxy + installable app at /live/
+app.use('/live/db', databallrProxy);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api', routes);
 
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api')) return next();
+  if (req.path.startsWith('/live/')) return res.sendFile(path.join(__dirname, 'public', 'live', 'index.html'));
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
