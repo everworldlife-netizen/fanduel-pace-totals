@@ -27,6 +27,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
+/* Netlify free-tier badge sits over the tab bar; keep the tabs clear */
+#nl-badge-frame { display: none !important; }
 html, body { margin: 0; background: var(--bg); color: var(--cream); }
 body {
   font-family: var(--font-body);
