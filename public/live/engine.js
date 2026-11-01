@@ -33,7 +33,18 @@
     minShock: 0.24,     // per-sim minutes noise (backtest: best calibration)
     usgTarget: 0.2,     // average on-floor usage after renormalization
     absentMinMpg: 20,   // a 20+ mpg player who missed the last game is presumed out (backtest)
+    b2bRestAge: 0,      // on a back-to-back 2nd night, presume starters this old sit (0 = flag only)
+    liveOutMin: 10,     // live: a 24+ mpg player not checked in by this game minute is out
+    closeQ4: true,      // quarter-minute pattern from close games (blowouts are simulated separately)
+    drift: 2,           // weight of team-strength drift in the margin path (backtest)
+    homeAdv: 2.5,       // home-court points per 48
+    marginK: 2.8,       // live margin random walk: sd per sqrt(minute) (20+ leads into Q4 hit 25%, as observed)
+    preQ3Sd: 16,        // pregame sd of the margin at the end of Q3
+    q4Pace: 0.94,       // 4th quarters run ~6% fewer possessions per minute (backtest)
+    shotEff: 0.975,     // early-season makes run ~2.5% below last season's rates (backtest)
+    closerQ4: 0,        // when the simulated game stays within 8, starters play at least this many Q4 minutes
   };
+  const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
   const VAR_K = { reb: 1.5, ast: 1.6 };
 
@@ -312,7 +323,7 @@
         pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf };
     }
     return {
-      id: st.id, date: game.date, v: st.v, h: st.h,
+      id: st.id, date: game.date, v: st.v, h: st.h, len: 48 + 5 * Math.max(0, st.period - 4),
       margin: { [st.v]: st.vs - st.hs, [st.h]: st.hs - st.vs },
       teams, rows,
     };
@@ -332,7 +343,7 @@
         pts: (r.basic_PPG || 0) / mpg, reb: (r.basic_REB || 0) / mpg, ast: (r.basic_APG || 0) / mpg,
         fg3m: (fg3a * (r['3P_PERC'] || 0)) / gp / mpg,
         fg3a: fg3a, p3: r['3P_PERC'], p2: r['2P_PERC'], ft: r.FT_PERC,
-        tsa100: r.TSA100, tovpg: r.basic_TOVPG, offPoss, r3: r['3PR'], ftr: r.FTR,
+        tsa100: r.TSA100, tovpg: r.basic_TOVPG, offPoss, r3: r['3PR'], ftr: r.FTR, age: r.Age,
       };
     }
     return out;
@@ -356,27 +367,29 @@
 
   // ---------------------------------------------------------------- team context from season logs
   function teamContext(logs, abbr) {
-    const c = { g: 0, poss: 0, oppPts: 0, oppPoss: 0, o3a: 0, o3m: 0, oFga: 0, plays: 0, ownPoss: 0 };
+    const c = { g: 0, poss: 0, oppPts: 0, oppPoss: 0, o3a: 0, o3m: 0, oFga: 0, plays: 0, ownPoss: 0, ownPts: 0, mins: 0 };
     for (const lg of logs) {
       if (!lg.teams[abbr]) continue;
       const opp = Object.keys(lg.teams).find((x) => x !== abbr);
       if (!opp) continue;
       const O = lg.teams[opp], M = lg.teams[abbr];
-      c.g++; c.poss += (M.poss + O.poss) / 2; c.oppPts += O.pts; c.oppPoss += O.poss;
+      c.g++; c.poss += (M.poss + O.poss) / 2; c.oppPts += O.pts; c.oppPoss += O.poss; c.mins += lg.len || 48;
       c.o3a += O.fg3a; c.o3m += O.fg3m; c.oFga += O.fga;
-      c.plays += M.fga + 0.44 * M.fta + M.tov; c.ownPoss += M.poss;
+      c.plays += M.fga + 0.44 * M.fta + M.tov; c.ownPoss += M.poss; c.ownPts += M.pts;
     }
     const k = c.g / (c.g + 8);
     const drtg = c.oppPoss ? (100 * c.oppPts) / c.oppPoss : LEAGUE.ortg;
     const o3p = c.o3a ? c.o3m / c.o3a : LEAGUE.p3;
     return {
       games: c.g,
-      pace: c.g ? c.poss / c.g : LEAGUE.pace,
+      pace: c.g ? (c.poss / c.mins) * 48 : LEAGUE.pace, // per 48 minutes (OT games don't inflate it)
       drtg, opp3p: o3p,
       p3f: 1 + k * 0.5 * (o3p / LEAGUE.p3 - 1),
       p2f: 1 + k * 0.5 * (drtg / LEAGUE.ortg - 1),
       // offensive rebounds give extra shots: plays (FGA + .44 FTA + TOV) per possession
       playsPerPoss: c.ownPoss > 0 ? clamp(c.plays / c.ownPoss, 1.03, 1.2) : 1.1,
+      // net rating per 100 possessions, shrunk toward 0 for small samples
+      net: c.g ? (c.g / (c.g + 10)) * ((100 * (c.ownPts - c.oppPts)) / Math.max((c.ownPoss + c.oppPoss) / 2, 1)) : 0,
     };
   }
 
@@ -428,8 +441,10 @@
     const logs = (o.logs || []).filter((l) => l.v === v || l.h === v || l.v === h || l.h === h);
     const last = (o.priors && o.priors.last) || {};
     const cur = (o.priors && o.priors.cur) || {};
-    const out = (o.injuries || []).filter((x) => /^out/i.test(x.status || ''));
+    const out = (o.injuries || []).filter((x) => /^(out|doubtful)/i.test(x.status || ''));
     const outIds = new Set(out.map((x) => x.player && x.player.id));
+    const shaky = new Map((o.injuries || []).filter((x) => /^(questionable|day|gtd|game.?time)/i.test(x.status || '')).map((x) => [x.player && x.player.id, x.status]));
+    const gameDate = String(o.game.date || o.game.datetime || '').slice(0, 10);
     const ctx = { [v]: teamContext(logs, v), [h]: teamContext(logs, h) };
     const habits = { [v]: coachHabits(logs, v), [h]: coachHabits(logs, h) };
     const now = boxFromPlays(o.plays || [], st.period, st.clock);
@@ -452,25 +467,45 @@
       lastPlayed[tm] = lg ? new Set(Object.entries(lg.rows).filter(([, r]) => r.team === tm && r.min > 0).map(([id]) => +id)) : null;
     }
     const absent = [];
+    const doubt = {}; // pid -> reason (still projected, but availability is shaky)
+    const b2b = {};
+    for (const tm of [v, h]) b2b[tm] = !!gameDate && logs.some((l) => tm in l.margin && String(l.date).slice(0, 10) === addDaysStr(gameDate, -1));
     if (st.phase !== 'final') {
       for (const [pid, hs] of Object.entries(hist)) {
-        if (roster[pid]) continue;
         const lastRow = hs[hs.length - 1];
+        const lpA = last[norm(lastRow.name)] || cur[norm(lastRow.name)] || {};
+        const avgMin = hs.slice(-3).reduce((a, r) => a + r.min, 0) / Math.min(3, hs.length);
+        if (shaky.has(+pid)) doubt[pid] = `${shaky.get(+pid)} on injury report`;
+        if (b2b[lastRow.team] && lpA.age >= 31 && avgMin >= 24) doubt[pid] = doubt[pid] || 'back-to-back rest risk';
+        if (roster[pid]) continue;
+        if (st.phase === 'pre' && TUNE.b2bRestAge > 0 && b2b[lastRow.team] && lpA.age >= TUNE.b2bRestAge && avgMin >= 24 && !forceIn.has(+pid)) {
+          absent.push({ pid: +pid, name: lastRow.name, team: lastRow.team, why: 'back-to-back rest' });
+          continue;
+        }
         if (outIds.has(+pid) || forceOut.has(+pid)) {
           absent.push({ pid: +pid, name: lastRow.name, team: lastRow.team, why: forceOut.has(+pid) ? 'you marked out' : 'injury report' });
           continue;
         }
         const lp0 = lastPlayed[lastRow.team];
-        if (TUNE.absentMinMpg > 0 && lp0 && !lp0.has(+pid) && !forceIn.has(+pid) && hs.slice(-3).reduce((a, r) => a + r.min, 0) / Math.min(3, hs.length) >= TUNE.absentMinMpg) {
-          absent.push({ pid: +pid, name: lastRow.name, team: lastRow.team, why: 'missed last game' });
-          continue;
+        if (lp0 && !lp0.has(+pid) && !forceIn.has(+pid) && avgMin >= 20) {
+          if (TUNE.absentMinMpg > 0 && avgMin >= TUNE.absentMinMpg) {
+            absent.push({ pid: +pid, name: lastRow.name, team: lastRow.team, why: 'missed last game' });
+            continue;
+          }
+          doubt[pid] = doubt[pid] || 'missed last game';
         }
         const recent = hs.slice(-3);
         const tm = hs[hs.length - 1].team;
         if (tm !== v && tm !== h) continue;
         if (recent.reduce((a, r) => a + r.min, 0) / 3 < 6) continue;
-        // a game in progress: skip guys who haven't checked in after halftime (likely inactive)
-        if (st.phase === 'live' && el >= 24) continue;
+        // a game in progress: starters who haven't checked in early, and anyone by halftime, are out
+        if (st.phase === 'live') {
+          if (el >= 24) continue;
+          if ((el >= TUNE.liveOutMin && avgMin >= 24) || (el >= 18 && avgMin >= 14)) {
+            absent.push({ pid: +pid, name: lastRow.name, team: lastRow.team, why: "hasn't checked in" });
+            continue;
+          }
+        }
         roster[pid] = { pid: +pid, name: hs[hs.length - 1].name, team: tm, pts: 0, reb: 0, oreb: 0, ast: 0, fg3m: 0, fg3a: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, tov: 0, pf: 0, tech: 0, ejected: false, min: 0, qmin: {}, on: false, dnpYet: true };
       }
     }
@@ -481,14 +516,16 @@
     const seasonPace = (ctx[v].pace + ctx[h].pace) / 2;
     const livePace = el > 0 ? (possNow * 48) / Math.max(el, 1) : seasonPace;
     const w = el / (el + TUNE.paceK);
-    const possLeft = (((1 - w) * seasonPace + w * livePace) * left) / 48;
+    const q4Left = st.phase === 'final' ? 0 : st.period > 4 ? left : Math.min(left, 12);
+    const possLeft = (((1 - w) * seasonPace + w * livePace) * (left - q4Left + q4Left * TUNE.q4Pace)) / 48;
 
     // margin path to the end of Q3 → blowout scenarios
     const toQ3 = Math.max(36 - el, 0);
     const marginNow = st.vs - st.hs;
-    const preSd = 9; // pregame: spread uncertainty from nothing to Q3
     const mQ3 = new Float64Array(N);
-    for (let i = 0; i < N; i++) mQ3[i] = marginNow + R.normal(0, st.phase === 'pre' ? preSd * Math.sqrt(36 / 48) * 1.3 : 1.85 * Math.sqrt(Math.max(toQ3, 0.01)));
+    // team strength drift (visitor perspective): net-rating gap minus home court, over the minutes to Q3
+    const drift = TUNE.drift * (((ctx[v].net - ctx[h].net) / 100) * seasonPace - TUNE.homeAdv) * (toQ3 / 48);
+    for (let i = 0; i < N; i++) mQ3[i] = marginNow + drift + R.normal(0, st.phase === 'pre' ? TUNE.preQ3Sd : TUNE.marginK * Math.sqrt(Math.max(toQ3, 0.01)));
     let pBlow = 0, pBig = 0;
     for (let i = 0; i < N; i++) { const a = Math.abs(mQ3[i]); if (a >= 20) pBlow++; if (a >= 15) pBig++; }
     pBlow /= N; pBig /= N;
@@ -547,8 +584,8 @@
       const ftprior = lp && lp.ft != null ? lp.ft : LEAGUE.ft;
       const f2a = a.fga - a.fg3a, f2m = Math.max((a.pts - 3 * a.fg3m - a.ftm) / 2, 0);
       const d = ctx[opp];
-      const p3 = clamp(((a.fg3m + p3prior * TUNE.p3K) / (a.fg3a + TUNE.p3K)) * d.p3f, 0.15, 0.6);
-      const p2 = clamp(((f2m + p2prior * TUNE.p2K) / (f2a + TUNE.p2K)) * d.p2f, 0.3, 0.75);
+      const p3 = clamp(((a.fg3m + p3prior * TUNE.p3K) / (a.fg3a + TUNE.p3K)) * d.p3f * TUNE.shotEff, 0.15, 0.6);
+      const p2 = clamp(((f2m + p2prior * TUNE.p2K) / (f2a + TUNE.p2K)) * d.p2f * TUNE.shotEff, 0.3, 0.75);
       const ft = clamp((a.ftm + ftprior * TUNE.ftK) / (a.fta + TUNE.ftK), 0.4, 0.97);
       // --- reb / ast per minute
       const rate = {};
@@ -564,7 +601,9 @@
       // --- minutes
       const mpg = n ? mean(hs.map((x) => x.min)) : lp ? lp.mpg : 14;
       const qavg = {};
-      for (const q of [1, 2, 3, 4]) qavg[q] = n ? mean(hs.map((x) => x.qmin[q] || 0)) : mpg / 4;
+      const closeG = TUNE.closeQ4 ? hs.filter((x) => Math.abs(x.margin) < 15) : hs;
+      const qBase = closeG.length >= 2 ? closeG : hs;
+      for (const q of [1, 2, 3, 4]) qavg[q] = n ? mean(qBase.map((x) => x.qmin[q] || 0)) : mpg / 4;
       let remCur = 0, remMid = 0, q4 = 0;
       if (st.phase === 'pre') { remMid = qavg[1] + qavg[2] + qavg[3]; q4 = qavg[4]; }
       else if (st.period <= 4) {
@@ -589,6 +628,7 @@
         let q4i = q4;
         if (am >= 20) q4i = starter ? q4 * (lead > 0 ? hab.lead : hab.trail) : q4 * (lead > 0 ? 1.9 : 1.3);
         else if (am >= 15) q4i = starter ? q4 * (lead > 0 ? (1 + hab.lead) / 2 : 0.9) : q4 * 1.15;
+        else if (am < 8 && starter && TUNE.closerQ4 > 0) q4i = Math.max(q4, Math.min(TUNE.closerQ4, 12));
         const shock = clamp(R.normal(1, TUNE.minShock), 0.4, 1.5);
         mins[i] = Math.min((remCur + remMid + q4i) * foul * shock, left);
       }
@@ -682,13 +722,14 @@
         else if (seasonRate > 0 && r.min >= 12 && r.pts / r.min < seasonRate * 0.5) flags.push('cold');
       }
       if (p.starter && pBlow >= 0.3 && st.phase === 'live') flags.push('sitrisk');
+      if (doubt[r.pid] && st.phase === 'pre') flags.push('doubt');
       results.push({
         pid: r.pid, name: r.name, team: p.tm, opp: p.opp, on: r.on, starter: p.starter, dnpYet: !!r.dnpYet,
         now: { pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fgm: r.fgm, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf, min: r.min },
         proj: { ...avg, min: r.min + minSum / N },
         usage: { season: p.usgSeason, tonight: p.usgTonight, proj: usg },
         shooting: { p2: p.p2, p3: p.p3, ft: p.ft, r3: p.r3 },
-        mpg: p.mpg, qavg: p.qavg, games: p.n, flags, ladders,
+        mpg: p.mpg, qavg: p.qavg, games: p.n, flags, ladders, doubt: st.phase === 'pre' ? doubt[r.pid] || null : null,
         _sims: sims,
       });
     }
@@ -699,7 +740,7 @@
     return {
       state: st, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
       blowout: { now: isBlowout(st), pBlow, pBig }, possLeft, pace: { season: seasonPace, live: livePace },
-      context: ctx, habits, injuries: out, absent, sims: N,
+      context: ctx, habits, injuries: out, absent, b2b, sims: N,
     };
   }
 

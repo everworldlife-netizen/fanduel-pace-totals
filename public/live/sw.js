@@ -1,5 +1,5 @@
 /* Courtside Arcade service worker: app shell offline, live data always from the network. */
-const SHELL = 'ca-shell-v2';
+const SHELL = 'ca-shell-v3';
 const FILES = ['./', 'index.html', 'styles.css', 'engine.js', 'data.js', 'app.js', 'worker.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png'];
 

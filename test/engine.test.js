@@ -109,3 +109,28 @@ test('consensus lines + picks + combos', () => {
   const used = C.once.flatMap((c) => c.legs.map((l) => l.pid));
   assert.strictEqual(new Set(used).size, used.length, 'each player once');
 });
+
+test('availability: back-to-back flag, questionable flag, starter not checked in by mid-Q1 is out', () => {
+  const mk = (id, date, margin) => ({
+    id, date, v: 'AAA', h: 'BBB', len: 48, margin: { AAA: margin, BBB: -margin },
+    teams: { AAA: { fga: 88, fta: 22, oreb: 10, dreb: 34, tov: 13, pts: 112, fg3a: 36, fg3m: 13, poss: 100 }, BBB: { fga: 86, fta: 20, oreb: 9, dreb: 33, tov: 14, pts: 108, fg3a: 34, fg3m: 12, poss: 99 } },
+    rows: {
+      1: { name: 'Ann Able', team: 'AAA', min: 34, qmin: { 1: 9, 2: 8, 3: 9, 4: 8 }, pts: 20, reb: 5, ast: 4, fg3m: 2, fg3a: 6, fga: 16, fta: 4, ftm: 3, tov: 2, pf: 2 },
+      9: { name: 'Vic Vet', team: 'AAA', min: 32, qmin: { 1: 8, 2: 8, 3: 8, 4: 8 }, pts: 18, reb: 7, ast: 3, fg3m: 1, fg3a: 3, fga: 14, fta: 5, ftm: 4, tov: 2, pf: 3 },
+      3: { name: 'Cat Cole', team: 'BBB', min: 33, qmin: { 1: 9, 2: 8, 3: 8, 4: 8 }, pts: 19, reb: 6, ast: 5, fg3m: 2, fg3a: 5, fga: 15, fta: 3, ftm: 2, tov: 3, pf: 2 },
+    },
+  });
+  const logs = [mk(20, '2026-10-29', 3), mk(21, '2026-10-30', -4)];
+  const priors = { last: { 'vic vet': { name: 'Vic Vet', gp: 70, mpg: 32, pts: 0.55, reb: 0.2, ast: 0.1, fg3m: 0.03, age: 34 } } };
+  const pre = game({ date: '2026-10-31', status_state: 'scheduled', display_status: '7:00 PM ET', period: 0, time: null, visitor_team_score: 0, home_team_score: 0 });
+  const injuries = [{ status: 'Questionable', player: { id: 3 } }];
+  const out = E.projectGame({ game: pre, plays: [], logs, priors, injuries, nsims: 300 });
+  assert.ok(out.b2b.AAA, 'AAA played yesterday → back-to-back');
+  assert.match(out.players.find((p) => p.pid === 9).doubt, /back-to-back/);
+  assert.match(out.players.find((p) => p.pid === 3).doubt, /Questionable/);
+  // live, end of Q1: Vic Vet (32 mpg) never checked in → treated as out, not projected
+  const live = game({ date: '2026-10-31', period: 1, time: 'END Q1', visitor_team_score: 4, home_team_score: 0 });
+  const lp = E.projectGame({ game: live, plays, logs, priors, injuries: [], nsims: 300 });
+  assert.ok(!lp.players.some((p) => p.pid === 9));
+  assert.ok(lp.absent.some((a) => a.pid === 9 && /checked in/.test(a.why)));
+});

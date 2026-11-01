@@ -9,7 +9,7 @@
   const pct = (p) => `${Math.round(p * 100)}%`;
 
   // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
-  const ACCURACY = { games: 25, q3: { pts: 2.36, reb: 1.05, ast: 0.67, fg3m: 0.42 }, half: { pts: 3.47, reb: 1.43, ast: 0.97, fg3m: 0.65 }, pre: { pts: 5.06 }, calib: 'picks rated 70–80% hit 74%' };
+  const ACCURACY = { games: 32, q3: { pts: 2.25, reb: 1.03, ast: 0.67, fg3m: 0.40 }, half: { pts: 3.34, reb: 1.39, ast: 0.96, fg3m: 0.62 }, pre: { pts: 5.10 }, calib: 'picks rated 70–80% hit 74%' };
 
   const TEAM = {
     ATL: ['#E03A3E', '#C1D32F'], BOS: ['#007A33', '#BA9653'], BKN: ['#2a2a2a', '#FFFFFF'], CHA: ['#1D1160', '#00788C'],
@@ -284,6 +284,8 @@
     </div>`;
     html += `<a class="btn alt" style="width:100%;margin-top:12px;text-decoration:none" href="${xSearchUrl(g)}" target="_blank" rel="noopener">𝕏 CHECK YOUR 15 X ACCOUNTS FOR THIS GAME</a>`;
     const tm = state.team[id] || s.v;
+    const b2bTeams = [s.v, s.h].filter((t) => P.b2b && P.b2b[t]);
+    if (b2bTeams.length && s.phase === 'pre') html += `<div class="card small" style="margin-top:12px;font-weight:700;border-color:var(--ink);background:#3b2a12">⏱️ <b>${b2bTeams.join(' & ')}</b> on the 2nd night of a back-to-back — veterans often rest. Confirm on X before you pick.</div>`;
     html += `<div class="seg" role="group" aria-label="Team">${[s.v, s.h].map((t) => `<button data-act="team" data-g="${id}" data-t="${t}" aria-pressed="${t === tm}">${badge(t, 'sm')}${t}</button>`).join('')}</div>`;
     const players = P.players.filter((p) => p.team === tm && (p.proj.min >= 6 || p.now.min > 0));
     html += `<div class="stack">${players.map((p) => playerCard(p, id, s)).join('') || emptyHTML('No rotation yet', 'Projections appear once data loads.')}</div>`;
@@ -304,6 +306,8 @@
     if (p.flags.includes('sitrisk')) tags.push('<span class="tag sit">💤 MAY SIT LATE</span>');
     if (p.flags.includes('out')) tags.push('<span class="tag out">OUT</span>');
     if (p.dnpYet && s.phase === 'live') tags.push('<span class="tag">NOT IN YET</span>');
+    if (p.doubt && !getOverrides().in.includes(p.pid)) tags.push(`<span class="tag foul">⚠️ CHECK STATUS · ${esc(p.doubt)}</span>`);
+    if (p.doubt && getOverrides().in.includes(p.pid)) tags.push('<span class="tag" style="background:var(--green);color:var(--ink)">✓ CONFIRMED IN</span>');
     const stat = (k, lbl) => `<div class="stat"><small>${lbl}</small><div class="proj">${half(p.proj[k])}</div><div class="now">${s.phase === 'pre' ? 'proj' : `now <b>${p.now[k]}</b>`}</div></div>`;
     const fouls = Array.from({ length: 6 }, (_, i) => `<i class="${i < p.now.pf ? 'f' : ''}"></i>`).join('');
     const showNow = s.phase !== 'pre';
@@ -342,8 +346,9 @@
         <div class="grab"></div>
         <div class="row">${badge(p.team)}<div style="flex:1;min-width:0"><h2>${esc(p.name)}</h2><div class="small muted" style="font-weight:700">${p.team} vs ${p.opp} · ${s.phase === 'pre' ? 'pregame' : `${p.now.pts} PTS · ${p.now.reb} REB · ${p.now.ast} AST · ${Math.round(p.now.min)} MIN`}</div></div>
           <button class="icon-btn" data-act="close" aria-label="Close">✕</button></div>
+        ${p.doubt ? `<div class="card small" style="margin-top:12px;font-weight:700;background:#3b2a12">⚠️ Availability not confirmed: <b>${esc(p.doubt)}</b>. Check X, then tap PLAYING or OUT — picks stay hidden until you do.</div>` : ''}
         <div class="row" style="margin-top:12px;gap:8px"><span class="small muted" style="font-weight:800;flex:1">Status tonight (from X / news)</span>
-          <button class="chip" data-act="ov" data-g="${state.sheetGame}" data-p="${p.pid}" data-s="clear" aria-pressed="${!getOverrides().out.includes(p.pid)}">PLAYING</button>
+          <button class="chip" data-act="ov" data-g="${state.sheetGame}" data-p="${p.pid}" data-s="in" aria-pressed="${getOverrides().in.includes(p.pid) || (!p.doubt && !getOverrides().out.includes(p.pid))}">PLAYING</button>
           <button class="chip" data-act="ov" data-g="${state.sheetGame}" data-p="${p.pid}" data-s="out" aria-pressed="${getOverrides().out.includes(p.pid)}">OUT</button></div>
         ${ladder('pts', 'POINTS')}${ladder('reb', 'REBOUNDS')}${ladder('ast', 'ASSISTS')}${ladder('fg3m', 'THREES')}${ladder('pra', 'PTS+REB+AST')}
         <h3>SHOT PROFILE</h3>
@@ -373,7 +378,13 @@
       if (s.phase === 'final') continue;
       if (settings.skipBlowouts && E.isBlowout(s)) continue;
       const pr = state.proj.get(g.id);
-      if (pr) out.push(...pr.picks);
+      if (!pr) continue;
+      const ov = getOverrides();
+      const shaky = new Set(pr.proj.players.filter((p) => p.doubt && !ov.in.includes(p.pid)).map((p) => p.pid));
+      for (const k of pr.picks) {
+        if (shaky.has(k.pid)) { state.hiddenShaky = (state.hiddenShaky || 0) + 1; continue; }
+        out.push(k);
+      }
     }
     return out;
   }
@@ -385,6 +396,7 @@
         <div class="sub">${esc(k.game)} · now ${k.now} · proj ${half(k.proj)}</div></div>${edge}</button>`;
   }
   function picksView() {
+    state.hiddenShaky = 0;
     const filters = [['all', 'ALL'], ['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'], ['fg3m', '3PM'], ['pra', 'PRA']];
     let picks = slatePicks();
     if (state.pickFilter !== 'all') picks = picks.filter((k) => k.stat === state.pickFilter);
@@ -393,6 +405,7 @@
       <div class="card row between" style="padding:10px 14px"><div><b>Skip blowouts</b><div class="small muted" style="font-weight:600">Hide games up 15+, or 12+ after halftime</div></div>
       <label class="toggle"><input type="checkbox" data-act="skipblow" ${settings.skipBlowouts ? 'checked' : ''} aria-label="Skip blowouts"><span></span></label></div>`;
     html += progressHTML();
+    if (state.hiddenShaky) html += `<div class="card small" style="margin-top:10px;font-weight:700;background:#3b2a12">⚠️ ${state.hiddenShaky} pick${state.hiddenShaky > 1 ? 's' : ''} hidden: player status not confirmed (back-to-back rest, questionable, or missed last game). Open the game, check X, and tap PLAYING to unlock.</div>`;
     if (!picks.length) return html + (state.busy || state.progress ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div></div>' : emptyHTML('No overs clear the bar yet', 'Picks show when a player is 60%+ to clear a book line with value, or 75%+ on a model rung.'));
     const value = picks.filter((k) => k.kind === 'line'), safe = picks.filter((k) => k.kind !== 'line');
     if (value.length) html += `<div class="section-title">💎 VALUE OVERS <span class="count">model beats the book line</span></div><div class="stack">${value.slice(0, 25).map(pickCard).join('')}</div>`;

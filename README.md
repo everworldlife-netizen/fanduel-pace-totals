@@ -109,9 +109,9 @@ Mobile-first PWA at **`/live/`** that runs on DataBallr data only: live games, p
 - Usage = (FGA + 0.44 FTA + TOV) share of team plays on court; this season + last season + tonight (80/20), renormalized to 100% on the floor so absent players' shots are redistributed.
 - Shots = remaining possessions × plays-per-possession (offensive rebounds) × on-court share × usage; makes at shrunk shooting %s adjusted for the opponent's defense, with hot/cold night variance.
 - Minutes = quarter patterns + tonight's share + foul trouble + simulated margin path (blowout scenarios); each team fills exactly 5 × time left.
-- Injuries: DataBallr report, plus a 20+ mpg player who missed his team's last game is presumed out (DataBallr's feed can miss outs), plus one-tap overrides. *Check X* opens the 15-account X search for the game.
+- Availability: DataBallr report (Out/Doubtful = out, Questionable flagged), back-to-back rest-risk flags, a 20+ mpg player who missed his team's last game is presumed out, live starters who never check in are dropped, plus one-tap overrides. Pregame picks for unconfirmed players stay hidden until you confirm. *Check X* opens the 15-account X search for the game.
 
-**Accuracy:** `npm run backtest -- 2026-10-28 2026-10-29 2026-10-30` replays finished games at pregame / Q1 / half / Q3. Results in [`docs/accuracy.md`](docs/accuracy.md): average miss from end of Q3 is 2.4 pts / 1.1 reb / 0.7 ast / 0.4 3PM, beating the naive baseline at every checkpoint; over-probabilities are calibrated (70–80% rungs hit 74%).
+**Accuracy:** `npm run backtest -- 2026-10-28 2026-10-29 2026-10-30` replays finished games at pregame / Q1 / half / Q3. Results in [`docs/accuracy.md`](docs/accuracy.md) (32 games): average miss from end of Q3 is 2.25 pts / 1.0 reb / 0.7 ast / 0.4 3PM, beating the naive baseline at every checkpoint; over-probabilities are calibrated (70–80% rungs hit 74%). `npm run postmortem -- <date> <pre|q1|half|q3>` splits each player's miss into minutes / shot volume / shooting and lists roster misses.
 
 **Hosting:** DataBallr sends no CORS headers, so the app calls `./db/...`:
 - Express (this server / Docker on Hostinger): `src/databallrProxy.js` forwards `GET /live/db/v1/nba/*` with short caching. App at `http://<host>:3000/live/` (put it behind HTTPS, e.g. the Traefik labels in `docker-compose.yml`, to enable Install).
