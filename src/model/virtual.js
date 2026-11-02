@@ -1,4 +1,4 @@
-const VIRTUAL_RE = /(ebasketball|e-basketball|\benba\b|virtual|sim(?:ulated)?|\b2k\b|cyber\s*hoops|esport|e-sport|nba\s*2k|ebl\b|e-bl\b)/i;
+const VIRTUAL_RE = /(ebasketball|e-basketball|\benba\b|virtual|sim(?:ulated)?|\b2k\b|cyber\s*hoops|esport|e-sport|nba\s*2k|ebl\b|e-bl\b|\bh2h\b|\bgg\b|\bjudge?ment\b|\bace\b)/i;
 
 function isVirtualGame(game = {}) {
   if (game.isVirtual === true) return true;

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1038">
+  <meta name="description" content="Live NBA player projections and over picks powered by DataBallr data.">
+  <title>Courtside Arcade</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Bungee&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/games" aria-label="Courtside Arcade home"><span id="mascot"></span><span class="wordmark">COURTSIDE<span>ARCADE</span></span></a>
+    <span class="spacer"></span>
+    <span id="liveCount" class="live-count idle">…</span>
+    <button id="installBtn" class="icon-btn" data-act="install" data-icon="install" aria-label="Install app" hidden></button>
+    <button id="refreshBtn" class="icon-btn" data-icon="refresh" aria-label="Refresh now"></button>
+  </header>
+  <main id="view" aria-live="polite"></main>
+  <nav class="tabbar" aria-label="Main">
+    <a class="tab" href="#/games" data-tab="games" data-icon="games">GAMES</a>
+    <a class="tab" href="#/picks" data-tab="picks" data-icon="picks">PICKS</a>
+    <a class="tab" href="#/combos" data-tab="combos" data-icon="combos">COMBOS</a>
+    <a class="tab" href="#/settings" data-tab="settings" data-icon="settings">SETTINGS</a>
+  </nav>
+  <noscript>Courtside Arcade needs JavaScript.</noscript>
+  <script src="engine.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
