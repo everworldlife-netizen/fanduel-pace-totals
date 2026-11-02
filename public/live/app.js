@@ -9,7 +9,7 @@
   const pct = (p) => `${Math.round(p * 100)}%`;
 
   // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
-  const ACCURACY = { games: 32, q3: { pts: 2.25, reb: 1.03, ast: 0.67, fg3m: 0.40 }, half: { pts: 3.34, reb: 1.39, ast: 0.96, fg3m: 0.62 }, pre: { pts: 5.10 }, calib: 'picks rated 70–80% hit 74%' };
+  const ACCURACY = { games: 56, q3: { pts: 2.23, reb: 0.99, ast: 0.66, fg3m: 0.40 }, half: { pts: 3.34, reb: 1.39, ast: 0.98, fg3m: 0.62 }, pre: { pts: 5.13 }, calib: 'safe-ladder picks rated 85% hit 85% (2,998 live picks)' };
 
   const TEAM = {
     ATL: ['#E03A3E', '#C1D32F'], BOS: ['#007A33', '#BA9653'], BKN: ['#2a2a2a', '#FFFFFF'], CHA: ['#1D1160', '#00788C'],
@@ -298,6 +298,15 @@
     html += `<div class="updated">${s.phase === 'live' ? 'Live from DataBallr play-by-play · ' : ''}${P.sims.toLocaleString()} simulations · updated ${new Date(pr.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}</div>`;
     return html;
   }
+  /** The live context behind a number (rotation, fouls, role, usage, game script). */
+  function whyLines(p, max) {
+    const w = (p.why || []).slice();
+    if (!w.length) return '';
+    const rank = (x) => (x.effect === 'down' ? 0 : x.effect === 'up' ? 1 : 2);
+    const list = max ? w.filter((x) => x.icon !== '🗓️').sort((a, b) => rank(a) - rank(b)).slice(0, max) : w;
+    if (!list.length) return '';
+    return `<ul class="why${max ? ' compact' : ''}">${list.map((x) => `<li class="${x.effect}"><span aria-hidden="true">${x.icon}</span><span>${esc(x.text)}</span></li>`).join('')}</ul>`;
+  }
   function playerCard(p, gid, s) {
     const tags = [];
     if (p.flags.includes('hot')) tags.push('<span class="tag hot">🔥 HOT</span>');
@@ -306,6 +315,8 @@
     if (p.flags.includes('sitrisk')) tags.push('<span class="tag sit">💤 MAY SIT LATE</span>');
     if (p.flags.includes('out')) tags.push('<span class="tag out">OUT</span>');
     if (p.dnpYet && s.phase === 'live') tags.push('<span class="tag">NOT IN YET</span>');
+    if (p.rot && s.phase === 'live' && !p.on && !p.rot.foulSit && p.rot.benched < 0.5 && !p.dnpYet) tags.push('<span class="tag out">🪑 PULLED</span>');
+    if (p.rot && s.phase === 'live' && p.rot.tonight >= 1.12 && p.now.min >= 6) tags.push('<span class="tag hot">📈 ROLE UP</span>');
     if (p.doubt && !getOverrides().in.includes(p.pid)) tags.push(`<span class="tag foul">⚠️ CHECK STATUS · ${esc(p.doubt)}</span>`);
     if (p.doubt && getOverrides().in.includes(p.pid)) tags.push('<span class="tag" style="background:var(--green);color:var(--ink)">✓ CONFIRMED IN</span>');
     const stat = (k, lbl) => `<div class="stat"><small>${lbl}</small><div class="proj">${half(p.proj[k])}</div><div class="now">${s.phase === 'pre' ? 'proj' : `now <b>${p.now[k]}</b>`}</div></div>`;
@@ -315,6 +326,7 @@
       <div class="pc-head"><span class="oncourt ${p.on ? 'on' : ''}" title="${p.on ? 'On the floor' : 'On the bench'}"></span><b>${esc(p.name)}</b><span class="grow"></span>
         <span class="mins">${showNow ? `${Math.round(p.now.min)}′ → ` : ''}${Math.round(p.proj.min)}′</span></div>
       ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
+      ${whyLines(p, 2)}
       <div class="statrow">${stat('pts', 'PTS')}${stat('reb', 'REB')}${stat('ast', 'AST')}${stat('fg3m', '3PM')}</div>
       <div class="pc-foot"><div class="minbar" aria-hidden="true"><i class="proj" style="width:${Math.min(100, (p.proj.min / 48) * 100).toFixed(0)}%"></i><i class="played" style="width:${Math.min(100, (p.now.min / 48) * 100).toFixed(0)}%"></i></div>
         <span class="usg">USG ${pct(p.usage.proj)}</span><span class="fouls ${p.now.pf >= 4 ? 'danger' : ''}" aria-label="${p.now.pf} fouls">${fouls}</span></div>
@@ -350,6 +362,7 @@
         <div class="row" style="margin-top:12px;gap:8px"><span class="small muted" style="font-weight:800;flex:1">Status tonight (from X / news)</span>
           <button class="chip" data-act="ov" data-g="${state.sheetGame}" data-p="${p.pid}" data-s="in" aria-pressed="${getOverrides().in.includes(p.pid) || (!p.doubt && !getOverrides().out.includes(p.pid))}">PLAYING</button>
           <button class="chip" data-act="ov" data-g="${state.sheetGame}" data-p="${p.pid}" data-s="out" aria-pressed="${getOverrides().out.includes(p.pid)}">OUT</button></div>
+        ${(p.why || []).length ? `<h3>WHY THIS NUMBER</h3>${whyLines(p)}` : ''}
         ${ladder('pts', 'POINTS')}${ladder('reb', 'REBOUNDS')}${ladder('ast', 'ASSISTS')}${ladder('fg3m', 'THREES')}${ladder('pra', 'PTS+REB+AST')}
         <h3>SHOT PROFILE</h3>
         <div class="grid3">
@@ -365,7 +378,7 @@
         </div>
         <h3>MINUTES BY QUARTER</h3>
         <div class="qbars">${[1, 2, 3, 4].map((q) => `<div class="qbar"><div class="col" style="height:${Math.max(4, ((p.qavg[q] || 0) / qmax) * 64)}px"></div>Q${q} · ${(p.qavg[q] || 0).toFixed(1)}′</div>`).join('')}</div>
-        <p class="small muted" style="font-weight:600;margin-top:10px">Season average minutes per quarter (${p.games} recent games). Projected ${Math.round(p.proj.min)} total minutes tonight.</p>
+        <p class="small muted" style="font-weight:600;margin-top:10px">Season average minutes per quarter (${p.games} recent games). Live, minutes come from this coach's rotation map: when he usually checks in and out, whether he's on the floor right now, foul rest, and how tonight's rotation has treated him. Projected ${Math.round(p.proj.min)} total minutes tonight.</p>
       </section>`;
     if (fresh) wrap.querySelector('.sheet').focus?.();
   }
@@ -452,7 +465,7 @@
         <div class="acc"><div><b>${a.q3.pts}</b><small>PTS</small></div><div><b>${a.q3.reb}</b><small>REB</small></div><div><b>${a.q3.ast}</b><small>AST</small></div><div><b>${a.q3.fg3m}</b><small>3PM</small></div></div>
         <div class="small" style="font-weight:800;margin:10px 0 4px">From halftime</div>
         <div class="acc"><div><b>${a.half.pts}</b><small>PTS</small></div><div><b>${a.half.reb}</b><small>REB</small></div><div><b>${a.half.ast}</b><small>AST</small></div><div><b>${a.half.fg3m}</b><small>3PM</small></div></div>
-        <p class="small muted" style="font-weight:600;margin:10px 0 0">Calibrated: ${a.calib}. Built from DataBallr play-by-play, usage, shot mix, defense, pace and each coach's blowout habits.</p>
+        <p class="small muted" style="font-weight:600;margin:10px 0 0">Calibrated: ${a.calib}. Built from DataBallr play-by-play: each coach's rotation map and foul rules, who's been pulled, tonight's role and usage, shot mix, defense, pace and blowout habits.</p>
       </div>
       <div class="section-title">📲 APP</div>
       <div class="card stack">

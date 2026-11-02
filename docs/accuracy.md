@@ -57,3 +57,36 @@ Seven games, five decided by 18+. What went wrong and what changed:
 Last night at the end of Q1: points MAE 4.81 → 4.44, minutes MAE 6.02 → 5.42. Across all 32 games every checkpoint improved (Q3 points 2.31 → 2.25, team score MAE 8.60 → 8.05).
 
 Tested and **not** adopted (no gain): a stronger 80/20 → 70/30 tonight blend, a "close-game closers" minutes floor, presuming back-to-back veterans out by default.
+
+## Live context model (2026-11-02) — `npm run evaluate -- 2026-10-25 2026-11-01`
+
+56 finished games replayed at six live moments each (end Q1, 6:00 Q2, half, 6:00 Q3, end Q3, 6:00 Q4), scored on a fixed set of players (10+ real minutes or a 12+ mpg regular) so a change can't look better by dropping hard cases.
+
+**What the old model got wrong** (from the baseline run): players sitting at the checkpoint were over-projected (+0.9 min) and players on the floor under-projected (−0.3); 301 regulars who finished under 10 minutes were missed by 7.6 minutes each; foul trouble was mis-sized; and high-confidence ladders were overconfident (picks rated 85.5% hit 82.8%, rebound picks 80.4%).
+
+**What changed**
+
+| Context | How it's modeled now | Evidence (17,108 live player-moments) |
+|---|---|---|
+| Rotation | Each coach's minute-by-minute **rotation map** from this season's stints, conditioned on whether the player is on the floor right now | On-court/sitting bias −0.34/+0.91 → +0.32/+0.25 |
+| Pulled / hurt | Minutes he'd normally have played during his current seat. 4 missed → 50% he's done; 6+ → ~5% of normal minutes | Players who sat through 6–8 usual minutes played 10% of their map afterwards, 8+ → 4% |
+| Role tonight | Rotation share so far vs his map, ^0.25 | Players at 2× their usual share kept ~1.35× afterwards; under 0.3× kept 0.1× |
+| Foul trouble | Coach foul rules: 2 in Q1 → rest to ~6:00 Q2, 3 in the 1st half → to halftime, 5 → to the last 6:00; plays 70% of usual minutes inside the rest if on the floor, 40% if already sitting | **4 fouls in Q3: coaches played through it** (best fit = no rest). Every foul group's bias is now within ±0.4 min |
+| Spare minutes | Minutes left by absent/pulled players go to players still in tonight's rotation | Pulled regulars' miss 7.59 → 4.60 min |
+| Uncertainty | Per-sim usage (sd 30%), minutes (40%) and rebound-rate (20%) shocks | Safe-ladder picks: rated 84.9% → hit 84.7% |
+
+**Before → after**
+
+| | Before | After |
+|---|---|---|
+| Minutes MAE (all moments) | 3.59 | 3.36 |
+| Minutes MAE at 6:00 Q4 | 2.27 | 1.95 |
+| Points / Rebounds / Assists / 3PM MAE | 3.07 / 1.29 / 0.87 / 0.55 | 2.99 / 1.25 / 0.86 / 0.54 |
+| Ladder Brier pts / reb / ast / 3PM | .0504 / .0624 / .0496 / .0626 | .0495 / .0611 / .0494 / .0619 |
+| Safe-ladder picks: rated → hit | 85.5% → 82.8% | 84.9% → 84.7% (2,998 picks) |
+| Rebound picks: rated → hit | 85.2% → 80.4% | 84.6% → 82.3% |
+| Points picks: rated → hit | 86.4% → 83.7% | 85.8% → 87.2% |
+
+The app now shows this context on every live player ("Why this number"): pulled from the rotation, foul rest and when he's due back, bigger/smaller role tonight, usage up or down, hot/cold shooting (volume carries, % regresses), teammates out, blowout risk with the coach's habit, and the rotation map's minutes.
+
+Tested and **not** adopted (no gain on this sample): reb/ast following tonight's rebound-chance and team-assist environment (`envW`), heavier tonight weight on usage (70/30) — the 80/20 blend held up.

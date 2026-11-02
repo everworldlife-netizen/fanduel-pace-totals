@@ -11,7 +11,8 @@
     "build": "node --check server.js && node --check src/routes.js && node --check src/databallrProxy.js && node --check public/live/engine.js && node --check public/live/app.js && node --test test/*.test.js",
     "probe": "node scripts/probe-espn.js",
     "backtest": "node scripts/backtest.js",
-    "postmortem": "node scripts/postmortem.js"
+    "postmortem": "node scripts/postmortem.js",
+    "evaluate": "node scripts/evaluate.js"
   },
   "engines": {
     "node": ">=18"

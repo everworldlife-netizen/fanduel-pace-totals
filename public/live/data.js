@@ -3,7 +3,10 @@
   'use strict';
   const BASE = './db';
   const mem = new Map();
-  const VER = 'v2';
+  const VER = 'v3'; // v3: logs carry stints + foul times for the rotation map
+
+  // free the space held by older log formats
+  try { Object.keys(localStorage).filter((k) => k.startsWith('log:') && !k.startsWith(`log:${VER}:`)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 
   const store = {
     get(k) { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : null; } catch { return null; } },

@@ -134,3 +134,46 @@ test('availability: back-to-back flag, questionable flag, starter not checked in
   assert.ok(!lp.players.some((p) => p.pid === 9));
   assert.ok(lp.absent.some((a) => a.pid === 9 && /checked in/.test(a.why)));
 });
+
+test('stints: on-court intervals match minutes; foul times are recorded', () => {
+  const { players } = E.boxFromPlays(plays, 1, '4:00');
+  const sum = (st) => st.reduce((a, [x, y]) => a + y - x, 0);
+  for (const r of Object.values(players)) assert.ok(Math.abs(sum(r.stints) - r.min) < 1e-6, `${r.name} stints = minutes`);
+  assert.deepStrictEqual(players[1].stints, [[0, 6]]);
+  assert.deepStrictEqual(players[4].stints, [[6, 8]]);
+  assert.deepStrictEqual(players[3].pfAt, [2]);
+  assert.strictEqual(E.clockLabel(18), '6:00 Q2');
+  assert.strictEqual(E.onBetween([[0, 6], [10, 14]], 4, 12), 4);
+});
+
+test('rotation map: a regular sitting through his usual minutes is projected as pulled; a foul-trouble seat is not', () => {
+  // three past games: Ann plays 0–9, 15–24, 24–33, 39–48 (36 min) every night
+  const st = [[0, 9], [15, 24], [24, 33], [39, 48]];
+  const mk = (id, date) => ({
+    id, date, v: 'AAA', h: 'BBB', len: 48, margin: { AAA: 3, BBB: -3 },
+    teams: { AAA: { fga: 88, fta: 22, oreb: 10, dreb: 34, tov: 13, pts: 112, fg3a: 36, fg3m: 13, poss: 100 }, BBB: { fga: 86, fta: 20, oreb: 9, dreb: 33, tov: 14, pts: 108, fg3a: 34, fg3m: 12, poss: 99 } },
+    rows: {
+      1: { name: 'Ann Able', team: 'AAA', min: 36, qmin: { 1: 9, 2: 9, 3: 9, 4: 9 }, st, pts: 20, reb: 5, ast: 4, fg3m: 2, fg3a: 6, fga: 16, fta: 4, ftm: 3, tov: 2, pf: 2 },
+      4: { name: 'Dan Dorn', team: 'AAA', min: 12, qmin: { 1: 3, 2: 3, 3: 3, 4: 3 }, st: [[9, 15], [33, 39]], pts: 5, reb: 2, ast: 1, fg3m: 0, fg3a: 1, fga: 4, fta: 1, ftm: 1, tov: 1, pf: 1 },
+      3: { name: 'Cat Cole', team: 'BBB', min: 33, qmin: { 1: 9, 2: 8, 3: 8, 4: 8 }, st: [[0, 9], [15, 24], [24, 32], [40, 48]], pts: 19, reb: 6, ast: 5, fg3m: 2, fg3a: 5, fga: 15, fta: 3, ftm: 2, tov: 3, pf: 2 },
+    },
+  });
+  const logs = [mk(30, '2026-10-26'), mk(31, '2026-10-28'), mk(32, '2026-10-30')];
+  // tonight: Ann subbed out at 6:00 Q1 and it is now 6:00 Q2 — she sat through ~6 minutes she normally plays
+  const sub = P(1, '6:00', 'Substitution', 'Dan Dorn enters the game for Ann Able', [4, 1], 'AAA');
+  const base = [plays[0], plays[1], plays[2], sub];
+  const now = game({ date: '2026-10-31', period: 2, time: 'Q2 6:00' });
+  const pulled = E.projectGame({ game: now, plays: base, logs, priors: { last: {} }, nsims: 400 });
+  const ann = pulled.players.find((p) => p.pid === 1);
+  assert.ok(ann.rot && ann.rot.missed >= 6, `missed ${ann.rot && ann.rot.missed}`);
+  assert.ok(ann.proj.min - ann.now.min < 8, `pulled player projected ${(ann.proj.min - ann.now.min).toFixed(1)} more min`);
+  assert.ok(ann.why.some((w) => w.icon === '🪑'));
+  // same seat, but she picked up her 2nd foul right before the sub → foul rest, not pulled
+  const fouls = [P(1, '7:00', 'Personal Foul', 'Ann Able personal foul', [1], 'AAA'), P(1, '6:00', 'Personal Foul', 'Ann Able personal foul', [1], 'AAA')];
+  // (checked at 9:00 Q2, inside the usual 2-foul rest that runs to ~6:00 Q2)
+  const early = game({ date: '2026-10-31', period: 2, time: 'Q2 9:00' });
+  const resting = E.projectGame({ game: early, plays: [plays[0], plays[1], plays[2], ...fouls, sub], logs, priors: { last: {} }, nsims: 400 });
+  const ann2 = resting.players.find((p) => p.pid === 1);
+  assert.ok(ann2.rot.foulSit, 'recognized as a foul-trouble seat');
+  assert.ok(ann2.proj.min - ann2.now.min > 15, `foul-rest player keeps most minutes (${(ann2.proj.min - ann2.now.min).toFixed(1)})`);
+});

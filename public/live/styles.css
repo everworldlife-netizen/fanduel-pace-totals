@@ -223,6 +223,12 @@ button.card:active, .tap:active { transform: translateY(4px); box-shadow: 0 1px 
 .tag.foul { background: var(--yellow); color: var(--ink); }
 .tag.sit { background: var(--pink); color: #fff; }
 .tag.out { background: var(--red); color: #fff; }
+.why { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.why li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; font-weight: 600; line-height: 1.35; padding: 7px 9px; border-radius: 10px; border: 2px solid var(--ink); background: var(--panel-2); text-align: left; }
+.why li.down { border-left: 6px solid var(--red); }
+.why li.up { border-left: 6px solid var(--green); }
+.why li.info { border-left: 6px solid var(--cyan); }
+.why.compact li { font-size: 12px; padding: 5px 8px; }
 .statrow { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 10px; }
 .stat {
   background: var(--bg-2); border: 2.5px solid var(--ink); border-radius: 12px; padding: 6px 4px 5px; text-align: center;

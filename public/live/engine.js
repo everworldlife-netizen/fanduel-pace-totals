@@ -30,7 +30,7 @@
     p3K: 120, p2K: 70, ftK: 60, // shooting % shrink (attempts of prior)
     paceK: 30,          // minutes before live pace outweighs season pace
     qShareTonight: 0.4, // weight of tonight's share inside the current quarter
-    minShock: 0.24,     // per-sim minutes noise (backtest: best calibration)
+    minShock: 0.4,      // per-sim minutes noise (live backtest: best calibration)
     usgTarget: 0.2,     // average on-floor usage after renormalization
     absentMinMpg: 20,   // a 20+ mpg player who missed the last game is presumed out (backtest)
     b2bRestAge: 0,      // on a back-to-back 2nd night, presume starters this old sit (0 = flag only)
@@ -43,10 +43,28 @@
     q4Pace: 0.94,       // 4th quarters run ~6% fewer possessions per minute (backtest)
     shotEff: 0.975,     // early-season makes run ~2.5% below last season's rates (backtest)
     closerQ4: 0,        // when the simulated game stays within 8, starters play at least this many Q4 minutes
+    rot: 1,             // live minutes from the coach's rotation map (stints from this season's games)
+    rotK: 2,            // pseudo-games of the plain map when conditioning on "on court / sitting right now"
+    rotTonight: 0.25,   // exponent on tonight's rotation share so far vs the map (fit on 17k live moments)
+    rotTonightK: 3,     // minutes of shrink on that share
+    benchM50: 4,        // sitting through this many of his usual on-court minutes = 50% he's done for the night
+    benchS: 0.6,        // steepness of that curve (6+ missed minutes → ~5% of normal minutes, as observed)
+    // foul trouble by foul count: share of his usual minutes he plays until the coach's foul-rest
+    // point, [if on the floor now, if already sitting]
+    // (fit on this season: coaches play through 4 fouls in Q3; 2/3/5 fouls cost part of the rest)
+    foulRest: { 2: [0.7, 0.4], 3: [0.7, 0.4], 4: [1, 1], 5: [0.7, 0.4] },
+    foulAfter: 0.95,    // with 4+ fouls, share of usual minutes after that point (coaches stay careful)
+    envW: 0,            // reb/ast follow tonight's environment (rebound chances, team assists): no gain yet on the backtest
+    envK: 30,           // minutes before tonight's environment outweighs the season's
+    usgShock: 0.3,      // per-sim sd of a player's usage tonight (relative; fixes overconfident points ladders)
+    rebShock: 0.2,      // per-sim sd of his rebound rate tonight (matchups, size, who's guarding whom)
+    astShock: 0,        // per-sim sd of his assist rate tonight
+    fillByMin: 2,       // spread unclaimed team minutes over tonight's rotation (2 = whole roster at once)
+    fillPow: 0,         // ...weighted by (projected minutes)^fillPow x room left (0 = room left: best on backtest)
   };
   const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
   const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
-  const VAR_K = { reb: 1.5, ast: 1.6 };
+  const VAR_K = { reb: 1.5, ast: 1.6 }; // overridable via TUNE.varReb / TUNE.varAst
 
   // ---------------------------------------------------------------- RNG + samplers
   function mulberry32(seed) {
@@ -132,6 +150,24 @@
       .replace(/\s+/g, ' ').trim();
   }
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+  /** Minutes on court between game minutes a and b, from stints [[in, out], ...]. */
+  function onBetween(stints, a, b) {
+    let s = 0;
+    for (const [x, y] of stints || []) s += Math.max(0, Math.min(y, b) - Math.max(x, a));
+    return s;
+  }
+  /** Game minute (0–48) → "6:00 Q2". */
+  function clockLabel(m) {
+    const q = Math.min(4, Math.floor(m / 12) + 1);
+    const left = Math.max(0, q * 12 - m);
+    const mm = Math.floor(left + 1e-6), ss = Math.round((left - mm) * 60);
+    return `${mm}:${String(ss === 60 ? 0 : ss).padStart(2, '0')} Q${q}`;
+  }
+  const fmtMin = (m) => { const mm = Math.floor(m), ss = Math.round((m - mm) * 60); return `${mm}:${String(ss === 60 ? 59 : ss).padStart(2, '0')}`; };
+  function onAt(stints, t) {
+    for (const [x, y] of stints || []) if (t >= x && t < y) return true;
+    return false;
+  }
   const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
   /** Parse a DataBallr live-games row into a clean game state. */
@@ -180,9 +216,9 @@
   function boxFromPlays(plays, curPeriod, curClock) {
     const P = new Map();
     const T = {};
-    const team = (abbr) => (T[abbr] = T[abbr] || { fga: 0, fta: 0, oreb: 0, dreb: 0, tov: 0, pts: 0, fg3a: 0, fg3m: 0 });
+    const team = (abbr) => (T[abbr] = T[abbr] || { fga: 0, fta: 0, oreb: 0, dreb: 0, tov: 0, pts: 0, fg3a: 0, fg3m: 0, fgm: 0, ast: 0 });
     const pl = (id) => {
-      if (!P.has(id)) P.set(id, { pid: id, name: '', teams: {}, pts: 0, reb: 0, oreb: 0, ast: 0, fg3m: 0, fg3a: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, tov: 0, pf: 0, tech: 0, ejected: false, q: {} });
+      if (!P.has(id)) P.set(id, { pid: id, name: '', teams: {}, pts: 0, reb: 0, oreb: 0, ast: 0, fg3m: 0, fg3a: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, tov: 0, pf: 0, tech: 0, ejected: false, q: {}, st: [], pfAt: [] });
       return P.get(id);
     };
     const tag = (rec, abbr) => { if (abbr) rec.teams[abbr] = (rec.teams[abbr] || 0) + 1; };
@@ -223,9 +259,10 @@
           const sv = p.score_value || 0;
           a.pts += sv;
           if (abbr) team(abbr).pts += sv;
+          if (abbr && !txt.includes('free throw')) team(abbr).fgm++;
           if (three) { a.fg3m++; if (abbr) team(abbr).fg3m++; }
           const am = /\((.*?) assists\)/.exec(txt);
-          if (am && parts.length >= 2) { const b = pl(parts[1]); b.ast++; b.name = b.name || am[1]; tag(b, abbr); }
+          if (am && parts.length >= 2) { const b = pl(parts[1]); b.ast++; b.name = b.name || am[1]; tag(b, abbr); if (abbr) team(abbr).ast++; }
         }
         continue;
       }
@@ -244,7 +281,7 @@
       }
       if (typ.includes('Foul') && parts.length) {
         if (typ.includes('Technical') || /technical/i.test(txt)) { if (!/3-seconds/i.test(txt)) pl(parts[0]).tech++; }
-        else pl(parts[0]).pf++;
+        else { const a = pl(parts[0]); a.pf++; a.pfAt.push(+(elapsedSec(p.period, p.clock) / 60).toFixed(2)); }
       }
     }
     const teamOf = (rec) => {
@@ -284,16 +321,18 @@
       }
       const on = new Map();
       for (const ids of Object.values(byTeam)) for (const id of ids) on.set(id, periodLen(per));
+      // stints in elapsed game minutes: [checked in, checked out] (from/to are game-clock seconds left)
+      const stint = (rec, from, to) => { if (from > to) rec.st.push([+(elapsedSec(per, from) / 60).toFixed(2), +(elapsedSec(per, to) / 60).toFixed(2)]); };
       for (const p of evs) {
         const parts = p.participants || [];
         if (p.type === 'Substitution' && parts.length >= 2) {
           const c = clockSec(p.clock);
-          if (on.has(parts[1])) { const rec = pl(parts[1]); rec.q[per] = (rec.q[per] || 0) + on.get(parts[1]) - c; on.delete(parts[1]); }
+          if (on.has(parts[1])) { const rec = pl(parts[1]); rec.q[per] = (rec.q[per] || 0) + on.get(parts[1]) - c; stint(rec, on.get(parts[1]), c); on.delete(parts[1]); }
           on.set(parts[0], c);
         }
       }
       const endC = per === curPeriod ? clockSec(curClock) : 0;
-      for (const [id, c] of on) { const rec = pl(id); rec.q[per] = (rec.q[per] || 0) + Math.max(c - endC, 0); }
+      for (const [id, c] of on) { const rec = pl(id); rec.q[per] = (rec.q[per] || 0) + Math.max(c - endC, 0); stint(rec, c, endC); }
       prevEnd = new Set(on.keys());
       if (per === curPeriod) for (const id of on.keys()) onNow.add(id);
     }
@@ -304,9 +343,16 @@
       const qmin = {};
       let sec = 0;
       for (const [q, s] of Object.entries(rec.q)) { qmin[q] = s / 60; sec += s; }
-      players[rec.pid] = { ...rec, team: t, min: sec / 60, qmin, on: onNow.has(rec.pid) };
+      // merge stints that continue across a quarter break
+      const stints = [];
+      for (const [a, b] of rec.st.sort((x, y) => x[0] - y[0])) {
+        const lastS = stints[stints.length - 1];
+        if (lastS && a - lastS[1] < 0.02) lastS[1] = Math.max(lastS[1], b); else stints.push([a, b]);
+      }
+      players[rec.pid] = { ...rec, team: t, min: sec / 60, qmin, on: onNow.has(rec.pid), stints };
       delete players[rec.pid].teams;
       delete players[rec.pid].q;
+      delete players[rec.pid].st;
     }
     for (const abbr of Object.keys(T)) { const t = T[abbr]; t.poss = t.fga + 0.44 * t.fta - t.oreb + t.tov; }
     return { players, teams: T };
@@ -320,7 +366,8 @@
     for (const [pid, r] of Object.entries(players)) {
       if (r.min <= 0) continue;
       rows[pid] = { name: r.name, team: r.team, min: +r.min.toFixed(2), qmin: Object.fromEntries(Object.entries(r.qmin).map(([k, v]) => [k, +v.toFixed(2)])),
-        pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf };
+        pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf,
+        oreb: r.oreb, fgm: r.fgm, st: r.stints, pfAt: r.pfAt };
     }
     return {
       id: st.id, date: game.date, v: st.v, h: st.h, len: 48 + 5 * Math.max(0, st.period - 4),
@@ -367,7 +414,7 @@
 
   // ---------------------------------------------------------------- team context from season logs
   function teamContext(logs, abbr) {
-    const c = { g: 0, poss: 0, oppPts: 0, oppPoss: 0, o3a: 0, o3m: 0, oFga: 0, plays: 0, ownPoss: 0, ownPts: 0, mins: 0 };
+    const c = { g: 0, poss: 0, oppPts: 0, oppPoss: 0, o3a: 0, o3m: 0, oFga: 0, plays: 0, ownPoss: 0, ownPts: 0, mins: 0, reb: 0, ast: 0, oppAst: 0, astG: 0 };
     for (const lg of logs) {
       if (!lg.teams[abbr]) continue;
       const opp = Object.keys(lg.teams).find((x) => x !== abbr);
@@ -376,6 +423,8 @@
       c.g++; c.poss += (M.poss + O.poss) / 2; c.oppPts += O.pts; c.oppPoss += O.poss; c.mins += lg.len || 48;
       c.o3a += O.fg3a; c.o3m += O.fg3m; c.oFga += O.fga;
       c.plays += M.fga + 0.44 * M.fta + M.tov; c.ownPoss += M.poss; c.ownPts += M.pts;
+      c.reb += M.oreb + M.dreb + O.oreb + O.dreb;
+      if (M.ast != null && O.ast != null) { c.ast += M.ast; c.oppAst += O.ast; c.astG += lg.len || 48; }
     }
     const k = c.g / (c.g + 8);
     const drtg = c.oppPoss ? (100 * c.oppPts) / c.oppPoss : LEAGUE.ortg;
@@ -390,6 +439,8 @@
       playsPerPoss: c.ownPoss > 0 ? clamp(c.plays / c.ownPoss, 1.03, 1.2) : 1.1,
       // net rating per 100 possessions, shrunk toward 0 for small samples
       net: c.g ? (c.g / (c.g + 10)) * ((100 * (c.ownPts - c.oppPts)) / Math.max((c.ownPoss + c.oppPoss) / 2, 1)) : 0,
+      // game environment per minute: rebounds by both teams, own assists, assists allowed
+      rebPM: c.mins ? c.reb / c.mins : null, astPM: c.astG ? c.ast / c.astG : null, astAllowPM: c.astG ? c.oppAst / c.astG : null,
     };
   }
 
@@ -423,6 +474,45 @@
     fg3m: [1, 2, 3, 4, 5, 6],
     pra: [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
   };
+
+  /**
+   * The live context behind a projection, in plain words: rotation, fouls, role, usage, game script.
+   * Each item: { icon, text, effect: 'up' | 'down' | 'info' }.
+   */
+  function explain(p, r, c) {
+    const out = [];
+    const ri = p.rotInfo;
+    const remPlayed = Math.max(c.minProj, 0);
+    if (r.ejected) out.push({ icon: '🟥', text: 'Ejected.', effect: 'down' });
+    else if (r.pf >= 6) out.push({ icon: '🟥', text: 'Fouled out.', effect: 'down' });
+    if (ri) {
+      const fr = (TUNE.foulRest || {})[ri.foulLvl] || [1, 1];
+      const restBites = ri.foulRest && Math.min(fr[0], fr[1]) < 0.95;
+      if (restBites && ri.foulSit) out.push({ icon: '⚠️', text: `Sitting with ${r.pf} fouls: the coach's foul rest runs to about ${clockLabel(ri.foulRest)}, then he's back in the rotation. ${remPlayed.toFixed(1)} more min projected.`, effect: 'down' });
+      else if (restBites && r.on) out.push({ icon: '⚠️', text: `${r.pf} fouls and still on the floor: the coach is letting him ride it, but a rest before ${clockLabel(ri.foulRest)} is likely.`, effect: 'down' });
+      else if (r.pf >= 4 && r.pf < 6 && c.el < 44) out.push({ icon: 'ℹ️', text: `${r.pf} fouls: coaches this season mostly play through ${r.pf === 4 ? '4 fouls in Q3' : 'it late'}, so only a small minutes trim.`, effect: 'info' });
+      if (!r.on && !ri.foulSit && ri.benched < 0.5) out.push({ icon: '🪑', text: `Out of the rotation: sitting ${fmtMin(ri.sitFor)}, normally he'd have played ${ri.missed.toFixed(1)} of those minutes. Hurt or the coach has gone away from him — only ${remPlayed.toFixed(1)} more min projected.`, effect: 'down' });
+      else if (!r.on && !ri.foulSit && ri.missed >= 2) out.push({ icon: '🪑', text: `Longer rest than usual (${fmtMin(ri.sitFor)} on the bench) — watch whether he checks back in.`, effect: 'down' });
+      if (r.on && ri.stintAvg && p.r.stints && p.r.stints.length) {
+        const cur = c.el - p.r.stints[p.r.stints.length - 1][0];
+        if (cur > ri.stintAvg + 2) out.push({ icon: '🔄', text: `On the floor ${fmtMin(cur)} straight (his usual stint is ${fmtMin(ri.stintAvg)}) — a breather is due.`, effect: 'info' });
+      }
+      if (ri.tonight >= 1.12 && r.min >= 6) out.push({ icon: '📈', text: `Bigger role tonight: ${r.min.toFixed(0)} min so far vs ${ri.expSoFar.toFixed(0)} usual by now — the coach is riding him.`, effect: 'up' });
+      else if (ri.tonight <= 0.88 && ri.benched >= 0.5 && ri.expSoFar >= 4) out.push({ icon: '📉', text: `Smaller role tonight: ${r.min.toFixed(0)} min so far vs ${ri.expSoFar.toFixed(0)} usual by now.`, effect: 'down' });
+    }
+    const uT = p.usgTonight, uS = p.usgSeason;
+    if (uT != null && uS && r.min >= 8) {
+      if (uT >= uS * 1.25) out.push({ icon: '🎯', text: `Taking more of the shots: ${(uT * 100).toFixed(0)}% usage tonight vs ${(uS * 100).toFixed(0)}% this season (${r.fgm}/${r.fga} FG). Some of that volume carries forward.`, effect: 'up' });
+      else if (uT <= uS * 0.75) out.push({ icon: '🧊', text: `Quiet usage: ${(uT * 100).toFixed(0)}% tonight vs ${(uS * 100).toFixed(0)}% season (${r.fga} FGA) — projection leans on his normal role.`, effect: 'down' });
+    }
+    const fgPct = r.fga ? r.fgm / r.fga : 0;
+    if (r.fga >= 6 && fgPct >= 0.65) out.push({ icon: '🔥', text: `Hot hand: ${r.fgm}/${r.fga} FG${r.fg3m ? `, ${r.fg3m} threes` : ''}. Hot shooters keep getting looks, but the % cools off, so the rest of his makes are projected at his normal rates (${(p.p2 * 100).toFixed(0)}% 2s, ${(p.p3 * 100).toFixed(0)}% 3s).`, effect: 'info' });
+    else if (r.fga >= 7 && fgPct <= 0.25) out.push({ icon: '🧊', text: `Cold: ${r.fgm}/${r.fga} FG. Cold nights bounce back toward normal, and the projection assumes that.`, effect: 'info' });
+    if (c.scale > 1.04 && c.absentMates.length) out.push({ icon: '➕', text: `${c.absentMates.map((x) => x.name.split(' ').slice(-1)[0]).join(', ')} out — team shots shared among fewer players (+${((c.scale - 1) * 100).toFixed(0)}% usage).`, effect: 'up' });
+    if (p.starter && c.pBlow >= 0.3) out.push({ icon: '💤', text: `Blowout risk ${(c.pBlow * 100).toFixed(0)}%: in those games this coach plays starters ${(c.habit.lead * 100).toFixed(0)}% of normal Q4 minutes when ahead.`, effect: 'down' });
+    if (ri && ri.games >= 2 && r.on !== undefined && !out.some((x) => x.icon === '🪑')) out.push({ icon: '🗓️', text: `Rotation map (${ri.games} games): usually plays ${ri.remMap.toFixed(1)} of the remaining ${c.left.toFixed(0)} min; projected ${remPlayed.toFixed(1)}.`, effect: 'info' });
+    return out;
+  }
 
   /**
    * @param {object} o
@@ -519,6 +609,28 @@
     const q4Left = st.phase === 'final' ? 0 : st.period > 4 ? left : Math.min(left, 12);
     const possLeft = (((1 - w) * seasonPace + w * livePace) * (left - q4Left + q4Left * TUNE.q4Pace)) / 48;
 
+    // tonight's environment for rebounds and assists (both teams' tendencies, then the live game)
+    const env = {};
+    const wEnv = el / (el + TUNE.envK);
+    const rebLive = el > 0 ? ['oreb', 'dreb'].reduce((a, k) => a + (tNow[v] ? tNow[v][k] : 0) + (tNow[h] ? tNow[h][k] : 0), 0) / el : null;
+    for (const tm of [v, h]) {
+      const op = tm === v ? h : v, A = ctx[tm], B = ctx[op];
+      const shrink = (x, g) => 1 + (g / (g + 8)) * (x - 1);
+      let fr = 1, fa = 1;
+      if (A.rebPM && B.rebPM) {
+        let exp = (A.rebPM + B.rebPM) / 2;
+        if (rebLive != null) exp = (1 - wEnv) * exp + wEnv * rebLive;
+        fr = shrink(exp / A.rebPM, Math.min(A.games, B.games));
+      }
+      if (A.astPM && B.astAllowPM) {
+        let exp = (A.astPM + B.astAllowPM) / 2;
+        const astLive = el > 0 && tNow[tm] && tNow[tm].ast != null ? tNow[tm].ast / el : null;
+        if (astLive != null) exp = (1 - wEnv) * exp + wEnv * astLive;
+        fa = shrink(exp / A.astPM, Math.min(A.games, B.games));
+      }
+      env[tm] = { reb: Math.pow(clamp(fr, 0.8, 1.25), TUNE.envW), ast: Math.pow(clamp(fa, 0.8, 1.25), TUNE.envW) };
+    }
+
     // margin path to the end of Q3 → blowout scenarios
     const toQ3 = Math.max(36 - el, 0);
     const marginNow = st.vs - st.hs;
@@ -570,7 +682,8 @@
       const onPlaysT = tMinNow[tm] > 0 ? (tPlaysNow[tm] * r.min) / (tMinNow[tm] / 5) : 0;
       const usgT = onPlaysT > 0 ? playsT / onPlaysT : usg;
       const wt = TUNE.tonightW * Math.min(1, r.min / TUNE.tonightRamp);
-      const usgB = (1 - wt) * usg + wt * usgT;
+      const wu = (TUNE.usgTonightW != null ? TUNE.usgTonightW : TUNE.tonightW) * Math.min(1, r.min / TUNE.tonightRamp);
+      const usgB = (1 - wu) * usg + wu * usgT;
       // --- shot mix
       const tot = a.fga + 0.44 * a.fta + a.tov;
       let mix, r3;
@@ -596,7 +709,8 @@
         if (cur != null && pr != null) { const wc = n / (n + 6); base = wc * cur + (1 - wc) * pr; }
         else base = cur != null ? cur : pr != null ? pr : BENCH_RATE[k];
         const tn = r.min > 0 ? r[k] / r.min : base;
-        rate[k] = (1 - wt) * base + wt * tn;
+        // the season part follows tonight's environment; tonight's own rate already lives in it
+        rate[k] = (1 - wt) * base * env[tm][k] + wt * tn;
       }
       // --- minutes
       const mpg = n ? mean(hs.map((x) => x.min)) : lp ? lp.mpg : 14;
@@ -604,7 +718,7 @@
       const closeG = TUNE.closeQ4 ? hs.filter((x) => Math.abs(x.margin) < 15) : hs;
       const qBase = closeG.length >= 2 ? closeG : hs;
       for (const q of [1, 2, 3, 4]) qavg[q] = n ? mean(qBase.map((x) => x.qmin[q] || 0)) : mpg / 4;
-      let remCur = 0, remMid = 0, q4 = 0;
+      let remCur = 0, remMid = 0, q4 = 0, rotInfo = null;
       if (st.phase === 'pre') { remMid = qavg[1] + qavg[2] + qavg[3]; q4 = qavg[4]; }
       else if (st.period <= 4) {
         const curLeft = clockSec(st.clock) / 60;
@@ -614,13 +728,51 @@
         remCur = curLeft * ((1 - TUNE.qShareTonight) * fracQ + TUNE.qShareTonight * Math.min(tf, 1));
         for (let q = st.period + 1; q <= 3; q++) remMid += qavg[q];
         q4 = st.period < 4 ? qavg[4] : 0;
+        // rotation map: when this coach plays him, minute by minute, conditioned on whether he is
+        // on the floor right now, scaled by how tonight's rotation has treated him so far
+        const rotG = qBase.filter((x) => Array.isArray(x.st) && x.st.length);
+        if (TUNE.rot && rotG.length >= 2) {
+          // coach's foul rules: 2 in Q1 → sit to ~6:00 Q2; 3 in the 1st half → to halftime;
+          // 4 before Q4 → to ~9:00 Q4; 5 → saved for the last ~6 minutes
+          const pfT = r.pfAt || [];
+          const FR = { 2: [12, 18], 3: [24, 24], 4: [36, 39], 5: [42, 42] }; // foul # → [picked up before, rests until]
+          let restEnd = 0, lvl = 0;
+          for (const k of [5, 4, 3, 2]) {
+            if (r.pf >= k && pfT.length >= k && pfT[k - 1] < FR[k][0] && el < FR[k][1]) { restEnd = FR[k][1]; lvl = k; break; }
+          }
+          const fr = TUNE.foulRest[lvl] || [1, 1];
+          const fIn = restEnd > el ? (r.on ? fr[0] : fr[1]) : 1;
+          const fAfter = r.pf >= 4 ? TUNE.foulAfter : 1;
+          const seg = (x, a, b) => (b <= a ? 0 : restEnd > a ? fIn * onBetween(x.st, a, Math.min(b, restEnd)) + fAfter * onBetween(x.st, Math.max(a, restEnd), b) : fAfter * onBetween(x.st, a, b));
+          const pre = (x) => seg(x, el, 36), post = (x) => seg(x, Math.max(el, 36), 48);
+          const match = rotG.filter((x) => onAt(x.st, el) === !!r.on);
+          const wm = match.length / (match.length + TUNE.rotK);
+          let rPre = wm * (match.length ? mean(match.map(pre)) : 0) + (1 - wm) * mean(rotG.map(pre));
+          let rQ4 = wm * (match.length ? mean(match.map(post)) : 0) + (1 - wm) * mean(rotG.map(post));
+          const expSoFar = mean(rotG.map((x) => onBetween(x.st, 0, el)));
+          let tonight = 1;
+          if (TUNE.rotTonight > 0 && el >= 3) tonight = Math.pow((r.min + TUNE.rotTonightK) / (expSoFar + TUNE.rotTonightK), TUNE.rotTonight);
+          // sitting through minutes he normally plays = the coach has gone away from him (or he's hurt)
+          const sts = r.stints || [];
+          const sitFor = r.on ? 0 : sts.length ? el - sts[sts.length - 1][1] : el;
+          // a foul-trouble seat is the coach's normal foul rest, not a benching
+          const pfAt = r.pfAt || [];
+          const foulSit = restEnd > el && !r.on && sts.length && pfAt.length && sts[sts.length - 1][1] >= pfAt[pfAt.length - 1] - 0.1;
+          const missed = r.on || foulSit ? 0 : mean(rotG.map((x) => onBetween(x.st, el - sitFor, el)));
+          const benched = TUNE.benchM50 > 0 ? 1 / (1 + Math.exp((missed - TUNE.benchM50) / TUNE.benchS)) : 1;
+          rPre *= tonight * benched; rQ4 *= tonight * benched;
+          remCur = rPre; remMid = 0; q4 = rQ4;
+          const stintLens = rotG.flatMap((x) => x.st.filter(([a, b]) => b <= 48).map(([a, b]) => b - a));
+          rotInfo = { expSoFar, tonight, missed, sitFor, benched, foulRest: restEnd > el ? restEnd : 0, foulLvl: lvl, foulSit: !!foulSit, match: match.length, games: rotG.length,
+            stintAvg: stintLens.length ? mean(stintLens) : null, remMap: mean(rotG.map((x) => onBetween(x.st, el, 48))) };
+        }
 
       } else {
         remCur = (clockSec(st.clock) / 60) * Math.min(mpg / 40, 0.95);
       }
       const starter = mpg >= 24;
       const hab = habits[tm];
-      const foul = r.ejected || r.pf >= 6 || forceOut.has(+r.pid) ? 0 : r.pf >= 5 ? 0.65 : r.pf === 4 && st.period <= 3 ? 0.82 : r.pf === 3 && st.period <= 2 ? 0.93 : 1;
+      const foul = r.ejected || r.pf >= 6 || forceOut.has(+r.pid) ? 0 : rotInfo ? 1 : r.pf >= 5 ? 0.65 : r.pf === 4 && st.period <= 3 ? 0.82 : r.pf === 3 && st.period <= 2 ? 0.93 : 1;
       const mins = new Float64Array(N);
       for (let i = 0; i < N; i++) {
         const lead = (tm === v ? 1 : -1) * Math.sign(mQ3[i]);
@@ -632,13 +784,15 @@
         const shock = clamp(R.normal(1, TUNE.minShock), 0.4, 1.5);
         mins[i] = Math.min((remCur + remMid + q4i) * foul * shock, left);
       }
-      players.push({ r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, qavg, starter, n });
+      players.push({ r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, qavg, starter, n, rotInfo });
     }
 
     // fill each team's minutes to 5 x time left (bench first, then starters)
+    const fillDebug = {};
     for (const tm of [v, h]) {
       const ps = players.filter((p) => p.tm === tm);
       if (!ps.length) continue;
+      fillDebug[tm] = left > 0 ? ps.reduce((a, p) => a + mean(p.mins), 0) / (5 * left) : 1;
       const bench = ps.filter((p) => !p.starter), sts = ps.filter((p) => p.starter);
       for (let i = 0; i < N; i++) {
         let tot = 0;
@@ -655,13 +809,16 @@
           excess -= take;
         }
         let deficit = Math.max(5 * left - tot, 0);
-        for (const group of [bench, sts]) {
+        // unclaimed minutes go to players already in tonight's rotation (not to guys the coach benched)
+        const avail = (p) => (p.rotInfo ? p.rotInfo.benched : 1) * (p.r.ejected || p.r.pf >= 6 ? 0 : 1);
+        const share = (p) => Math.max(left - p.mins[i], 0) * avail(p) * (TUNE.fillByMin ? Math.pow(p.mins[i] / Math.max(left, 1) + 0.02, TUNE.fillPow) : 1);
+        for (const group of TUNE.fillByMin === 2 ? [ps] : [bench, sts]) {
           if (deficit <= 0) break;
-          let cap = 0;
-          for (const p of group) cap += Math.max(left - p.mins[i], 0);
-          if (cap <= 0) continue;
-          const give = Math.min(deficit, cap);
-          for (const p of group) p.mins[i] += (give * Math.max(left - p.mins[i], 0)) / cap;
+          let cap = 0, wsum = 0;
+          for (const p of group) { cap += Math.max(left - p.mins[i], 0); wsum += share(p); }
+          if (cap <= 0 || wsum <= 0) continue;
+          const give = Math.min(deficit, cap * 0.9);
+          for (const p of group) p.mins[i] = Math.min(left, p.mins[i] + (give * share(p)) / wsum);
           deficit -= give;
         }
       }
@@ -686,7 +843,8 @@
       for (let i = 0; i < N; i++) {
         const m = p.mins[i];
         minSum += m;
-        const lam = left > 0 ? ((possLeft * ctx[p.tm].playsPerPoss * m) / left) * usg : 0;
+        const uS = TUNE.usgShock > 0 ? Math.exp(R.normal(-TUNE.usgShock * TUNE.usgShock / 2, TUNE.usgShock)) : 1;
+        const lam = left > 0 ? ((possLeft * ctx[p.tm].playsPerPoss * m) / left) * usg * uS : 0;
         const plays = R.poisson(lam);
         const fga = R.binomial(plays, p.mix.fga);
         const fta = R.poisson((lam * p.mix.ft) / 0.44);
@@ -700,8 +858,10 @@
         sims.fga[i] = r.fga + fga;
         sims.fg3a[i] = r.fg3a + f3a;
         sims.fta[i] = r.fta + fta;
-        sims.reb[i] = r.reb + R.negbin(p.rate.reb * m, VAR_K.reb);
-        sims.ast[i] = r.ast + R.negbin(p.rate.ast * m, VAR_K.ast);
+        const sR = TUNE.rebShock > 0 ? Math.exp(R.normal(-TUNE.rebShock * TUNE.rebShock / 2, TUNE.rebShock)) : 1;
+        const sA = TUNE.astShock > 0 ? Math.exp(R.normal(-TUNE.astShock * TUNE.astShock / 2, TUNE.astShock)) : 1;
+        sims.reb[i] = r.reb + R.negbin(p.rate.reb * m * sR, TUNE.varReb || VAR_K.reb);
+        sims.ast[i] = r.ast + R.negbin(p.rate.ast * m * sA, TUNE.varAst || VAR_K.ast);
         teamPts[p.tm][i] += add;
       }
       const pra = new Int16Array(N);
@@ -723,8 +883,12 @@
       }
       if (p.starter && pBlow >= 0.3 && st.phase === 'live') flags.push('sitrisk');
       if (doubt[r.pid] && st.phase === 'pre') flags.push('doubt');
+      const stints = r.stints || [];
+      const lastSt = stints[stints.length - 1];
+      const why = st.phase === 'live' ? explain(p, r, { el, left, minProj: minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], absentMates: absent.filter((x) => x.team === p.tm) }) : [];
       results.push({
         pid: r.pid, name: r.name, team: p.tm, opp: p.opp, on: r.on, starter: p.starter, dnpYet: !!r.dnpYet,
+        stints, stintNow: r.on && lastSt ? el - lastSt[0] : 0, sitting: !r.on && lastSt ? el - lastSt[1] : null, rot: p.rotInfo, why,
         now: { pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fgm: r.fgm, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf, min: r.min },
         proj: { ...avg, min: r.min + minSum / N },
         usage: { season: p.usgSeason, tonight: p.usgTonight, proj: usg },
@@ -740,7 +904,7 @@
     return {
       state: st, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
       blowout: { now: isBlowout(st), pBlow, pBig }, possLeft, pace: { season: seasonPace, live: livePace },
-      context: ctx, habits, injuries: out, absent, b2b, sims: N,
+      context: ctx, habits, injuries: out, absent, b2b, sims: N, fillDebug, env,
     };
   }
 
@@ -846,7 +1010,7 @@
   }
 
   return {
-    LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout,
+    LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween,
     boxFromPlays, logEntry, slimStats, mergePrior, teamContext, coachHabits, projectGame, probAtLeast, probOver,
     consensusLines, picksForGame, buildCombos,
   };
