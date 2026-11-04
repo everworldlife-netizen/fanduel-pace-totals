@@ -30,7 +30,7 @@ Data: 5,246 official H2H GG League finals (3 weeks) plus play-by-play quarter sp
 - **Pregame number.** Recency-weighted ridge ratings: each gamer’s offense and defense plus the NBA 2K team effect. Out-of-sample RMSE on 1,025 held-out games is **12.2** vs **15.2** for the league average. If FanDuel’s opening line was captured, it’s blended in.
 - **Live update.** Bayesian rate: `rate = (n0·pregame + points) / (n0 + share played)` with **n0 = 1.5 games**. Live pace is weak information in this league: pure pace misses by 17 pts at 25% played, the blend by 10.5.
 - **Game clock.** FanDuel posts no clock for eBasketball, so progress comes from:
-  - the real tip time (`marketTime`), using calibrated quarter starts at 7.9 / 14.4 / 21.0 min after tip and a regulation end at about 26.8 min;
+  - the real tip time (`marketTime`), mapped with a curve aligned to the official play-by-play clock (25% played at about 6.3 min after tip, 50% at 12.5, 75% at 19.5, final at about 25.5–26);
   - clamped to whichever quarter FanDuel has markets open for;
   - blended with the score when the tip time isn’t posted yet.
 - **Pricing.** P(over) and EV blend our number with FanDuel’s line (default 35% ours / 65% FanDuel, since the book sees the real clock). The collector re-fits that weight from graded games, and the gap shown is the raw difference.

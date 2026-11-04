@@ -125,7 +125,7 @@ describe('ratings + profiles', () => {
 describe('projection model', () => {
   it('maps tip-relative minutes to game progress with quarter clamp', () => {
     assert.equal(M.progressFromTime(0).f, 0);
-    assert.ok(Math.abs(M.progressFromTime(14.4).f - 0.5) < 1e-9);
+    assert.ok(Math.abs(M.progressFromTime(12.5).f - 0.5) < 1e-9);
     assert.equal(M.progressFromTime(40).f, 1);
     const clamped = M.progressFromTime(12, { quarterHint: 3 });
     assert.equal(clamped.f, 0.5);
@@ -181,7 +181,7 @@ describe('projection model', () => {
       away: { player: 'BULLSEYE', team: '', score: 36 }, home: { player: 'TAAPZ', team: '', score: 24 },
       lines: { game: { line: 109.5, over: -110, under: -110, open: true } },
     };
-    const ev = M.evaluateLive(g, ctx, { now: TIP + 14.4 * 60000 });
+    const ev = M.evaluateLive(g, ctx, { now: TIP + 12.5 * 60000 });
     const game = ev.markets.find((m) => m.id === 'game');
     assert.ok(ev.progress.f > 0.45 && ev.progress.f < 0.56, `f ${ev.progress.f}`);
     assert.ok(game.mean > 114 && game.mean < 60 / ev.progress.f, `mean ${game.mean}`);
@@ -255,7 +255,7 @@ describe('collector end to end (stubbed feeds, memory store)', () => {
       let now = sched;
       await tracker.collect({ now });
       boardRows = [mk(36, 24, 'live', 109.5)];
-      now = TIP + 14.4 * 60000;
+      now = TIP + 12.5 * 60000;
       await tracker.collect({ now });
       const tr = await store.getJSON('track/ev/1');
       assert.ok(tr.checkpoints[0], 'pregame checkpoint');

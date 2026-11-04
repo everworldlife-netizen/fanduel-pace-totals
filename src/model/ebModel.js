@@ -7,8 +7,9 @@
  *     pregame number as worth ~1.5 games of observed scoring (n0 = 1.5).
  *     Pure pace at 25% played misses by 17 pts; this blend misses by 10.5.
  *   - Quarter scoring shares: Q1 25.5%, Q2 24.7%, Q3 24.3%, Q4 24.9%.
- *   - Real time (FanDuel quarter markets vs in-play tip): Q2 7.9 min, Q3 14.4, Q4 21.0,
- *     regulation ends ~26.8 min; overtime adds ~5 min.
+ *   - Real time vs the official game clock (FanDuel live scores aligned to H2H play-by-play,
+ *     806 points / 8 games): 25% played at ~6.3 min after tip, 50% ~12.5, 75% ~19.5,
+ *     final ~25.5-26. FanDuel opens each quarter's markets ~1.5 min after it starts.
  *   - Probabilities/EV blend our number with FanDuel's line (modelWeight), because the
  *     book sees the real game clock. The collector re-fits modelWeight from graded games.
  */
@@ -19,8 +20,9 @@ const DEFAULT_PARAMS = {
   sdEnd: 4.5,
   quarterShare: [0.2546, 0.2467, 0.2425, 0.2486],
   // [minutes after tip, game fraction]
-  knots: [[0, 0], [0.3, 0], [7.9, 0.25], [14.4, 0.5], [21.0, 0.75], [26.8, 1]],
-  regulationMinutes: 26.8,
+  knots: [[0, 0], [0.5, 0.032], [2.5, 0.119], [5.5, 0.241], [8.5, 0.35], [12.5, 0.5], [15.5, 0.617],
+    [18.5, 0.729], [20.5, 0.775], [23.5, 0.905], [25.5, 0.981], [26.3, 1]],
+  regulationMinutes: 26.3,
   modelWeight: 0.35,
   lineWeight: 0.5,
   pairShrink: 15,
