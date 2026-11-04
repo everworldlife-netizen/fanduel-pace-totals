@@ -177,15 +177,16 @@ describe('FanDuel live mapper', () => {
     assert.equal(lkl.clock, '4:49');
   });
 
-  it('keeps unmapped real basketball leagues and never copies FanDuel totals/odds', () => {
+  it('keeps unmapped real basketball leagues and only exposes the live total as fdTotal', () => {
     const games = mapLiveBasketball(IN_PLAY, LIVE_DATA);
     const den = games.find((g) => g.sourceId === '36086249');
     assert.ok(den);
     assert.equal(den.leagueId, 'other');
     assert.equal(den.leagueName, 'Denmark - Dameligaen');
     const blob = JSON.stringify(games);
-    assert.equal(blob.includes('182.5'), false);
     assert.equal(blob.includes('handicap'), false);
+    const bbl = games.find((g) => g.sourceId === '36086255');
+    assert.deepEqual(bbl.fdTotal, { line: 182.5, over: null, under: null, status: null });
     for (const g of games) {
       assert.equal(g.line, undefined);
       assert.equal(g.odds, undefined);

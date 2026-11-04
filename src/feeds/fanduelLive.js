@@ -6,27 +6,16 @@
  *   Events: https://sbapi.{state}.sportsbook.fanduel.com/api/in-play
  *   Scores: https://api.sportsbook.fanduel.com/ips/inplayservice/v1.0/livedata
  *
- * Never copy markets, handicaps, or prices. Lines stay paste-only.
+ * The live game total (line + juice) is attached as `fdTotal` so the UI can
+ * pre-fill it; every pasted line still overrides it.
  */
 
-const cache = require('../cache');
+const fdClient = require('./fdClient');
 const { getLeague, FIBA_40 } = require('../leagues');
 const { isVirtualGame } = require('../model/virtual');
 const { periodLabel } = require('../model/clock');
 
 const BASKETBALL_EVENT_TYPE = 7522;
-const AK = process.env.FANDUEL_SB_AK || 'FhMFpcPWXMeyZxOx';
-const UA = 'Mozilla/5.0 (compatible; PaceTotals/1.0; +https://github.com/everworldlife-netizen)';
-const ORIGIN = 'https://sportsbook.fanduel.com';
-const INPLAY_TTL = 15 * 1000;
-const LIVEDATA_TTL = 10 * 1000;
-
-const INPLAY_URLS = [
-  `https://sbapi.il.sportsbook.fanduel.com/api/in-play?_ak=${AK}&timezone=America/Chicago&exchangeLocale=en_US&includePrices=false`,
-  `https://sbapi.nj.sportsbook.fanduel.com/api/in-play?_ak=${AK}&timezone=America/New_York&exchangeLocale=en_US&includePrices=false`,
-];
-
-const LIVEDATA_URL = 'https://api.sportsbook.fanduel.com/ips/inplayservice/v1.0/livedata';
 
 const LEAGUE_MATCHERS = [
   { id: 'wnba', re: /\bwnba\b/i },
@@ -125,6 +114,18 @@ function moneylineSides(markets, eventId) {
   return { home, away };
 }
 
+function totalLine(markets, eventId) {
+  const m = Object.values(markets || {}).find((x) => Number(x.eventId) === Number(eventId)
+    && String(x.marketType || '').toUpperCase() === 'TOTAL_POINTS_(OVER/UNDER)');
+  if (!m) return null;
+  const over = (m.runners || []).find((r) => String(r.result?.type || '').toUpperCase() === 'OVER');
+  const under = (m.runners || []).find((r) => String(r.result?.type || '').toUpperCase() === 'UNDER');
+  const line = Number(over?.handicap ?? under?.handicap);
+  if (!Number.isFinite(line) || line <= 0) return null;
+  const odds = (r) => r?.winRunnerOdds?.americanDisplayOdds?.americanOddsInt ?? null;
+  return { line, over: odds(over), under: odds(under), status: m.marketStatus || null };
+}
+
 function basketballEvents(inPlay) {
   const atts = inPlay?.attachments || {};
   const events = Object.values(atts.events || {});
@@ -176,6 +177,7 @@ function mapLiveBasketball(inPlay, liveData) {
       home: teamFromSide(sides.home, details, 'home'),
       away: teamFromSide(sides.away, details, 'away'),
       isVirtual: false,
+      fdTotal: totalLine(markets, event.eventId),
     };
     game.periodText = periodLabel(game.period, league, { isHalftime: game.isHalftime, status: game.status });
     if (isVirtualGame({ ...game, leagueName })) continue;
@@ -184,62 +186,12 @@ function mapLiveBasketball(inPlay, liveData) {
   return games;
 }
 
-async function fdFetch(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': UA,
-        Accept: 'application/json, text/plain, */*',
-        Origin: ORIGIN,
-        Referer: `${ORIGIN}/live?tab=basketball`,
-      },
-    });
-    if (!res.ok) {
-      const err = new Error(`FanDuel HTTP ${res.status}`);
-      err.status = res.status;
-      throw err;
-    }
-    return await res.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 async function fetchInPlay() {
-  const cached = cache.get('fd:inplay');
-  if (cached) return cached;
-  let lastErr;
-  for (const url of INPLAY_URLS) {
-    try {
-      const data = await fdFetch(url);
-      cache.set('fd:inplay', data, INPLAY_TTL);
-      return data;
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  throw lastErr || new Error('FanDuel in-play unavailable');
+  return fdClient.inPlay();
 }
 
 async function fetchLiveData(eventIds) {
-  const ids = [...new Set((eventIds || []).map((id) => Number(id)).filter((n) => Number.isFinite(n)))];
-  if (!ids.length) return [];
-  const key = `fd:live:${ids.slice().sort((a, b) => a - b).join(',')}`;
-  const cached = cache.get(key);
-  if (cached) return cached;
-  const chunks = [];
-  for (let i = 0; i < ids.length; i += 40) chunks.push(ids.slice(i, i + 40));
-  const rows = [];
-  for (const chunk of chunks) {
-    const url = `${LIVEDATA_URL}?eventIds=${chunk.join(',')}&_ak=${AK}&channel=WEB`;
-    const data = await fdFetch(url);
-    if (Array.isArray(data)) rows.push(...data);
-  }
-  cache.set(key, rows, LIVEDATA_TTL);
-  return rows;
+  return fdClient.liveData(eventIds);
 }
 
 async function listLiveGames() {

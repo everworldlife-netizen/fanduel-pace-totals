@@ -1,86 +1,217 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pace Totals — FanDuel companion</title>
-  <link rel="stylesheet" href="/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#061019" />
+  <meta name="description" content="CourtSide live FanDuel eBasketball (H2H GG League) totals projections — game, 1st half, quarter and team totals vs the live line." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CourtSide" />
+  <title>CourtSide Pace</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <header class="top">
-    <div class="brand">
-      <div class="mark" aria-hidden="true"></div>
-      <div>
-        <h1>Pace Totals</h1>
-        <p class="tag">Live basketball totals from possessions &amp; shot volume</p>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="ball-mark" aria-hidden="true"></div>
+        <div>
+          <div class="brand">COURT<span>SIDE</span></div>
+          <div class="subbrand">FanDuel Live Totals · H2H GG</div>
+        </div>
       </div>
-    </div>
-    <div class="top-meta">
-      <span class="pill warn">Not betting advice · no bets placed</span>
-      <span id="updated" class="muted">—</span>
-      <span id="pulse" class="pulse" title="Auto-refresh"></span>
-    </div>
-  </header>
-  <div id="feed-banner" class="banner hidden" role="status"></div>
-
-  <div class="layout">
-    <aside class="rail">
-      <div class="filters" id="filters"></div>
-      <div class="game-list" id="game-list">
-        <div class="skeleton">Loading boards…</div>
+      <div class="status-cluster">
+        <span id="feedBadge" class="badge badge-muted">CONNECTING</span>
+        <button id="installBtn" class="icon-button hidden" type="button" title="Install app" aria-label="Install app">⇩</button>
+        <button id="settingsBtn" class="icon-button" type="button" title="Settings" aria-label="Settings">⚙</button>
+        <button id="refreshBtn" class="icon-button" type="button" title="Refresh" aria-label="Refresh">↻</button>
       </div>
-      <p class="feed-note" id="feed-note"></p>
-    </aside>
+    </header>
 
-    <main class="stage" id="stage">
-      <section class="empty" id="empty">
-        <h2>Select a live game</h2>
-        <p>Paste the FanDuel total after you open a game. Lines are never scraped or invented.</p>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
+      <button type="button" data-view="board" class="active">Board</button>
+      <button type="button" data-view="game">Game</button>
+      <button type="button" data-view="lab">Lab</button>
+      <button type="button" data-view="results">Results</button>
+      <button type="button" data-view="leagues">Leagues</button>
+    </nav>
+
+    <main class="views">
+      <!-- BOARD -->
+      <section class="view" id="view-board" data-view="board">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">FOCUS NOW</p>
+            <h2>Biggest gaps vs FanDuel</h2>
+          </div>
+          <span id="pickCount" class="count-pill">0</span>
+        </div>
+        <div id="picks" class="picks"></div>
+
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">LIVE BOARD</p>
+            <h2>In-play eBasketball</h2>
+          </div>
+          <span id="liveCount" class="count-pill">0</span>
+        </div>
+        <div id="liveList" class="card-list"><div class="skeleton tall"></div><div class="skeleton tall"></div></div>
+
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">NEXT 75 MIN</p>
+            <h2>Pre-game check</h2>
+          </div>
+          <span id="upCount" class="count-pill">0</span>
+        </div>
+        <div id="upList" class="card-list"></div>
+        <p class="footnote" id="modelNote"></p>
       </section>
 
-      <section id="detail" class="hidden">
-        <div class="hero" id="hero"></div>
-        <div class="pace-strip" id="pace-strip"></div>
+      <!-- GAME -->
+      <section class="view hidden" id="view-game" data-view="game">
+        <div id="gameEmpty" class="empty panel">
+          <div class="hero-icon">⌁</div>
+          <h2>Pick a game from the board</h2>
+          <p>You’ll get projected game, 1st-half, quarter and team totals against FanDuel’s live lines, plus both gamers’ profiles.</p>
+        </div>
+        <div id="gameDetail" class="hidden">
+          <div id="strip" class="sticky-strip"></div>
+          <div id="marketCards" class="market-grid"></div>
+          <div class="two-col">
+            <article class="panel pad" id="whyCard"></article>
+            <article class="panel pad" id="h2hCard"></article>
+          </div>
+          <div class="two-col" id="gamerCards"></div>
+        </div>
+      </section>
 
-        <form class="lines" id="lines-form">
-          <div class="lines-head">
-            <h3>FanDuel lines</h3>
-            <span>Paste from the board. Required: game total.</span>
+      <!-- LAB -->
+      <section class="view hidden" id="view-lab" data-view="lab">
+        <article class="panel pad">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">MATCHUP LAB</p>
+              <h2>Quick gap calculator</h2>
+            </div>
           </div>
-          <div class="line-grid">
-            <label>Game total *
-              <input id="line-game" inputmode="decimal" placeholder="paste" autocomplete="off" />
+          <form id="labForm" class="lab-form" autocomplete="off">
+            <label>Gamer A (away)
+              <input id="labA" list="playerList" placeholder="e.g. GENERAL" required />
             </label>
-            <label>Quarter / period
-              <input id="line-q" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            <label>Gamer B (home)
+              <input id="labB" list="playerList" placeholder="e.g. SILVER" required />
             </label>
-            <label>1st half
-              <input id="line-h" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            <label>Game total line
+              <input id="labLine" inputmode="decimal" placeholder="105.5" />
             </label>
-            <label id="label-away">Away team
-              <input id="line-away" inputmode="decimal" placeholder="optional" autocomplete="off" />
+            <label>1st half line
+              <input id="labHalf" inputmode="decimal" placeholder="52.5" />
             </label>
-            <label id="label-home">Home team
-              <input id="line-home" inputmode="decimal" placeholder="optional" autocomplete="off" />
-            </label>
+            <button class="primary-button" type="submit">Calculate</button>
+          </form>
+          <datalist id="playerList"></datalist>
+          <div id="labOut"></div>
+        </article>
+        <article class="panel pad">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">GAMERS</p>
+              <h2>Scoring profiles</h2>
+            </div>
+            <div class="segmented" id="playerSort">
+              <button type="button" data-sort="n" class="active">Games</button>
+              <button type="button" data-sort="vsAvgTotal">High total</button>
+              <button type="button" data-sort="low">Low total</button>
+              <button type="button" data-sort="last10Half">1H</button>
+            </div>
           </div>
-          <div class="line-actions">
-            <button type="submit" class="btn">Evaluate vs pasted lines</button>
-            <p class="hint">Over / Under / Pass · Pass if |edge| &lt; 1.5, confidence LOW, OT, garbage time, or virtual.</p>
-          </div>
-        </form>
+          <label class="search-wrap"><span>⌕</span><input id="playerSearch" type="search" placeholder="Search gamer" /></label>
+          <div id="playerTable" class="table-wrap"></div>
+        </article>
+      </section>
 
-        <div id="advice"></div>
+      <!-- RESULTS -->
+      <section class="view hidden" id="view-results" data-view="results">
+        <article class="panel pad">
+          <div class="section-head compact">
+            <div>
+              <p class="eyebrow">TRACK RECORD</p>
+              <h2>How the calls are doing</h2>
+            </div>
+            <div class="segmented" id="daysSeg">
+              <button type="button" data-days="1">1D</button>
+              <button type="button" data-days="7" class="active">7D</button>
+              <button type="button" data-days="30">30D</button>
+            </div>
+          </div>
+          <div id="perfOut"><div class="skeleton tall"></div></div>
+        </article>
+      </section>
+
+      <!-- LEAGUES (real basketball) -->
+      <section class="view hidden" id="view-leagues" data-view="leagues">
+        <div class="leagues-layout">
+          <article class="panel pad">
+            <div class="section-head compact">
+              <div>
+                <p class="eyebrow">REAL LEAGUES</p>
+                <h2>Pace totals</h2>
+              </div>
+            </div>
+            <div class="segmented wrap" id="leagueFilters"></div>
+            <div id="leagueList" class="league-list"><div class="skeleton"></div></div>
+          </article>
+          <article class="panel pad" id="leagueDetail">
+            <p class="muted">Pick a game. FanDuel’s live total fills in automatically when it’s on the board — you can overwrite it.</p>
+          </article>
+        </div>
       </section>
     </main>
+
+    <footer class="footnote">
+      Live scores &amp; lines: FanDuel public sportsbook feed · History: official H2H GG League stats. Analytical projections, not guarantees — play responsibly.
+    </footer>
   </div>
 
-  <footer>
-    Free feeds: ESPN · EuroLeague API · FanDuel live scoreboard (scores/clock only) · optional API-Basketball box stats for BBL / LKL / BCL / LNBP.
-    eBasketball is ignored. Lines are paste-only. <a href="/api/leagues">League coverage JSON</a>
-  </footer>
-  <script src="/app.js"></script>
+  <nav class="bottom-nav" id="bottomNav" aria-label="Views">
+    <button type="button" data-view="board" class="active"><span>◎</span>Board</button>
+    <button type="button" data-view="game"><span>⌁</span>Game</button>
+    <button type="button" data-view="lab"><span>⚗</span>Lab</button>
+    <button type="button" data-view="results"><span>✓</span>Results</button>
+    <button type="button" data-view="leagues"><span>◍</span>Leagues</button>
+  </nav>
+
+  <dialog id="settings" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <h3>Settings</h3>
+      <label>Minimum gap to call (points)
+        <input id="setEdge" type="number" step="0.5" min="1" max="15" />
+      </label>
+      <label>Minimum expected value (%)
+        <input id="setEv" type="number" step="0.5" min="0" max="20" />
+      </label>
+      <label>Refresh every (seconds)
+        <input id="setPoll" type="number" step="1" min="4" max="60" />
+      </label>
+      <p class="muted small">Defaults follow your playbook: only call it when your number and the line are 4+ points apart and the price still leaves value.</p>
+      <div class="sheet-actions">
+        <button value="cancel" class="secondary-button">Close</button>
+        <button value="save" id="saveSettings" class="primary-button">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="iosHint" class="toast hidden">On iPhone: tap Share → <strong>Add to Home Screen</strong> to install CourtSide.</div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js" defer></script>
 </body>
 </html>

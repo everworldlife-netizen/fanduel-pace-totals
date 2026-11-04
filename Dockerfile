@@ -15,6 +15,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/server.js ./server.js
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/data ./data
 RUN chown -R node:node /app
 USER node
 EXPOSE 3000
