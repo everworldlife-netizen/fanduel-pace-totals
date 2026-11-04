@@ -115,7 +115,9 @@ function quarterBounds(state) {
   const b = (state.q - 1) / 4;
   const { h, t, w } = state;
   const open = [h, t, w].filter((x) => x === 'open').length;
-  if (open === 0) return { lo: b + 0.17, hi: b + 0.33, med: b + 0.25, label: 'late quarter / break' };
+  // Only the leftover suspended spread = end of quarter / break. Everything listed but
+  // suspended at once is a temporary pause (timeout, review) and says nothing.
+  if (open === 0) return h && !t && !w ? { lo: b + 0.17, hi: b + 0.33, med: b + 0.25, label: 'late quarter / break' } : null;
   if (h === 'open') return { lo: b + 0.03, hi: b + 0.13, med: b + 0.095, label: 'early quarter' };
   if (t === 'open' && w === 'open') return { lo: b + 0.09, hi: b + 0.165, med: b + 0.13, label: 'mid quarter' };
   if (t === 'open') return { lo: b + 0.13, hi: b + 0.225, med: b + 0.175, label: 'late quarter' };

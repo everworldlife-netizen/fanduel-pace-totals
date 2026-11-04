@@ -137,6 +137,7 @@ describe('projection model', () => {
     assert.ok(early.lo >= 0.5 && early.hi <= 0.65);
     const late = M.quarterBounds({ q: 3, h: 'susp', t: null, w: null });
     assert.ok(late.lo > 0.65 && late.hi > 0.75);
+    assert.equal(M.quarterBounds({ q: 3, h: 'susp', t: 'susp', w: 'susp' }), null);
     // A slow game: the clock says late Q4, the markets say Q4 just opened.
     const p = M.estimateProgress({ minutes: 24, S: 80, expected: 108, quarterState: { q: 4, h: 'open', t: 'open', w: 'open' } });
     assert.equal(p.source, 'market-corrected');
