@@ -291,6 +291,64 @@ describe('collector end to end (stubbed feeds, memory store)', () => {
       h2h.timeline = origTl;
     }
   });
+
+  it('grades from FanDuel finals when H2H is down, then back-fills the 1st half', async () => {
+    const fd = require('../src/feeds/fdClient');
+    const origLive = fd.liveData;
+    const sched = Date.parse('2026-11-05T10:00:00Z');
+    const tip = sched + 20000;
+    const row = (status, away, home) => ({
+      id: 'eb:2', eventId: '2', name: 'Boston Celtics (GENERAL) @ Oklahoma City Thunder (SILVER)',
+      away: { team: 'Boston Celtics', player: 'GENERAL', score: away }, home: { team: 'Oklahoma City Thunder', player: 'SILVER', score: home },
+      total: away + home, scheduledMs: sched, tipMs: status === 'live' ? tip : sched, status,
+      lines: { game: { line: 104.5, over: -110, under: -110, open: true }, quarters: {}, quarterHint: null },
+    });
+    let boardRows = [row('pre', 0, 0)];
+    let h2hUp = false;
+    fdEb.listBoard = async () => boardRows;
+    fdEb.eventLines = async () => ({ lines: { ...boardRows[0].lines, half1: { line: 52.5, over: -110, under: -110, open: true } } });
+    fd.liveData = async () => [{ eventId: 2, basketballDetails: { away: { score: 49 }, home: { score: 58 } } }];
+    h2h.schedule = async () => {
+      if (!h2hUp) throw Object.assign(new Error('H2H HTTP 403'), { status: 403 });
+      return [{ externalId: 'NB9', startDate: '2026-11-05T10:00:00Z', matchStatus: 'MATCH_ENDED', participantAName: 'GENERAL', participantBName: 'SILVER', teamAName: 'Boston Celtics', teamBName: 'Oklahoma City Thunder', teamAScore: 49, teamBScore: 58 }];
+    };
+    h2h.timeline = async () => ({
+      incidents: [1, 2, 3, 4].map((q) => ({
+        messageType: 'NBA_PERIOD_CHANGE', payload: { phase: 'ENDED' }, period: { type: 'QUARTER', id: q },
+        runningScore: { team_a: [12, 25, 37, 49][q - 1], team_b: [14, 29, 44, 58][q - 1] },
+      })),
+    });
+    try {
+      let now = sched;
+      await tracker.collect({ now });
+      boardRows = [row('live', 30, 33)];
+      now = tip + 12.5 * 60000;
+      await tracker.collect({ now });
+      boardRows = [];
+      now += 2 * 60000;
+      await tracker.collect({ now });
+      now += 4 * 60000;
+      await tracker.collect({ now });
+      const key = `track/graded/${new Date(sched).toISOString().slice(0, 10)}`;
+      let graded = await store.getJSON(key);
+      assert.equal(graded.length, 1);
+      assert.equal(graded[0].finalSource, 'fanduel');
+      assert.equal(graded[0].final.total, 107);
+      assert.equal(graded[0].pendingHalf, true);
+      h2hUp = true;
+      now += 10 * 60000;
+      await tracker.collect({ now });
+      graded = await store.getJSON(key);
+      assert.equal(graded[0].pendingHalf, false);
+      assert.equal(graded[0].final.half1, 54);
+    } finally {
+      fdEb.listBoard = origBoard;
+      fdEb.eventLines = origLines;
+      h2h.schedule = origSched;
+      h2h.timeline = origTl;
+      fd.liveData = origLive;
+    }
+  });
 });
 
 describe('api router', () => {

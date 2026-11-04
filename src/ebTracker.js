@@ -11,6 +11,7 @@
 
 const store = require('./store');
 const fdEb = require('./feeds/fanduelEb');
+const fd = require('./feeds/fdClient');
 const h2h = require('./feeds/h2h');
 const { evaluateLive, americanToDecimal } = require('./model/ebModel');
 const { normPlayer } = require('./model/ebRatings');
@@ -21,6 +22,7 @@ const SCHEDULE_EVERY = 8 * MIN;
 const REBUILD_EVERY = 60 * MIN;
 const TIMELINES_PER_RUN = 3;
 const GRADE_GIVE_UP = 8 * 60 * MIN;
+const FD_FINAL_WAIT = 3 * MIN;
 const CHECKPOINTS = [0, 25, 50, 75];
 
 function dayKey(ms) {
@@ -174,7 +176,7 @@ function profit(result, odds) {
   return 0;
 }
 
-function gradeTrace(tr, fin, quarters) {
+function gradeTrace(tr, fin, quarters, now = Date.now()) {
   const total = fin.away + fin.home;
   const q = quarters?.[fin.id];
   let half1 = null;
@@ -197,12 +199,22 @@ function gradeTrace(tr, fin, quarters) {
     checkpoints[k] = {
       f: cp.f,
       game: gm ? { line: gm.line, mean: gm.mean, call: gm.call, errModel: Math.round((gm.mean - total) * 10) / 10, errLine: Math.round((gm.line - total) * 10) / 10 } : null,
-      half1: h1 && half1 != null ? { line: h1.line, mean: h1.mean, call: h1.call, errModel: Math.round((h1.mean - half1) * 10) / 10, errLine: Math.round((h1.line - half1) * 10) / 10 } : null,
+      half1: h1 ? {
+        line: h1.line,
+        mean: h1.mean,
+        call: h1.call,
+        errModel: half1 != null ? Math.round((h1.mean - half1) * 10) / 10 : null,
+        errLine: half1 != null ? Math.round((h1.line - half1) * 10) / 10 : null,
+      } : null,
     };
   }
+  const pendingHalf = half1 == null
+    && (signals.some((x) => x.market === 'half1') || Object.values(checkpoints).some((c) => c.half1));
   return {
     eventId: tr.eventId,
-    h2hId: fin.id,
+    h2hId: String(fin.id || '').startsWith('fd:') ? null : fin.id,
+    finalSource: String(fin.id || '').startsWith('fd:') ? 'fanduel' : 'h2h',
+    pendingHalf,
     name: tr.name,
     away: tr.away,
     home: tr.home,
@@ -212,7 +224,7 @@ function gradeTrace(tr, fin, quarters) {
     pregame: tr.pregame,
     checkpoints,
     signals,
-    gradedAt: Date.now(),
+    gradedAt: now,
   };
 }
 
@@ -269,24 +281,50 @@ async function fetchQuarterSplits(finals, report) {
   return quarters;
 }
 
+/** Final scores straight from FanDuel's live feed (it keeps finals after a game ends). */
+async function fanduelFinals(ids) {
+  if (!ids.length) return new Map();
+  try {
+    const rows = await fd.liveData(ids);
+    const out = new Map();
+    for (const r of rows || []) {
+      const d = r?.basketballDetails;
+      const away = Number(d?.away?.score);
+      const home = Number(d?.home?.score);
+      if (Number.isFinite(away) && Number.isFinite(home) && away + home >= 40) out.set(String(r.eventId), { away, home });
+    }
+    return out;
+  } catch {
+    return new Map();
+  }
+}
+
 async function gradeEnded(now, state, finals, quarters, report) {
   if (!finals) finals = await ctxMod.loadFinals();
   if (!quarters) quarters = await ctxMod.loadQuarters();
   const byDay = new Map();
-  for (const [id, info] of Object.entries(state.ended || {})) {
+  const entries = Object.entries(state.ended || {});
+  const traces = new Map();
+  const needFd = [];
+  for (const [id, info] of entries) {
     const tr = await store.getJSON(`track/ev/${id}`);
     if (!tr) {
       delete state.ended[id];
       continue;
     }
-    const fin = matchFinal(tr, finals);
-    const needsHalf = tr.signals.some((s) => s.market === 'half1') || (tr.checkpoints?.[0]?.markets || []).some((m) => m.id === 'half1');
-    const haveHalf = fin && Array.isArray(quarters[fin.id]);
+    traces.set(id, tr);
+    if (!matchFinal(tr, finals) && now - (info.endedAt || now) >= FD_FINAL_WAIT) needFd.push(id);
+  }
+  const fdFin = await fanduelFinals(needFd);
+  for (const [id, info] of entries) {
+    const tr = traces.get(id);
+    if (!tr) continue;
+    let fin = matchFinal(tr, finals);
+    if (!fin && fdFin.has(id)) fin = { id: `fd:${id}`, ...fdFin.get(id) };
     const waited = now - (info.endedAt || now);
     if (!fin && waited < GRADE_GIVE_UP) continue;
-    if (fin && needsHalf && !haveHalf && waited < GRADE_GIVE_UP) continue;
     if (fin) {
-      const graded = gradeTrace(tr, fin, quarters);
+      const graded = gradeTrace(tr, fin, quarters, now);
       const day = dayKey(tr.scheduledMs || now);
       if (!byDay.has(day)) byDay.set(day, []);
       byDay.get(day).push(graded);
@@ -300,6 +338,44 @@ async function gradeEnded(now, state, finals, quarters, report) {
     const existing = (await store.getJSON(key)) || [];
     const ids = new Set(existing.map((g) => g.eventId));
     await store.setJSON(key, existing.concat(list.filter((g) => !ids.has(g.eventId))));
+  }
+  await backfillHalves(now, finals, quarters, report);
+}
+
+/** Grade 1st-half calls once the official quarter split arrives. */
+async function backfillHalves(now, finals, quarters, report) {
+  for (const day of [dayKey(now), dayKey(now - 86400000)]) {
+    const key = `track/graded/${day}`;
+    const list = await store.getJSON(key);
+    if (!Array.isArray(list) || !list.some((g) => g.pendingHalf)) continue;
+    let changed = false;
+    for (const g of list) {
+      if (!g.pendingHalf) continue;
+      const id = g.h2hId || matchFinal({ away: g.away, home: g.home, scheduledMs: g.scheduledMs }, finals || [])?.id;
+      const q = id ? quarters?.[id] : null;
+      if (!Array.isArray(q) || q.length !== 8) {
+        if (now - (g.gradedAt || now) > GRADE_GIVE_UP) { g.pendingHalf = false; changed = true; }
+        continue;
+      }
+      const half1 = q[0] + q[1] + q[2] + q[3];
+      g.h2hId = id;
+      g.final.half1 = half1;
+      for (const s2 of g.signals || []) {
+        if (s2.market !== 'half1') continue;
+        s2.actual = half1;
+        s2.result = gradeSide(s2.side, s2.line, half1);
+        s2.units = s2.result ? profit(s2.result, s2.odds) : null;
+      }
+      for (const cp of Object.values(g.checkpoints || {})) {
+        if (!cp.half1) continue;
+        cp.half1.errModel = Math.round((cp.half1.mean - half1) * 10) / 10;
+        cp.half1.errLine = Math.round((cp.half1.line - half1) * 10) / 10;
+      }
+      g.pendingHalf = false;
+      changed = true;
+      report.halves = (report.halves || 0) + 1;
+    }
+    if (changed) await store.setJSON(key, list);
   }
 }
 
@@ -402,7 +478,7 @@ async function performance({ days = 7, now = Date.now() } = {}) {
     for (const [k, cp] of Object.entries(g.checkpoints || {})) {
       for (const mk of ['game', 'half1']) {
         const c = cp[mk];
-        if (!c) continue;
+        if (!c || c.errModel == null || c.errLine == null) continue;
         const key = `${mk}@${k}`;
         const e = err[key] || { market: mk, checkpoint: Number(k), n: 0, model: 0, line: 0 };
         e.n += 1;
