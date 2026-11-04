@@ -332,7 +332,8 @@
       S.boardAt = Date.now();
       const n = (S.board.live || []).length;
       $('feedBadge').className = 'live-pill';
-      $('feedBadge').querySelector('b').textContent = `${n} LIVE`;
+      $('feedBadge').querySelector('b').textContent = `${n}`;
+      $('feedBadge').title = `${n} live games`;
       if (S.view === 'board') renderBoard();
     } catch (err) {
       $('feedBadge').className = 'live-pill bad';
@@ -772,37 +773,114 @@
   }
 
   let deferredPrompt = null;
+  const UA = navigator.userAgent || '';
+  const PLATFORM = {
+    android: /Android/i.test(UA),
+    ios: /iPhone|iPad|iPod/i.test(UA) || (/Macintosh/.test(UA) && navigator.maxTouchPoints > 1),
+    samsung: /SamsungBrowser/i.test(UA),
+    // Built-in browsers of other apps (Claude, Gmail, Messages, Facebook, Instagram, Google app…) can't install apps.
+    inApp: /; wv\)|FBAN|FBAV|Instagram|Line\/|Snapchat|Twitter|GSA\/|Claude/i.test(UA),
+    iosNonSafari: /CriOS|FxiOS|EdgiOS|GSA\//i.test(UA),
+  };
+  const isStandalone = () => (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+
+  function installSteps() {
+    const url = `${location.origin}/`;
+    const host = location.host;
+    if (PLATFORM.android && PLATFORM.inApp) {
+      return {
+        title: 'Open in Chrome to install',
+        body: `<p>You’re in another app’s built-in browser, which can’t install apps. Open GG Winner in Chrome and tap <b>Install</b>.</p>
+          <a class="cta full" href="intent://${host}/?source=install#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end">Open in Chrome</a>
+          <button type="button" class="ghost-btn full" data-copy="${url}">Copy link</button>`,
+      };
+    }
+    if (PLATFORM.android && PLATFORM.samsung) {
+      return {
+        title: 'Install on your phone',
+        body: '<ol class="steps"><li>Tap the <b>≡</b> menu at the bottom right.</li><li>Tap <b>Add page to</b> → <b>Home screen</b>.</li><li>Tap <b>Add</b>. GG Winner is now on your home screen.</li></ol>',
+      };
+    }
+    if (PLATFORM.android) {
+      return {
+        title: 'Install on your Pixel',
+        body: `<ol class="steps"><li>Tap <b>⋮</b> in Chrome’s top-right corner.</li><li>Tap <b>Install app</b> (on some versions it says <b>Add to Home screen</b> → <b>Install</b>).</li><li>GG Winner lands on your home screen and in your app drawer — it opens full-screen like any app.</li></ol>
+          <p class="muted small">Tip: long-press the GG Winner icon for quick shortcuts to Board, Lab and Results.</p>`,
+      };
+    }
+    if (PLATFORM.ios) {
+      if (PLATFORM.iosNonSafari || PLATFORM.inApp) {
+        return {
+          title: 'Open in Safari to install',
+          body: `<p>On iPhone, apps install from Safari. Copy the link, open Safari, paste it, then tap <b>Share</b> → <b>Add to Home Screen</b>.</p><button type="button" class="cta full" data-copy="${url}">Copy link</button>`,
+        };
+      }
+      return {
+        title: 'Add to your Home Screen',
+        body: '<ol class="steps"><li>Tap the <b>Share</b> button (square with an arrow).</li><li>Scroll and tap <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>. GG Winner opens full-screen from your Home Screen.</li></ol>',
+      };
+    }
+    return {
+      title: 'Install GG Winner',
+      body: '<ol class="steps"><li>Click the install icon at the right end of the address bar (or the ⋮ menu → <b>Install GG Winner</b>).</li><li>It opens in its own window. On your phone, open the same link in Chrome to install it there.</li></ol>',
+    };
+  }
+
+  function showInstallSheet() {
+    const st = installSteps();
+    $('installTitle').textContent = st.title;
+    $('installBody').innerHTML = st.body.replace(/<li>/g, '<li><span>').replace(/<\/li>/g, '</span></li>');
+    $('installBody').querySelectorAll('[data-copy]').forEach((b) => {
+      b.onclick = async () => {
+        try { await navigator.clipboard.writeText(b.dataset.copy); toast('Link copied'); } catch { toast(b.dataset.copy, 6000); }
+      };
+    });
+    $('installSheet').showModal();
+  }
+
+  function hideInstallUi() {
+    $('installCard').classList.add('hidden');
+    $('installBtn').classList.add('hidden');
+  }
+
   function setupPwa() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
     const install = async () => {
-      if (!deferredPrompt) return;
       haptic();
-      deferredPrompt.prompt();
-      await deferredPrompt.userChoice.catch(() => null);
-      deferredPrompt = null;
-      $('installBtn').classList.add('hidden');
-      $('installCard').classList.add('hidden');
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice.catch(() => null);
+        deferredPrompt = null;
+        if (choice && choice.outcome === 'accepted') hideInstallUi();
+        return;
+      }
+      showInstallSheet();
     };
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      $('installBtn').classList.remove('hidden');
-      if (!store.get('cs.installDismissed', false)) $('installCard').classList.remove('hidden');
+      if (!isStandalone()) $('installBtn').classList.remove('hidden');
     });
     window.addEventListener('appinstalled', () => {
-      $('installCard').classList.add('hidden');
-      $('installBtn').classList.add('hidden');
-      toast('GG Winner is on your home screen 🏀');
+      hideInstallUi();
+      try { $('installSheet').close(); } catch { /* not open */ }
+      toast('GG Winner is on your home screen 🏀 Long-press the icon for shortcuts.', 6000);
     });
     $('installBtn').onclick = install;
     $('installGo').onclick = install;
-    $('installLater').onclick = () => { $('installCard').classList.add('hidden'); store.set('cs.installDismissed', true); };
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone;
-    if (ios && store.get('cs.onboarded', false) && !store.get('cs.iosHint', false)) {
-      setTimeout(() => toast('Install it: tap Share → Add to Home Screen.', 8000), 2500);
-      store.set('cs.iosHint', true);
+    $('installLater').onclick = () => { $('installCard').classList.add('hidden'); store.set('cs.installLaterAt', Date.now()); };
+    $('installClose').onclick = () => $('installSheet').close();
+    // Offer install from the first visit (not only after Chrome's engagement check), until installed.
+    if (!isStandalone()) {
+      $('installBtn').classList.remove('hidden');
+      const later = store.get('cs.installLaterAt', 0);
+      if (!later || Date.now() - later > 3 * 86400000) $('installCard').classList.remove('hidden');
+    }
+    if (window.matchMedia) {
+      window.matchMedia('(display-mode: standalone)').addEventListener?.('change', (e) => { if (e.matches) hideInstallUi(); });
     }
   }
+
 
 
   // Pull-to-refresh on the board (installed app — Chrome's own pull-to-refresh is off there).
@@ -846,6 +924,8 @@
     $('refreshBtn').onclick = () => { haptic(); loadBoard(true); };
     $('settingsBtn').onclick = openSettings;
     $('helpBtn').onclick = openOnboarding;
+    $('settingsHelp').onclick = () => { $('settings').close(); openOnboarding(); };
+    $('settingsInstall').onclick = () => { $('settings').close(); $('installGo').click(); };
     $('saveSettings').onclick = () => saveSettings();
     [['setEdge', 'setEdgeVal'], ['setEv', 'setEvVal'], ['setPoll', 'setPollVal']].forEach(([a, b]) => { $(a).oninput = () => syncRange(a, b); });
     $('obNext').onclick = () => (obStep >= 2 ? closeOnboarding() : obShow(obStep + 1));

@@ -31,7 +31,7 @@
       </div>
       <div class="status-cluster">
         <span id="feedBadge" class="live-pill off"><i></i><b>—</b></span>
-        <button id="installBtn" class="icon-button hidden" type="button" title="Install app" aria-label="Install app">⇩</button>
+        <button id="installBtn" class="icon-button install-btn hidden" type="button" title="Install app" aria-label="Install GG Winner">⇩</button>
         <button id="helpBtn" class="icon-button" type="button" title="How it works" aria-label="How it works">?</button>
         <button id="settingsBtn" class="icon-button" type="button" title="Settings" aria-label="Settings">⚙</button>
       </div>
@@ -219,6 +219,7 @@
         <div class="range-row"><input id="setPoll" type="range" min="4" max="30" step="1" /><b id="setPollVal">8</b><em>sec</em></div>
       </label>
       <p class="muted small">Defaults follow your playbook: only call it when our number and the line are 4+ points apart and the price still leaves value.</p>
+      <div class="sheet-links"><button type="button" class="ghost-btn" id="settingsHelp">How GG Winner works</button><button type="button" class="ghost-btn" id="settingsInstall">Install on my phone</button></div>
       <div class="sheet-actions">
         <button value="cancel" class="ghost-btn">Close</button>
         <button value="save" id="saveSettings" class="cta">Save</button>
@@ -251,6 +252,15 @@
         <button type="button" class="ghost-btn" id="obSkip">Skip</button>
         <button type="button" class="cta" id="obNext">Next</button>
       </div>
+    </div>
+  </dialog>
+
+  <dialog id="installSheet" class="sheet">
+    <div class="sheet-body">
+      <div class="sheet-grab"></div>
+      <div class="install-head"><div class="gg-mark"><span>G<b>G</b></span></div><h3 id="installTitle">Install GG Winner</h3></div>
+      <div id="installBody" class="install-body"></div>
+      <div class="sheet-actions"><button type="button" class="ghost-btn" id="installClose">Got it</button></div>
     </div>
   </dialog>
 
