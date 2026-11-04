@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
+// Store name kept from the first deploy so tracked games and graded results carry over.
 const STORE_NAME = 'courtside-eb';
 let blobStore = null;
 const memory = new Map();

@@ -1,4 +1,4 @@
-/* CourtSide Pace — FanDuel eBasketball live totals (H2H GG League 4x5) */
+/* GG Winner — FanDuel eBasketball live totals (H2H GG League 4x5) */
 (() => {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -792,7 +792,7 @@
     window.addEventListener('appinstalled', () => {
       $('installCard').classList.add('hidden');
       $('installBtn').classList.add('hidden');
-      toast('CourtSide is on your home screen 🏀');
+      toast('GG Winner is on your home screen 🏀');
     });
     $('installBtn').onclick = install;
     $('installGo').onclick = install;

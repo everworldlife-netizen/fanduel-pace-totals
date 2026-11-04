@@ -1,5 +1,5 @@
 /* ==========================================================================
-   CourtSide design system — gamer HUD edition
+   GG Winner — gamer HUD on the shared CourtSide design tokens
    Navy + court orange, DM Sans / DM Mono, Chakra Petch for HUD numbers.
    ========================================================================== */
 :root {
@@ -94,6 +94,14 @@ button { cursor: pointer; }
 .ball-mark::before, .ball-mark::after { content: ""; position: absolute; inset: 5px 14px; border-left: 1.5px solid var(--accent); transform: rotate(35deg); }
 .ball-mark::after { transform: rotate(-35deg); }
 .ball-mark i { position: absolute; left: 3px; right: 3px; top: 50%; border-top: 1.5px solid var(--accent); }
+.gg-mark { --s: 36px; width: var(--s); height: var(--s); flex: 0 0 var(--s); position: relative; display: grid; place-items: center;
+  clip-path: polygon(25% 5%, 75% 5%, 98% 50%, 75% 95%, 25% 95%, 2% 50%); background: linear-gradient(140deg, #ff9c55, #ff5e3a 55%, #d9361b);
+  filter: drop-shadow(0 0 10px var(--accent-glow)); }
+.gg-mark::before { content: ""; position: absolute; inset: 3px; clip-path: inherit; background: linear-gradient(160deg, #10233a, #08131e); }
+.gg-mark span { position: relative; font: 700 calc(var(--s) * .4)/1 var(--hud); letter-spacing: -.02em; color: #fff; text-shadow: 0 0 8px rgba(255, 122, 33, .8); }
+.gg-mark span b { color: #ff8a3d; }
+.gg-mark.big { --s: 72px; animation: float 4s ease-in-out infinite; }
+.gg-mark.big::before { inset: 5px; }
 .ball-mark.big { width: 64px; height: 64px; flex-basis: 64px; border-width: 3px; }
 .ball-mark.big::before, .ball-mark.big::after { inset: 9px 26px; border-left-width: 2.5px; }
 .ball-mark.big i { border-top-width: 2.5px; left: 5px; right: 5px; }
@@ -498,7 +506,7 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 
 }
 
 /* ---------- Android / Pixel ---------- */
-.install-card { display: grid; grid-template-columns: 34px 1fr; gap: 10px 12px; align-items: center; margin: 12px 0 4px; padding: 14px; border-radius: var(--r-lg);
+.install-card { display: grid; grid-template-columns: 36px 1fr; gap: 10px 12px; align-items: center; margin: 12px 0 4px; padding: 14px; border-radius: var(--r-lg);
   background: radial-gradient(320px 120px at 90% 0%, rgba(255, 122, 33, .22), transparent 70%), linear-gradient(160deg, rgba(20, 38, 56, .98), rgba(8, 17, 27, .98));
   border: 1px solid rgba(255, 122, 33, .35); box-shadow: 0 0 28px rgba(255, 122, 33, .12); animation: cardIn .5s var(--ease) both; }
 .install-card .ic-text b { display: block; font-size: 14px; }

@@ -26,7 +26,7 @@ function parseQuarterStart(q) {
 const routes = [
   ['GET', /^\/health$/, async () => ({
     ok: true,
-    app: 'courtside-pace',
+    app: 'gg-winner',
     store: store.backend(),
     apiBasketball: apib.enabled(),
     fanduelLive: fdLive.enabled(),

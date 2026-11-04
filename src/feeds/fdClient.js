@@ -12,7 +12,7 @@
 const cache = require('../cache');
 
 const AK = process.env.FANDUEL_SB_AK || 'FhMFpcPWXMeyZxOx';
-const UA = 'Mozilla/5.0 (compatible; CourtSidePace/2.0)';
+const UA = 'Mozilla/5.0 (compatible; GGWinner/3.0)';
 const ORIGIN = 'https://sportsbook.fanduel.com';
 
 const STATES = [

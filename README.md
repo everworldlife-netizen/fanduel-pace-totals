@@ -1,4 +1,6 @@
-# CourtSide Pace — FanDuel live totals
+# GG Winner — FanDuel live totals
+
+Live: **https://gg-winner.netlify.app** (installable on Android/iPhone).
 
 Live projections for **FanDuel eBasketball (H2H GG League, 4×5-minute quarters)**: game, 1st-half, quarter and team totals, priced against FanDuel’s live lines. There’s also a **Real leagues** tab (NBA, WNBA, NBL, EuroLeague, BBL, LKL and more) using the possession/pace model. Installable on your phone as an app (PWA), deployed on Netlify.
 
@@ -48,7 +50,7 @@ Quarter shares: Q1 25.5%, Q2 24.7%, Q3 24.3%, Q4 24.9%.
 
 - `netlify/functions/api.mjs` serves `/api/*`.
 - `netlify/functions/collector.mjs` runs **every 2 minutes**. It tracks every FanDuel eBasketball game, captures closing pregame lines, records calls at 0/25/50/75%, grades game and team totals from the final score (official H2H, or FanDuel’s own final if H2H is slow), back-fills 1st-half grades once the official quarter split lands, fetches quarter splits, rebuilds ratings hourly and re-fits the model weight.
-- State lives in **Netlify Blobs** (store `courtside-eb`).
+- State lives in **Netlify Blobs** (store `courtside-eb`, named before the rename and kept so tracked data carries over).
 - `data/seed-*.json` is bundled history, so a fresh deploy has ratings and profiles right away. Refresh it with `npm run seed`.
 - Env vars (optional): `COLLECTOR_ENABLED=0` pauses the collector. `FANDUEL_REGION` (default `NJ`) picks the FanDuel state host. `API_BASKETBALL_KEY` adds box stats for BBL/LKL/BCL/LNBP.
 

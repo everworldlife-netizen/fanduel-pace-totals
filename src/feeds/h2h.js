@@ -14,7 +14,7 @@ const cache = require('../cache');
 
 const BASE = 'https://api-h2h.cdn-hudstats.com/';
 const HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (compatible; CourtSidePace/2.0)',
+  'User-Agent': 'Mozilla/5.0 (compatible; GGWinner/3.0)',
   Accept: 'application/json',
   Origin: 'https://h2hggl.com',
   Referer: 'https://h2hggl.com/',

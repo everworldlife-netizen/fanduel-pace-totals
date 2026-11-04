@@ -2,7 +2,7 @@
   "name": "fanduel-pace-totals",
   "version": "2.0.0",
   "private": true,
-  "description": "CourtSide Pace — FanDuel live eBasketball (H2H GG League) and real-league totals projections",
+  "description": "GG Winner — FanDuel live eBasketball (H2H GG League) and real-league totals projections",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

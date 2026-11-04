@@ -1,6 +1,6 @@
 {
-  "name": "CourtSide Pace — FanDuel Live Totals",
-  "short_name": "CourtSide",
+  "name": "GG Winner — FanDuel Live Totals",
+  "short_name": "GG Winner",
   "description": "Live FanDuel eBasketball (H2H GG League) projections: game, 1st half, quarter and team totals vs the live line, in plain English.",
   "id": "/",
   "start_url": "/?source=pwa#board",
