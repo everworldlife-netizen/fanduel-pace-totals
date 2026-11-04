@@ -481,6 +481,7 @@
       <div class="row"><span>Live pace (per game)</span><b>${n1(ev.rate.pacePer20)}</b></div>
       <div class="row"><span>Blended pace</span><b>${n1(ev.rate.total)}</b></div>
       <div class="row"><span>Game clock</span><b>${Math.round(ev.progress.f * 100)}% · ${ev.progress.minutes}m since tip</b></div>
+      <div class="row"><span>Clock check</span><b>${esc({ 'market-confirmed': 'FanDuel quarter markets ✓', 'market-corrected': 'Corrected by quarter markets', 'quarter-confirmed': 'Quarter ✓', 'quarter-corrected': 'Corrected by quarter', 'clock-estimate': 'Tip time', 'score-estimate': 'Score (tip time not posted)', overtime: 'Overtime', pregame: 'Pregame' }[ev.progress.source] || ev.progress.source)}${ev.progress.window ? ` · ${esc(ev.progress.window)}` : ''}</b></div>
       <div class="row"><span>Trust ours vs FanDuel</span><b>${mw}% / ${100 - mw}%</b></div>
       <div class="tip">In this league the pregame number is worth ~1.5 games of live scoring — hot or cold starts move the projection less than you’d think.</div>
       ${notes ? `<ul class="notes">${notes}</ul>` : ''}`;

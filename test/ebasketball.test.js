@@ -128,8 +128,19 @@ describe('projection model', () => {
     assert.ok(Math.abs(M.progressFromTime(12.5).f - 0.5) < 1e-9);
     assert.equal(M.progressFromTime(40).f, 1);
     const clamped = M.progressFromTime(12, { quarterHint: 3 });
-    assert.equal(clamped.f, 0.5);
+    assert.ok(Math.abs(clamped.f - 0.53) < 1e-9);
     assert.equal(clamped.source, 'quarter-corrected');
+  });
+
+  it('uses the FanDuel quarter-market state as a progress window', () => {
+    const early = M.quarterBounds({ q: 3, h: 'open', t: 'open', w: 'open' });
+    assert.ok(early.lo >= 0.5 && early.hi <= 0.65);
+    const late = M.quarterBounds({ q: 3, h: 'susp', t: null, w: null });
+    assert.ok(late.lo > 0.65 && late.hi > 0.75);
+    // A slow game: the clock says late Q4, the markets say Q4 just opened.
+    const p = M.estimateProgress({ minutes: 24, S: 80, expected: 108, quarterState: { q: 4, h: 'open', t: 'open', w: 'open' } });
+    assert.equal(p.source, 'market-corrected');
+    assert.ok(p.f <= 0.88, `got ${p.f}`);
   });
 
   it('leans on the score when the tip time is unknown', () => {

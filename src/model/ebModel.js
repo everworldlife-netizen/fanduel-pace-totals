@@ -93,8 +93,9 @@ function progressFromTime(minutes, { quarterHint = null, params = DEFAULT_PARAMS
   }
   let source = 'clock-estimate';
   if (quarterHint && quarterHint >= 1 && quarterHint <= 4) {
-    const lo = (quarterHint - 1) / 4;
-    const hi = quarterHint / 4 - 0.005;
+    // Quarter-q markets open ~0.05 into the quarter and can linger (suspended) ~0.07 into the next.
+    const lo = (quarterHint - 1) / 4 + 0.03;
+    const hi = quarterHint / 4 + 0.08;
     const clamped = clamp(f, lo, hi);
     if (clamped !== f) source = 'quarter-corrected';
     else source = 'quarter-confirmed';
@@ -104,11 +105,30 @@ function progressFromTime(minutes, { quarterHint = null, params = DEFAULT_PARAMS
 }
 
 /**
+ * Game-progress window implied by FanDuel's quarter markets (calibrated against the
+ * official play-by-play clock). Quarter-q markets open ~0.05 into the quarter, the
+ * spread suspends first, then the winner, then the total; a lone suspended spread
+ * lingers through the break into the next quarter.
+ */
+function quarterBounds(state) {
+  if (!state || !state.q) return null;
+  const b = (state.q - 1) / 4;
+  const { h, t, w } = state;
+  const open = [h, t, w].filter((x) => x === 'open').length;
+  if (open === 0) return { lo: b + 0.17, hi: b + 0.33, med: b + 0.25, label: 'late quarter / break' };
+  if (h === 'open') return { lo: b + 0.03, hi: b + 0.13, med: b + 0.095, label: 'early quarter' };
+  if (t === 'open' && w === 'open') return { lo: b + 0.09, hi: b + 0.165, med: b + 0.13, label: 'mid quarter' };
+  if (t === 'open') return { lo: b + 0.13, hi: b + 0.225, med: b + 0.175, label: 'late quarter' };
+  if (w === 'open') return { lo: b + 0.04, hi: b + 0.2, med: b + 0.12, label: 'mid quarter' };
+  return null;
+}
+
+/**
  * Combine the wall-clock estimate with the score-implied progress (S / expected),
  * precision-weighted. Time dominates when the tip is known; the score takes over
  * when FanDuel has not published the real tip time yet.
  */
-function estimateProgress({ minutes, tipKnown = true, S = 0, expected = 110, quarterHint = null, params = DEFAULT_PARAMS }) {
+function estimateProgress({ minutes, tipKnown = true, S = 0, expected = 110, quarterHint = null, quarterState = null, params = DEFAULT_PARAMS }) {
   const t = progressFromTime(minutes, { params });
   const exp = Math.max(expected || 110, 60);
   const fs = clamp(S / exp, 0, 1.05);
@@ -118,9 +138,17 @@ function estimateProgress({ minutes, tipKnown = true, S = 0, expected = 110, qua
   const ws = 1 / (sdS * sdS);
   let f = (t.f * wt + fs * ws) / (wt + ws);
   let source = tipKnown ? 'clock-estimate' : 'score-estimate';
+  const qb = quarterBounds(quarterState);
+  if (qb) {
+    const clamped = clamp(f, qb.lo, qb.hi);
+    source = clamped !== f ? 'market-corrected' : 'market-confirmed';
+    f = clamped;
+    return { f: clamp(f, 0, 1), source, timeF: round3(t.f), scoreF: round3(fs), window: qb.label };
+  }
   if (quarterHint && quarterHint >= 1 && quarterHint <= 4) {
-    const lo = (quarterHint - 1) / 4;
-    const hi = quarterHint / 4 - 0.005;
+    // Quarter-q markets open ~0.05 into the quarter and can linger (suspended) ~0.07 into the next.
+    const lo = (quarterHint - 1) / 4 + 0.03;
+    const hi = quarterHint / 4 + 0.08;
     const clamped = clamp(f, lo, hi);
     source = clamped !== f ? 'quarter-corrected' : 'quarter-confirmed';
     f = clamped;
@@ -314,7 +342,7 @@ function evaluateLive(game, ctx = {}, opts = {}) {
   // moved yet (tip unknown) lean on the score instead of the schedule.
   const tipKnown = !game.scheduledMs || !game.tipMs || game.tipMs !== game.scheduledMs;
   const prog = started
-    ? estimateProgress({ minutes, tipKnown, S, expected: pre.expected, quarterHint: qHint, params })
+    ? estimateProgress({ minutes, tipKnown, S, expected: pre.expected, quarterHint: qHint, quarterState: lines.quarterState, params })
     : { f: 0, source: 'pregame' };
   let f = prog.f;
   if (started && S > 0 && f < 0.01) f = 0.01;
@@ -412,7 +440,7 @@ function evaluateLive(game, ctx = {}, opts = {}) {
 
   return {
     id: game.id,
-    progress: { f: round3(f), minutes: round1(minutes), source: overtime ? 'overtime' : prog.source, quarter: started ? q : 0, overtime },
+    progress: { f: round3(f), minutes: round1(minutes), source: overtime ? 'overtime' : prog.source, window: prog.window || null, quarter: started ? q : 0, overtime },
     modelWeight,
     pregame: pre,
     rate: { total: round1(lambda), away: round1(lamAway), home: round1(lamHome), pacePer20: f > 0.05 ? round1(S / windowShare(0, f, p)) : null },
@@ -443,7 +471,7 @@ function confidence({ f, started, pre, prog, minutes, overtime = false, margin =
   else if (pre.minGames >= 15) score += 5;
   else notes.push('Thin history');
   if (started) {
-    if (prog.source === 'quarter-confirmed' || prog.source === 'quarter-corrected') score += 8;
+    if (/^(quarter|market)-/.test(prog.source)) score += 8;
     else if (prog.source === 'score-estimate') {
       score -= 6;
       notes.push('FanDuel has not posted the real tip time yet — progress estimated from the score');
@@ -469,6 +497,7 @@ module.exports = {
   DEFAULT_PARAMS,
   progressFromTime,
   estimateProgress,
+  quarterBounds,
   windowShare,
   posteriorRate,
   sdAt,

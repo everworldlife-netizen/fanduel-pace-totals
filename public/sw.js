@@ -1,5 +1,5 @@
 /* CourtSide Pace service worker: app shell offline, live data always from the network. */
-const VERSION = 'cs-pace-v2.1.0';
+const VERSION = 'cs-pace-v2.2.0';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

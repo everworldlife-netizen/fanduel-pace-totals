@@ -82,12 +82,23 @@ function linesFromMarkets(markets) {
   }
   const quarters = {};
   let currentQuarter = 0;
+  let quarterState = null;
+  const st = (m) => (!m ? null : String(m.marketStatus || '').toUpperCase() === 'OPEN' ? 'open' : 'susp');
   for (let q = 1; q <= 4; q += 1) {
     const w = QUARTER_WORD[q];
     const tot = ouMarket(by.get(`${w}_QUARTER_TOTAL_POINTS`));
     const present = [`${w}_QUARTER_TOTAL_POINTS`, `${w}_QUARTER_HANDICAP`, `${w}_QUARTER_WINNER`].some((k) => by.has(k));
     if (tot) quarters[q] = tot;
-    if (present) currentQuarter = Math.max(currentQuarter, q);
+    if (present) {
+      currentQuarter = Math.max(currentQuarter, q);
+      // Which of spread / total / winner are listed and open tells where in the quarter we are.
+      quarterState = {
+        q,
+        h: st(by.get(`${w}_QUARTER_HANDICAP`)),
+        t: st(by.get(`${w}_QUARTER_TOTAL_POINTS`)),
+        w: st(by.get(`${w}_QUARTER_WINNER`)),
+      };
+    }
   }
   const half1 = ouMarket(by.get('1ST_HALF_TOTAL_POINTS'));
   const half2 = ouMarket(by.get('2ND_HALF_TOTAL_POINTS'));
@@ -102,6 +113,7 @@ function linesFromMarkets(markets) {
     moneyline: sideMarket(by.get('MONEY_LINE')),
     // Quarter markets only exist for the quarter in play (plus Q1 pre-tip).
     quarterHint: currentQuarter || null,
+    quarterState,
     hasHalfMarket: Boolean(by.get('1ST_HALF_TOTAL_POINTS') || by.get('1ST_HALF_HANDICAP')),
   };
 }
