@@ -49,6 +49,11 @@
     <main class="views" id="views">
       <!-- BOARD -->
       <section class="view" id="view-board" data-view="board">
+        <div id="installCard" class="install-card hidden">
+          <div class="ball-mark"><i></i></div>
+          <div class="ic-text"><b>Install CourtSide on your phone</b><span>Full-screen, one tap from your home screen, live numbers every few seconds.</span></div>
+          <div class="ic-actions"><button type="button" class="ghost-btn" id="installLater">Later</button><button type="button" class="cta" id="installGo">Install</button></div>
+        </div>
         <div class="hud-head">
           <div>
             <p class="eyebrow"><span class="dot-live"></span>FOCUS NOW</p>
@@ -249,6 +254,7 @@
     </div>
   </dialog>
 
+  <div id="ptr" class="ptr" aria-hidden="true">↻</div>
   <div id="toast" class="toast hidden"></div>
   <script src="/app.js" defer></script>
 </body>

@@ -207,7 +207,11 @@
     place($('tabs'), $('tabInk'));
   }
 
-  function setView(v) {
+  function setView(v, { fromHistory = false } = {}) {
+    // Android back gesture walks back through tabs instead of closing the app.
+    if (!fromHistory && v !== S.view) {
+      try { history.pushState({ view: v }, '', `#${v}`); } catch { /* ignore */ }
+    }
     S.view = v;
     store.set('cs.view', v);
     document.querySelectorAll('.view').forEach((el) => {
@@ -770,23 +774,70 @@
   let deferredPrompt = null;
   function setupPwa() {
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      $('installBtn').classList.remove('hidden');
-    });
-    $('installBtn').onclick = async () => {
+    const install = async () => {
       if (!deferredPrompt) return;
+      haptic();
       deferredPrompt.prompt();
       await deferredPrompt.userChoice.catch(() => null);
       deferredPrompt = null;
       $('installBtn').classList.add('hidden');
+      $('installCard').classList.add('hidden');
     };
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      $('installBtn').classList.remove('hidden');
+      if (!store.get('cs.installDismissed', false)) $('installCard').classList.remove('hidden');
+    });
+    window.addEventListener('appinstalled', () => {
+      $('installCard').classList.add('hidden');
+      $('installBtn').classList.add('hidden');
+      toast('CourtSide is on your home screen 🏀');
+    });
+    $('installBtn').onclick = install;
+    $('installGo').onclick = install;
+    $('installLater').onclick = () => { $('installCard').classList.add('hidden'); store.set('cs.installDismissed', true); };
     const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone;
     if (ios && store.get('cs.onboarded', false) && !store.get('cs.iosHint', false)) {
       setTimeout(() => toast('Install it: tap Share → Add to Home Screen.', 8000), 2500);
       store.set('cs.iosHint', true);
     }
+  }
+
+
+  // Pull-to-refresh on the board (installed app — Chrome's own pull-to-refresh is off there).
+  function setupPullToRefresh() {
+    const standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    if (!standalone) return;
+    const el = $('ptr');
+    let y0 = null;
+    let dy = 0;
+    window.addEventListener('touchstart', (e) => {
+      if (window.scrollY > 0 || S.view !== 'board' || document.querySelector('dialog[open]')) return;
+      y0 = e.touches[0].clientY;
+      dy = 0;
+    }, { passive: true });
+    window.addEventListener('touchmove', (e) => {
+      if (y0 == null) return;
+      dy = Math.max(0, e.touches[0].clientY - y0);
+      const k = Math.min(1, dy / 90);
+      el.style.transform = `translate(-50%, ${Math.min(dy, 110) - 60}px) rotate(${k * 270}deg)`;
+      el.style.opacity = String(k);
+      el.classList.toggle('ready', k >= 1);
+    }, { passive: true });
+    window.addEventListener('touchend', () => {
+      if (y0 == null) return;
+      const go = dy >= 90;
+      y0 = null;
+      el.classList.remove('ready');
+      el.style.transform = '';
+      el.style.opacity = '';
+      if (go) {
+        haptic();
+        el.classList.add('spinning');
+        loadBoard(true).finally(() => setTimeout(() => el.classList.remove('spinning'), 300));
+      }
+    });
   }
 
   function bind() {
@@ -824,6 +875,10 @@
     });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') loadBoard(false); });
     window.addEventListener('resize', moveInk);
+    window.addEventListener('popstate', (e) => {
+      const v = e.state?.view || 'board';
+      setView(v, { fromHistory: true });
+    });
   }
 
   // Netlify's free-plan "Powered by Netlify" badge sits bottom-right; keep the nav above it.
@@ -839,7 +894,11 @@
 
   bind();
   setupPwa();
-  setView(S.view);
+  setupPullToRefresh();
+  const deep = (location.hash || '').replace('#', '') || new URLSearchParams(location.search).get('view');
+  if (['board', 'game', 'lab', 'results', 'leagues'].includes(deep)) S.view = deep;
+  try { history.replaceState({ view: S.view }, '', `#${S.view}`); } catch { /* ignore */ }
+  setView(S.view, { fromHistory: true });
   loadBoard(false);
   startPolling();
   setTimeout(moveInk, 300);
