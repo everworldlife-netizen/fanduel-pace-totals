@@ -826,6 +826,17 @@
     window.addEventListener('resize', moveInk);
   }
 
+  // Netlify's free-plan "Powered by Netlify" badge sits bottom-right; keep the nav above it.
+  function avoidHostBadge() {
+    const f = document.getElementById('nl-badge-frame');
+    const r = f && f.getBoundingClientRect();
+    const h = r && r.height > 0 && r.bottom > window.innerHeight - 4 ? Math.ceil(r.height) : 0;
+    document.documentElement.style.setProperty('--badge-h', `${h}px`);
+  }
+  new MutationObserver(avoidHostBadge).observe(document.body, { childList: true });
+  setInterval(avoidHostBadge, 3000);
+  window.addEventListener('resize', avoidHostBadge);
+
   bind();
   setupPwa();
   setView(S.view);

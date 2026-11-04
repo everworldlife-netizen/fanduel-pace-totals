@@ -29,6 +29,7 @@
   --r-lg: 20px;
   --top-h: 64px;
   --nav-h: 66px;
+  --badge-h: 0px;
   --ease: cubic-bezier(.16, 1, .3, 1);
   --spring: cubic-bezier(.34, 1.56, .64, 1);
   --hud: "Chakra Petch", "DM Mono", monospace;
@@ -47,7 +48,7 @@ body {
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "tnum" on, "lnum" on;
-  padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  padding-bottom: calc(var(--nav-h) + var(--badge-h) + env(safe-area-inset-bottom, 0px) + 8px);
   overflow-x: hidden;
 }
 .bg-grid {
@@ -116,7 +117,8 @@ button { cursor: pointer; }
 .tabs button.active { color: #fff; }
 .tab-ink { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; width: 0; border-radius: 10px; background: linear-gradient(135deg, var(--accent), #ff5e3a); box-shadow: 0 6px 22px var(--accent-glow); transition: left .35s var(--ease), width .35s var(--ease); }
 .bottom-nav {
-  position: fixed; left: 10px; right: 10px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 50;
+  position: fixed; left: 10px; right: 10px; bottom: calc(8px + var(--badge-h) + env(safe-area-inset-bottom, 0px)); z-index: 50;
+  transition: bottom .3s var(--ease);
   height: var(--nav-h);
   display: grid; grid-template-columns: repeat(5, 1fr);
   background: rgba(13, 27, 41, .88);
@@ -457,7 +459,7 @@ input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 
 .ob-dots { display: flex; justify-content: center; gap: 7px; }
 .ob-dots i { width: 7px; height: 7px; border-radius: 99px; background: var(--border-2); transition: width .3s var(--ease), background .3s; }
 .ob-dots i.on { width: 22px; background: var(--accent); }
-.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + 22px + env(safe-area-inset-bottom, 0px)); z-index: 60; background: rgba(16, 34, 54, .96); border: 1px solid var(--border-2); border-radius: 14px; padding: 12px 16px; font-size: 13px; box-shadow: 0 16px 40px rgba(0,0,0,.5); max-width: calc(100vw - 32px); animation: toastIn .35s var(--spring) both; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + var(--badge-h) + 22px + env(safe-area-inset-bottom, 0px)); z-index: 60; background: rgba(16, 34, 54, .96); border: 1px solid var(--border-2); border-radius: 14px; padding: 12px 16px; font-size: 13px; box-shadow: 0 16px 40px rgba(0,0,0,.5); max-width: calc(100vw - 32px); animation: toastIn .35s var(--spring) both; }
 @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 14px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ---------- Responsive ---------- */
