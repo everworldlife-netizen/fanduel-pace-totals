@@ -83,7 +83,14 @@ npm run dev       # http://localhost:3000 (Express; memory store, or STORE_DIR=.
 npm run collect   # one collector pass locally
 ```
 
-Docker (`docker compose up -d --build`) still works for a VPS.
+## VPS (Hostinger)
+
+`docker-compose.yml` builds straight from this public GitHub repo, so the VPS needs nothing but Docker. Use Hostinger's Docker Manager (paste the file, or the Hostinger API's `POST /api/vps/v1/virtual-machines/{id}/docker`), or run `docker compose up -d --build`.
+
+- App on `http://<VPS-IP>:3000`, same UI and API as the hosted versions.
+- **Collector built in:** the server tracks and grades every game itself every 2 minutes (`COLLECT_EVERY_SEC`). There are no platform limits, and data persists on the `gg-winner-data` volume (`STORE_DIR=/data`).
+- **HTTPS for phone install:** `docker-compose.https.yml` adds Caddy with a free Let's Encrypt certificate. Set `DOMAIN` to your domain or the VPS hostname (`srvXXXXXX.hstgr.cloud`). It needs ports 80/443 free.
+- The service keeps the earlier `fanduel-pace-totals` name, so an update replaces the old Pace Totals container in place. The Leagues tab still has that original model.
 
 ## API
 
