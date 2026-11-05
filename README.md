@@ -55,6 +55,17 @@ Quarter shares: Q1 25.5%, Q2 24.7%, Q3 24.3%, Q4 24.9%.
 - `data/seed-*.json` is bundled history, so a fresh deploy has ratings and profiles right away. Refresh it with `npm run seed`.
 - Env vars (optional): `COLLECTOR_ENABLED=0` pauses the collector. `FANDUEL_REGION` (default `NJ`) picks the FanDuel state host. `API_BASKETBALL_KEY` adds box stats for BBL/LKL/BCL/LNBP.
 
+## Cloudflare (alternative host)
+
+Same app on Cloudflare Workers with static assets (Cloudflare's recommended successor to Pages for apps with an API and cron):
+
+- `cloudflare/worker.mjs` serves `/api/*` through the shared router and everything else from `./public`.
+- State lives in **Workers KV** (`GG_STORE`) through `src/docStore.js`, which packs all keys into a few JSON documents, so a collector pass costs ~1 KV write (about 300–600 writes/day, inside the free 1,000/day).
+- The collector runs on a **cron trigger every 5 minutes**.
+- Deploy: set `CLOUDFLARE_API_TOKEN` (template "Edit Cloudflare Workers") and `CLOUDFLARE_ACCOUNT_ID`, then `npm run cf:deploy`. It creates the KV namespace on first run, deploys to `gg-winner.<your-subdomain>.workers.dev`, and prints an admin key for `/api/admin/collect?key=…`.
+- Plan: a board refresh uses ~25 ms CPU and the hourly ratings rebuild ~450 ms, so the **Workers Paid** plan ($5/month, 30 s CPU) is the reliable choice. The free plan caps CPU at 10 ms per request.
+- Local run in Cloudflare's runtime: `npm run cf:dev` → http://localhost:8787
+
 ## Install on your phone
 
 Open the site.

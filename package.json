@@ -8,10 +8,12 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test test/*.test.js",
-    "build": "node --check server.js && node --check src/api.js && node --check public/app.js && node --test test/*.test.js",
+    "build": "node --check server.js && node --check src/api.js && node --check public/app.js && node --check cloudflare/worker.mjs && node --test test/*.test.js",
     "probe": "node scripts/probe-espn.js",
     "seed": "node scripts/build-seed.js --fetch 21",
-    "collect": "node -e \"require('./src/ebTracker').collect().then(r=>console.log(JSON.stringify(r,null,2)))\""
+    "collect": "node -e \"require('./src/ebTracker').collect().then(r=>console.log(JSON.stringify(r,null,2)))\"",
+    "cf:dev": "npx -y wrangler@4 dev",
+    "cf:deploy": "node scripts/cf-deploy.js --admin-key"
   },
   "engines": {
     "node": ">=18"
