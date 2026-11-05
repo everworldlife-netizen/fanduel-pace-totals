@@ -1,0 +1,22 @@
+# Cloudflare deploy for GG Winner (Workers + static assets + KV + cron).
+# Deploy with: npm run cf:deploy  (needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID)
+name = "gg-winner"
+main = "cloudflare/worker.mjs"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+# scripts/cf-deploy.js creates the namespace and fills in the id on first deploy.
+[[kv_namespaces]]
+binding = "GG_STORE"
+id = "00000000000000000000000000000000"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[observability]
+enabled = true

@@ -170,7 +170,8 @@ async function getGameDetail(leagueId, seasonCodeStr, gameCode) {
   const league = getLeague(leagueId);
   const code = seasonCodeStr || seasonCode(league.euroCode, currentSeasonYear());
   const statsUrl = `${ROOT}/competitions/${league.euroCode}/seasons/${code}/games/${gameCode}/stats`;
-  const gameUrl = `${ROOT}/competitions/${league.euroCode}/seasons/${code}/games/${gameCode}`;
+  // Without ?format=json this endpoint answers in XML.
+  const gameUrl = `${ROOT}/competitions/${league.euroCode}/seasons/${code}/games/${gameCode}?format=json`;
   const [stats, meta] = await Promise.all([
     fetchJSON(statsUrl, `euro:stats:${code}:${gameCode}`, 20000).catch(() => null),
     fetchJSON(gameUrl, `euro:game:${code}:${gameCode}`, 20000),

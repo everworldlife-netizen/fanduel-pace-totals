@@ -1,0 +1,21 @@
+# Optional HTTPS front for GG Winner (needed for "Install app" on Android/iPhone).
+# Caddy gets a free Let's Encrypt certificate for DOMAIN and proxies to the app on port 3000.
+# DOMAIN can be your own domain or the VPS hostname Hostinger gives you (srvXXXXXX.hstgr.cloud).
+# Needs ports 80 and 443 free on the VPS.
+
+services:
+  gg-winner-https:
+    image: caddy:2-alpine
+    container_name: gg-winner-https
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: caddy reverse-proxy --from ${DOMAIN:?set DOMAIN} --to host.docker.internal:3000
+    volumes:
+      - gg-winner-caddy:/data
+
+volumes:
+  gg-winner-caddy:

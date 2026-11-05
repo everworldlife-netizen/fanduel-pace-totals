@@ -1,12 +1,14 @@
-# Hostinger: build from public GitHub (no local Dockerfile needed on the VPS).
-# App: http://<VPS-IP>:3000
+# GG Winner on a VPS (Hostinger Docker Manager or `docker compose up -d --build`).
+# Builds straight from the public GitHub repo, so nothing needs to be copied to the VPS.
+# App: http://<VPS-IP>:3000  — for app install on a phone, add HTTPS with docker-compose.https.yml.
+# Service/container name kept from the earlier Pace Totals deploy so an update replaces it in place.
 
 services:
   fanduel-pace-totals:
     build:
-      context: https://github.com/everworldlife-netizen/fanduel-pace-totals.git#main
+      context: https://github.com/everworldlife-netizen/fanduel-pace-totals.git#ccr-fe22125b-rk1pb4
       dockerfile: Dockerfile
-    image: fanduel-pace-totals:v3
+    image: gg-winner:latest
     container_name: fanduel-pace-totals
     restart: unless-stopped
     ports:
@@ -14,6 +16,12 @@ services:
     environment:
       PORT: "3000"
       NODE_ENV: production
-      API_BASKETBALL_KEY: ${API_BASKETBALL_KEY:-}
-      SKIP_NCAAB: ${SKIP_NCAAB:-0}
+      STORE_DIR: /data
+      COLLECT_EVERY_SEC: ${COLLECT_EVERY_SEC:-120}
       FANDUEL_REGION: ${FANDUEL_REGION:-NJ}
+      API_BASKETBALL_KEY: ${API_BASKETBALL_KEY:-}
+    volumes:
+      - gg-winner-data:/data
+
+volumes:
+  gg-winner-data:
