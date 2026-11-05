@@ -1,0 +1,78 @@
+# One-off: run deploy/vps-setup.sh on the Hostinger VPS over SSH.
+# The job makes a throwaway SSH key, publishes only its PUBLIC half as a commit
+# status, and waits until that key is authorized on the VPS (done out of band
+# through the Hostinger API). The private key never leaves this runner and is
+# removed from the VPS afterwards.
+name: VPS deploy (one-off)
+
+on:
+  push:
+    branches: [claude/hostinger-plugin-install-mtrz82]
+    paths: ['.github/workflows/vps-deploy-once.yml']
+
+permissions:
+  contents: read
+  statuses: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  VPS: 2.25.134.249
+  DOMAIN: pace.everworld.cloud
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Make a throwaway SSH key and publish its public half
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -N '' -C pace-deploy-once -f ~/.ssh/deploy_once -q
+          pub="$(cut -d' ' -f1,2 ~/.ssh/deploy_once.pub)"
+          echo "Public key: $pub"
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state=pending -f context=vps-deploy-key -f description="$pub" >/dev/null
+
+      - name: Wait until the key is authorized on the VPS
+        run: |
+          for _ in $(seq 1 120); do
+            if ssh -i ~/.ssh/deploy_once -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+                 -o ConnectTimeout=8 "root@$VPS" true 2>/dev/null; then
+              echo "Key authorized."; exit 0
+            fi
+            sleep 10
+          done
+          echo "Key was never authorized."; exit 1
+
+      - name: Snapshot of what is serving ports 80/443
+        run: |
+          ssh -i ~/.ssh/deploy_once -o BatchMode=yes "root@$VPS" \
+            'ss -ltnp | grep -E ":(80|443)\b" || echo "nothing on 80/443"; command -v docker >/dev/null && docker ps --format "{{.Names}}  {{.Image}}  {{.Ports}}" || echo "docker not installed"'
+
+      - name: Run the installer
+        run: |
+          ssh -i ~/.ssh/deploy_once -o BatchMode=yes -o ServerAliveInterval=30 "root@$VPS" \
+            'curl -fsSL https://raw.githubusercontent.com/everworldlife-netizen/fanduel-pace-totals/main/deploy/vps-setup.sh | bash'
+
+      - name: Check the live site from outside
+        run: |
+          for _ in $(seq 1 18); do
+            if curl -fsS --max-time 10 "https://$DOMAIN/api/health"; then echo; echo "LIVE: https://$DOMAIN"; exit 0; fi
+            sleep 10
+          done
+          echo "https://$DOMAIN is not answering from outside yet."; exit 1
+
+      - name: Report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$([ "${{ job.status }}" = success ] && echo success || echo failure)
+          gh api "repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -f state="$state" -f context=vps-deploy-key -f description="deploy ${{ job.status }}" >/dev/null
+          rm -f ~/.ssh/deploy_once ~/.ssh/deploy_once.pub
