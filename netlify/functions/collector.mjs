@@ -4,7 +4,7 @@ import trackerModule from '../../src/ebTracker.js';
 
 // Tracks every FanDuel eBasketball game, grades the model's calls against
 // official H2H GG League finals, and refreshes player ratings hourly.
-// Runs every 2 minutes (UTC). Set COLLECTOR_ENABLED=0 to pause it.
+// Runs every 5 minutes (UTC) to keep credit use low. Set COLLECTOR_ENABLED=0 to pause it.
 export default async () => {
   if (Netlify.env.get('COLLECTOR_ENABLED') === '0') {
     console.log('collector paused (COLLECTOR_ENABLED=0)');
@@ -16,5 +16,5 @@ export default async () => {
 };
 
 export const config = {
-  schedule: '*/2 * * * *',
+  schedule: '*/5 * * * *',
 };

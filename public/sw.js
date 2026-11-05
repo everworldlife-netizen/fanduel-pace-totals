@@ -1,5 +1,5 @@
 /* GG Winner service worker: app shell offline, live data always from the network. */
-const VERSION = 'gg-winner-v3.1.0';
+const VERSION = 'gg-winner-v3.2.0';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

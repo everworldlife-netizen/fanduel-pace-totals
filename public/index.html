@@ -66,7 +66,7 @@
         <div class="legend">
           <span><i class="sw over"></i>Over call</span>
           <span><i class="sw under"></i>Under call</span>
-          <span><b>GAP</b> = our number − FanDuel line</span>
+          <span><b>EDGE</b> = GG projection − FanDuel line</span>
         </div>
 
         <div class="hud-head">
@@ -209,8 +209,8 @@
     <form method="dialog" class="sheet-body">
       <div class="sheet-grab"></div>
       <h3>Settings</h3>
-      <label><span>Minimum gap to make a call</span>
-        <div class="range-row"><input id="setEdge" type="range" min="2" max="10" step="0.5" /><b id="setEdgeVal">4</b><em>pts</em></div>
+      <label><span>Minimum edge to make a call</span>
+        <div class="range-row"><input id="setEdge" type="range" min="1" max="6" step="0.5" /><b id="setEdgeVal">2</b><em>pts</em></div>
       </label>
       <label><span>Minimum expected value</span>
         <div class="range-row"><input id="setEv" type="range" min="0" max="15" step="0.5" /><b id="setEvVal">3</b><em>%</em></div>
@@ -218,7 +218,7 @@
       <label><span>Refresh every</span>
         <div class="range-row"><input id="setPoll" type="range" min="4" max="30" step="1" /><b id="setPollVal">8</b><em>sec</em></div>
       </label>
-      <p class="muted small">Defaults follow your playbook: only call it when our number and the line are 4+ points apart and the price still leaves value.</p>
+      <p class="muted small">Default: call it when the GG projection is 2+ points off FanDuel’s line (about 4–5 points on our raw player-history number) and the price still leaves value.</p>
       <div class="sheet-links"><button type="button" class="ghost-btn" id="settingsHelp">How GG Winner works</button><button type="button" class="ghost-btn" id="settingsInstall">Install on my phone</button></div>
       <div class="sheet-actions">
         <button value="cancel" class="ghost-btn">Close</button>
@@ -237,9 +237,9 @@
           <p>We build our own number from 3 weeks of official H2H results — each gamer’s scoring, their team, head-to-head history — then update it live as points go up.</p>
         </section>
         <section class="ob">
-          <div class="ob-art"><span class="pill-big over">GAP +9.4</span></div>
-          <h3>The gap is the edge</h3>
-          <p><b>Gap = our number − FanDuel’s line.</b> Green means we see more points (Over), blue means fewer (Under). We only make a call when the gap is 4+ and the price still pays.</p>
+          <div class="ob-art"><span class="pill-big over">EDGE +3.2</span></div>
+          <h3>The edge is the call</h3>
+          <p><b>Edge = GG projection − FanDuel’s line.</b> Green means more points (Over), blue means fewer (Under). We call it when the edge is 2+ points and the price still pays — and sit out the final minutes.</p>
         </section>
         <section class="ob">
           <div class="ob-art"><span class="meter-demo"><i></i><i></i><i></i><i></i><i class="off"></i></span></div>

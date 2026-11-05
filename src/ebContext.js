@@ -92,8 +92,8 @@ async function getContext({ maxAgeMs = 5 * 60 * 1000 } = {}) {
     }
   }
   const params = await store.getJSON('model/params');
-  if (params && Number.isFinite(params.modelWeight)) {
-    ctx = { ...ctx, params: { ...(ctx.params || {}), modelWeight: params.modelWeight }, paramsInfo: params };
+  if (params && Array.isArray(params.phaseWeights)) {
+    ctx = { ...ctx, params: { ...(ctx.params || {}), phaseWeights: params.phaseWeights }, paramsInfo: params };
   }
   memCtx = ctx;
   memAt = Date.now();

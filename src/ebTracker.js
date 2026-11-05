@@ -23,6 +23,8 @@ const REBUILD_EVERY = 60 * MIN;
 const TIMELINES_PER_RUN = 3;
 const GRADE_GIVE_UP = 8 * 60 * MIN;
 const FD_FINAL_WAIT = 3 * MIN;
+const ENDED_AFTER = 4.5 * MIN;
+const FD_MIN_GAME_MIN = 23;
 const CHECKPOINTS = [0, 25, 50, 75];
 
 function dayKey(ms) {
@@ -134,10 +136,13 @@ async function trackBoard(now, ctx, report) {
     }
     await store.setJSON(key, tr);
     state.active[g.eventId] = { scheduledMs: tr.scheduledMs, players: [tr.away.player, tr.home.player], lastSeen: now };
+    if (state.ended[g.eventId]) delete state.ended[g.eventId];
     report.written += 1;
   }
   for (const [id, info] of Object.entries(state.active)) {
-    if (!seen.has(id) && now - (info.lastSeen || 0) > 90 * 1000) {
+    // FanDuel sometimes drops a live game from the board for a few minutes; only call it
+    // ended after a longer absence (and un-end it if it comes back, see below).
+    if (!seen.has(id) && now - (info.lastSeen || 0) > ENDED_AFTER) {
       state.ended[id] = { ...info, endedAt: now };
       delete state.active[id];
       report.ended += 1;
@@ -313,14 +318,24 @@ async function gradeEnded(now, state, finals, quarters, report) {
       continue;
     }
     traces.set(id, tr);
-    if (!matchFinal(tr, finals) && now - (info.endedAt || now) >= FD_FINAL_WAIT) needFd.push(id);
+    const minutesSinceTip = tr.tipMs ? (now - tr.tipMs) / MIN : 0;
+    if (!matchFinal(tr, finals) && now - (info.endedAt || now) >= FD_FINAL_WAIT && minutesSinceTip >= FD_MIN_GAME_MIN) needFd.push(id);
   }
   const fdFin = await fanduelFinals(needFd);
   for (const [id, info] of entries) {
     const tr = traces.get(id);
     if (!tr) continue;
     let fin = matchFinal(tr, finals);
-    if (!fin && fdFin.has(id)) fin = { id: `fd:${id}`, ...fdFin.get(id) };
+    if (!fin && fdFin.has(id)) {
+      // Accept FanDuel's score as final only once it has stopped changing between runs.
+      const cur = fdFin.get(id);
+      const cand = info.fdCand;
+      if (cand && cand.away === cur.away && cand.home === cur.home && now - cand.at >= FD_FINAL_WAIT) {
+        fin = { id: `fd:${id}`, ...cur };
+      } else if (!cand || cand.away !== cur.away || cand.home !== cur.home) {
+        state.ended[id] = { ...info, fdCand: { ...cur, at: now } };
+      }
+    }
     const waited = now - (info.endedAt || now);
     if (!fin && waited < GRADE_GIVE_UP) continue;
     if (fin) {
@@ -342,14 +357,42 @@ async function gradeEnded(now, state, finals, quarters, report) {
   await backfillHalves(now, finals, quarters, report);
 }
 
-/** Grade 1st-half calls once the official quarter split arrives. */
+/** Re-grade the full-game and team-total calls of a graded game against a corrected final. */
+function regradeFinal(g, fin) {
+  const total = fin.away + fin.home;
+  g.final = { ...g.final, away: fin.away, home: fin.home, total };
+  const actualFor = { game: total, awayTotal: fin.away, homeTotal: fin.home };
+  for (const s2 of g.signals || []) {
+    if (!(s2.market in actualFor)) continue;
+    s2.actual = actualFor[s2.market];
+    s2.result = gradeSide(s2.side, s2.line, s2.actual);
+    s2.units = s2.result ? profit(s2.result, s2.odds) : null;
+  }
+  for (const cp of Object.values(g.checkpoints || {})) {
+    if (!cp.game) continue;
+    cp.game.errModel = Math.round((cp.game.mean - total) * 10) / 10;
+    cp.game.errLine = Math.round((cp.game.line - total) * 10) / 10;
+  }
+}
+
+/** Official H2H finals override FanDuel-sourced ones; 1st-half calls grade once the split lands. */
 async function backfillHalves(now, finals, quarters, report) {
   for (const day of [dayKey(now), dayKey(now - 86400000)]) {
     const key = `track/graded/${day}`;
     const list = await store.getJSON(key);
-    if (!Array.isArray(list) || !list.some((g) => g.pendingHalf)) continue;
+    if (!Array.isArray(list) || !list.some((g) => g.pendingHalf || g.finalSource === 'fanduel')) continue;
     let changed = false;
     for (const g of list) {
+      if (g.finalSource === 'fanduel') {
+        const official = matchFinal({ away: g.away, home: g.home, scheduledMs: g.scheduledMs }, finals || []);
+        if (official) {
+          if (official.away !== g.final.away || official.home !== g.final.home) report.corrected = (report.corrected || 0) + 1;
+          regradeFinal(g, official);
+          g.h2hId = official.id;
+          g.finalSource = 'h2h';
+          changed = true;
+        }
+      }
       if (!g.pendingHalf) continue;
       const id = g.h2hId || matchFinal({ away: g.away, home: g.home, scheduledMs: g.scheduledMs }, finals || [])?.id;
       const q = id ? quarters?.[id] : null;
@@ -380,9 +423,39 @@ async function backfillHalves(now, finals, quarters, report) {
 }
 
 /**
- * Least-squares weight on our projection vs FanDuel's line:
+ * Least-squares trust in our model vs FanDuel's line, per stage of the game:
  *   final - line = w * (ours - line)  =>  w = sum((F-L)(P-L)) / sum((P-L)^2)
+ * Checkpoint 0 -> pregame, 25/50 -> mid-game (25-75%), 75 -> Q4. Needs 40+ games per stage.
  */
+function fitPhaseWeights(graded, base) {
+  const acc = { 0: [0, 0, 0], 2: [0, 0, 0], 3: [0, 0, 0] };
+  const slot = { 0: 0, 25: 2, 50: 2, 75: 3 };
+  for (const g of graded) {
+    const F = g.final?.total;
+    if (!Number.isFinite(F)) continue;
+    for (const [k, cp] of Object.entries(g.checkpoints || {})) {
+      const i = slot[k];
+      if (i == null || !cp.game) continue;
+      const P = cp.game.mean;
+      const L = cp.game.line;
+      if (!Number.isFinite(P) || !Number.isFinite(L)) continue;
+      acc[i][0] += (F - L) * (P - L);
+      acc[i][1] += (P - L) ** 2;
+      acc[i][2] += 1;
+    }
+  }
+  const w = (base || []).slice();
+  let fitted = 0;
+  for (const [i, [num, den, n]] of Object.entries(acc)) {
+    if (n >= 40 && den > 0) {
+      w[Number(i)] = Math.round(Math.min(0.95, Math.max(0.15, num / den)) * 100) / 100;
+      fitted += n;
+    }
+  }
+  return fitted ? { phaseWeights: w, n: fitted } : null;
+}
+
+/** Back-compat single weight (kept for the tests and the API). */
 function fitModelWeight(graded) {
   let num = 0;
   let den = 0;
@@ -410,10 +483,11 @@ async function refitParams(now, report) {
     const list = await store.getJSON(`track/graded/${dayKey(now - i * 86400000)}`);
     if (Array.isArray(list)) graded.push(...list);
   }
-  const fit = fitModelWeight(graded);
+  const { DEFAULT_PARAMS } = require('./model/ebModel');
+  const fit = fitPhaseWeights(graded, DEFAULT_PARAMS.phaseWeights);
   if (fit) {
     await store.setJSON('model/params', { ...fit, at: new Date(now).toISOString() });
-    report.modelWeight = fit.modelWeight;
+    report.phaseWeights = fit.phaseWeights;
   }
 }
 
@@ -467,7 +541,7 @@ async function performance({ days = 7, now = Date.now() } = {}) {
       m.units += s.units || 0;
       markets[s.market] = m;
       const gap = Math.abs(s.gap || 0);
-      const b = gap >= 8 ? '8+' : gap >= 6 ? '6-8' : '4-6';
+      const b = gap >= 4 ? '4+' : gap >= 3 ? '3-4' : '2-3';
       const bk = buckets[b] || { bucket: b, n: 0, w: 0, l: 0, p: 0, units: 0 };
       bk.n += 1;
       bk[s.result.toLowerCase()] += 1;
@@ -504,4 +578,14 @@ async function performance({ days = 7, now = Date.now() } = {}) {
   };
 }
 
-module.exports = { collect, performance, gradeTrace, matchFinal, gradeSide, profit, newTrace, fitModelWeight };
+/** Raw graded games (read-only export used for calibration and audits). */
+async function gradedRaw({ days = 2, now = Date.now() } = {}) {
+  const out = [];
+  for (let i = 0; i < days; i += 1) {
+    const list = await store.getJSON(`track/graded/${dayKey(now - i * 86400000)}`);
+    if (Array.isArray(list)) out.push(...list);
+  }
+  return { days, games: out.length, graded: out };
+}
+
+module.exports = { collect, performance, gradedRaw, gradeTrace, regradeFinal, matchFinal, gradeSide, profit, newTrace, fitModelWeight, fitPhaseWeights };

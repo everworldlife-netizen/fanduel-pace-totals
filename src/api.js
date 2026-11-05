@@ -48,6 +48,7 @@ const routes = [
     edgeMin: query.edge,
   })],
   ['GET', /^\/eb\/players$/, async () => eb.players()],
+  ['GET', /^\/eb\/graded$/, async ({ query }) => require('./ebTracker').gradedRaw({ days: Math.min(Math.max(num(query.days) || 2, 1), 14) })],
   ['GET', /^\/eb\/performance$/, async ({ query }) => eb.performance({ days: Math.min(Math.max(num(query.days) || 7, 1), 30) })],
   ['GET', /^\/leagues$/, async () => ({ leagues: games.coverage(), apiBasketballEnabled: apib.enabled() })],
   ['GET', /^\/games$/, async () => ({ ...(await games.listGames()), fetchedAt: new Date().toISOString() })],

@@ -17,7 +17,7 @@
     selected: store.get('cs.selected', null),
     detail: null,
     market: 'game',
-    settings: { edge: 4, ev: 3, poll: 8, ...store.get('cs.settings', {}) },
+    settings: { edge: 2, ev: 3, poll: 8, ...store.get('ggw.settings', {}) },
     qTrack: {},
     players: null,
     playerSort: 'n',
@@ -101,7 +101,7 @@
 
   function gapbar(key, gap) {
     if (!isNum(gap)) return '<div class="gapbar"><span class="mid"></span></div>';
-    const span = 16;
+    const span = 8;
     const g = Math.max(-span, Math.min(span, gap));
     const w = (Math.abs(g) / span) * 50;
     const left = g >= 0 ? 50 : 50 - w;
@@ -174,15 +174,16 @@
     if (!m) return '';
     if (isCall(m)) {
       const dir = m.call === 'Over' ? 'above' : 'below';
-      return `We see <b>${n1(m.mean)}</b> — ${Math.abs(m.gap).toFixed(1)} pts ${dir} FanDuel. Blended chance it goes ${m.call.toLowerCase()}: <b>${pct(m.call === 'Over' ? m.pOver : 1 - m.pOver)}</b>.`;
+      return `GG projects <b>${n1(m.fair)}</b> — ${Math.abs(m.gap).toFixed(1)} pts ${dir} FanDuel. Chance it goes ${m.call.toLowerCase()}: <b>${pct(m.call === 'Over' ? m.pOver : 1 - m.pOver)}</b>.`;
     }
     const r = m.reason || '';
     if (m.line == null) return 'FanDuel hasn’t posted this line yet.';
     if (/suspended/i.test(r)) return 'FanDuel has this market paused right now — check back in a moment.';
-    if (/Gap under/i.test(r)) return `Too close to call: our ${n1(m.mean)} vs ${m.line} is only ${sign(m.gap)}.`;
-    if (/Price/i.test(r)) return `There’s a ${sign(m.gap)} gap, but the price takes away the value.`;
+    if (/Edge under/i.test(r)) return `Too close to call: GG ${n1(m.fair)} vs ${m.line} is only ${sign(m.gap)}.`;
+    if (/ratings may be off/i.test(r)) return `Huge disagreement with FanDuel (${sign(m.rawGap)} raw) — usually means the ratings are off for this pair, so no call.`;
+    if (/Price/i.test(r)) return `There’s a ${sign(m.gap)} edge, but the price takes away the value.`;
     if (/Low confidence/i.test(r)) return 'Gap is there, but confidence is too low to trust it.';
-    if (/early|late/i.test(r)) return f > 0.8 ? 'Too late in the game for a reliable call.' : 'Too early for this market.';
+    if (/early|late/i.test(r)) return f > 0.8 ? 'Final stretch — late calls lose too often, so we sit out.' : 'Too early for this market.';
     if (/quarter start/i.test(r)) return 'Keep this game open through the next quarter break and we’ll track the quarter live.';
     return esc(r || 'No edge right now.');
   }
@@ -235,7 +236,7 @@
     return `<article class="pick ${cls(m.call)}${enterCls(`pick:${p.eventId}:${m.id}`)}" data-event="${esc(p.eventId)}">
       <div class="pick-top">${avatar(p.away.player, 'sm')}<div class="pick-vs"><b>${esc(p.away.player)} vs ${esc(p.home.player)}</b><span>${p.status === 'live' ? 'Live now' : 'Pre-game'} · ${esc(m.label)}</span></div>${meter(m)}</div>
       <div class="pick-call"><div><div class="mk">The call</div><div class="big">${m.call.toUpperCase()} ${m.line}</div></div>
-        <div style="text-align:right"><div class="mk">Gap</div><div class="big" style="font-size:22px">${sign(m.gap)}</div></div></div>
+        <div style="text-align:right"><div class="mk">Edge</div><div class="big" style="font-size:22px">${sign(m.gap)}</div></div></div>
       <p class="pick-say">${friendly(m)} ${odds(m.call === 'Over' ? m.overOdds : m.underOdds)}</p>
     </article>`;
   }
@@ -260,8 +261,8 @@
       </div>
       <div class="stat3">
         <div class="tile"><div class="k">FanDuel</div><div class="v">${gm.line ?? '—'}<small>${gm.line != null ? odds(gm.overOdds) : ''}</small></div></div>
-        <div class="tile hl"><div class="k">Our proj</div><div class="v">${tween(`${key}:p`, gm.mean)}</div></div>
-        <div class="tile"><div class="k">Gap</div><div class="v ${gm.gap > 0 ? 'pos' : gm.gap < 0 ? 'neg' : ''}">${sign(gm.gap)}</div></div>
+        <div class="tile hl"><div class="k">GG proj</div><div class="v">${tween(`${key}:p`, gm.fair ?? gm.mean)}</div></div>
+        <div class="tile"><div class="k">Edge</div><div class="v ${gm.gap > 0 ? 'pos' : gm.gap < 0 ? 'neg' : ''}">${sign(gm.gap)}</div></div>
       </div>
       ${gapbar(`${key}:gb`, gm.gap)}
       <div class="match-foot">
@@ -301,7 +302,7 @@
     const scroll = rail.scrollLeft;
     rail.innerHTML = (b.picks || []).length
       ? b.picks.map(pickCard).join('')
-      : `<div class="pick-empty">No game clears your <b>${S.settings.edge}-pt gap</b> + value filter right now.<br>Volume works for you — the next game tips in a few minutes.</div>`;
+      : `<div class="pick-empty">No game clears your <b>${S.settings.edge}-pt edge</b> + value filter right now.<br>Volume works for you — the next game tips in a few minutes.</div>`;
     rail.scrollLeft = scroll;
     $('liveList').innerHTML = live.length
       ? live.map(matchCard).join('')
@@ -385,7 +386,7 @@
       </div>
       <div class="gauge-labels">
         <span class="l" style="left:50%"><b>${line}</b>FANDUEL</span>
-        <span class="o" style="left:${prevL}%" data-anim="${key}:ol" data-prop="left" data-to="${labelPos}"><b>${n1(mean)}</b>OURS</span>
+        <span class="o" style="left:${prevL}%" data-anim="${key}:ol" data-prop="left" data-to="${labelPos}"><b>${n1(mean)}</b>GG</span>
       </div></div>`;
   }
 
@@ -394,8 +395,8 @@
     const tiles = m.mean == null && m.full != null
       ? `<div class="tile"><div class="k">FanDuel</div><div class="v">${m.line ?? '—'}</div></div><div class="tile hl"><div class="k">Full Q exp</div><div class="v">${n1(m.full)}</div></div><div class="tile"><div class="k">So far</div><div class="v">—</div></div>`
       : `<div class="tile"><div class="k">FanDuel</div><div class="v">${m.line ?? '—'}<small>${m.line != null ? odds(m.overOdds) : ''}</small></div></div>
-         <div class="tile hl"><div class="k">Ours</div><div class="v">${tween(`mk:${S.selected}:${m.id}`, m.mean)}</div></div>
-         <div class="tile"><div class="k">Gap</div><div class="v ${m.gap > 0 ? 'pos' : m.gap < 0 ? 'neg' : ''}">${sign(m.gap)}</div></div>`;
+         <div class="tile hl"><div class="k">GG proj</div><div class="v">${tween(`mk:${S.selected}:${m.id}`, m.fair ?? m.mean)}</div></div>
+         <div class="tile"><div class="k">Edge</div><div class="v ${m.gap > 0 ? 'pos' : m.gap < 0 ? 'neg' : ''}">${sign(m.gap)}</div></div>`;
     const extras = [];
     if (m.last10) {
       const g10 = m.line != null ? m.last10.avg - m.line : null;
@@ -413,8 +414,9 @@
       ${m.line != null ? `<details class="fine"><summary>Price details</summary><div class="fine-grid">
         <span>Over / Under</span><b>${odds(m.overOdds)} / ${odds(m.underOdds)}</b>
         <span>FanDuel no-vig over</span><b>${pct(m.fdOver)}</b>
-        <span>Our blended over</span><b>${pct(m.pOver)}</b>
-        <span>Blended fair number</span><b>${n1(m.fair)}</b>
+        <span>GG chance of over</span><b>${pct(m.pOver)}</b>
+        <span>Model (player history) / gap</span><b>${n1(m.mean)} / ${sign(m.rawGap)}</b>
+        <span>Trust model vs FanDuel</span><b>${m.weight != null ? `${Math.round(m.weight * 100)}% / ${100 - Math.round(m.weight * 100)}%` : '—'}</b>
         <span>EV over / under</span><b>${evPct(m.evOver)} / ${evPct(m.evUnder)}</b>
         <span>Spread of outcomes</span><b>± ${n1(m.sd)}</b>
       </div></details>` : ''}
@@ -464,11 +466,11 @@
         </div>
         <div class="side right">${avatar(g.home.player, 'lg')}<div class="nm"><b>${esc(g.home.player)}</b><span>${esc(g.home.team)}</span></div></div>
       </div>
-      ${gauge(`${key}:g`, gm.mean, gm.line)}`;
+      ${gauge(`${key}:g`, gm.fair ?? gm.mean, gm.line)}`;
     const best = ev.best;
     $('callHero').innerHTML = best
       ? `<div class="call-hero ${cls(best.call)}"><div><div class="mk">The call · ${esc(best.label)}</div><div class="big">${best.call.toUpperCase()} ${best.line}</div></div>${meter(best)}<p>${friendly(best, ev.progress.f)} Price ${odds(best.call === 'Over' ? best.overOdds : best.underOdds)} · EV ${evPct(best.ev)}.</p></div>`
-      : `<div class="call-hero"><div><div class="mk">The call</div><div class="big" style="color:var(--muted)">NO PLAY</div></div>${meter(null)}<p>${friendly(gm, ev.progress.f)} We’ll flag it the moment a market clears your ${S.settings.edge}-pt gap.</p></div>`;
+      : `<div class="call-hero"><div><div class="mk">The call</div><div class="big" style="color:var(--muted)">NO PLAY</div></div>${meter(null)}<p>${friendly(gm, ev.progress.f)} We’ll flag it the moment a market clears your ${S.settings.edge}-pt edge.</p></div>`;
     $('marketTabs').innerHTML = markets.map((m) => `<button type="button" data-mk="${m.id}" class="${m.id === S.market ? 'active' : ''}">${esc(m.label.replace(' total', '').replace('team ', ''))}${isCall(m) ? ' ●' : ''}</button>`).join('');
     document.querySelectorAll('#marketTabs [data-mk]').forEach((b) => {
       b.onclick = () => { haptic(); S.market = b.dataset.mk; renderDetail(); };
@@ -479,6 +481,8 @@
     const mw = Math.round((ev.modelWeight ?? 0.35) * 100);
     $('whyCard').innerHTML = `
       <div class="hud-head tight"><div><p class="eyebrow">MODEL INPUTS</p><h2>Why this number</h2></div><span class="chip ${ev.confidence.level === 'HIGH' ? 'hot' : ev.confidence.level === 'LOW' ? 'warn' : ''}">${ev.confidence.level} · ${ev.confidence.score}</span></div>
+      <div class="row"><span>GG projection</span><b>${n1(gm.fair ?? gm.mean)}</b></div>
+      <div class="row"><span>Model number (player history)</span><b>${n1(gm.mean)}</b></div>
       <div class="row"><span>Pregame number</span><b>${n1(pre.expected)}</b></div>
       <div class="row"><span>Built from</span><b>${esc(pre.blendNote)}</b></div>
       <div class="row"><span>Ratings split</span><b>${n1(pre.away)} + ${n1(pre.home)}</b></div>
@@ -488,7 +492,7 @@
       <div class="row"><span>Game clock</span><b>${Math.round(ev.progress.f * 100)}% · ${ev.progress.minutes}m since tip</b></div>
       <div class="row"><span>Clock check</span><b>${esc({ 'market-confirmed': 'FanDuel quarter markets ✓', 'market-corrected': 'Corrected by quarter markets', 'quarter-confirmed': 'Quarter ✓', 'quarter-corrected': 'Corrected by quarter', 'clock-estimate': 'Tip time', 'score-estimate': 'Score (tip time not posted)', overtime: 'Overtime', pregame: 'Pregame' }[ev.progress.source] || ev.progress.source)}${ev.progress.window ? ` · ${esc(ev.progress.window)}` : ''}</b></div>
       <div class="row"><span>Trust ours vs FanDuel</span><b>${mw}% / ${100 - mw}%</b></div>
-      <div class="tip">In this league the pregame number is worth ~1.5 games of live scoring — hot or cold starts move the projection less than you’d think.</div>
+      <div class="tip">FanDuel’s live line over-reacts to hot and cold starts; the gamers’ scoring history holds up better. GG blends both, trusting each by how accurate it has been at this point of the game.</div>
       ${notes ? `<ul class="notes">${notes}</ul>` : ''}`;
     const h = d.h2h;
     const rows = (h.games || []).map((x) => `<tr><td>${new Date(x.t).toLocaleDateString([], { month: 'short', day: 'numeric' })}</td><td>${x.a}-${x.b}</td><td>${x.total}</td></tr>`).join('');
@@ -567,7 +571,7 @@
   function verdictCard(label, p, ours) {
     if (!p) return '';
     const c = isCall(p) ? p.call : null;
-    return `<div class="verdict-card ${cls(c)}"><div><h4>${label}: ours ${n1(ours)} vs ${p.line}</h4><p>${c ? `${Math.abs(p.gap).toFixed(1)} pts ${c === 'Over' ? 'above' : 'below'} the line · blended chance ${pct(c === 'Over' ? p.pOver : 1 - p.pOver)}` : friendly(p).replace(/<[^>]+>/g, '')}</p></div><span class="verdict ${cls(c)}">${c ? `${c} ${p.line}` : 'Pass'}</span></div>`;
+    return `<div class="verdict-card ${cls(c)}"><div><h4>${label}: GG ${n1(p.fair ?? ours)} vs ${p.line}</h4><p>${c ? `Edge ${sign(p.gap)} · chance ${pct(c === 'Over' ? p.pOver : 1 - p.pOver)} · model ${n1(ours)}` : friendly(p).replace(/<[^>]+>/g, '')}</p></div><span class="verdict ${cls(c)}">${c ? `${c} ${p.line}` : 'Pass'}</span></div>`;
   }
 
   async function runLab() {
@@ -725,12 +729,12 @@
     $('settings').showModal();
   }
   function saveSettings() {
-    S.settings = { edge: Number($('setEdge').value) || 4, ev: Number($('setEv').value) || 0, poll: Math.max(4, Number($('setPoll').value) || 8) };
-    store.set('cs.settings', S.settings);
+    S.settings = { edge: Number($('setEdge').value) || 2, ev: Number($('setEv').value) || 0, poll: Math.max(4, Number($('setPoll').value) || 8) };
+    store.set('ggw.settings', S.settings);
     startPolling();
     loadBoard(true);
     if (S.view === 'game') loadDetail();
-    toast(`Calls now need a ${S.settings.edge}-pt gap and ${S.settings.ev}% value.`);
+    toast(`Calls now need a ${S.settings.edge}-pt edge and ${S.settings.ev}% value.`);
   }
 
   let obStep = 0;

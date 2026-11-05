@@ -10,12 +10,17 @@
  *   - Real time vs the official game clock (FanDuel live scores aligned to H2H play-by-play,
  *     806 points / 8 games): 25% played at ~6.3 min after tip, 50% ~12.5, 75% ~19.5,
  *     final ~25.5-26. FanDuel opens each quarter's markets ~1.5 min after it starts.
- *   - Probabilities/EV blend our number with FanDuel's line (modelWeight), because the
- *     book sees the real game clock. The collector re-fits modelWeight from graded games.
+ *   - Recalibrated Nov 5 on replayed live games vs official finals: FanDuel's live line
+ *     over-reacts to early pace, while the gamers' pregame scoring level holds. A strong
+ *     prior (n0 = 6 games) beats the pace-heavy setting at every stage of the game.
+ *   - The number we show ("GG projection") blends our model with FanDuel's line, weighted
+ *     by how accurate each is at that stage (phaseWeights). It beats both on its own.
+ *   - Calls: GG projection 2+ points off the line, price still pays, not after ~85% played,
+ *     and never on a 10+ point disagreement (that usually means the ratings are off).
  */
 
 const DEFAULT_PARAMS = {
-  n0: 1.5,
+  n0: 6,
   sdStart: 12.2,
   sdEnd: 4.5,
   quarterShare: [0.2546, 0.2467, 0.2425, 0.2486],
@@ -23,12 +28,15 @@ const DEFAULT_PARAMS = {
   knots: [[0, 0], [0.5, 0.032], [2.5, 0.119], [5.5, 0.241], [8.5, 0.35], [12.5, 0.5], [15.5, 0.617],
     [18.5, 0.729], [20.5, 0.775], [23.5, 0.905], [25.5, 0.981], [26.3, 1]],
   regulationMinutes: 26.3,
-  modelWeight: 0.35,
-  lineWeight: 0.5,
+  modelWeight: 0.5,
+  // Trust in our model vs FanDuel's line by stage: [pregame, Q1, Q2-Q3 (25-75%), Q4 (75-90%), final minutes]
+  phaseWeights: [0.85, 0.45, 0.6, 0.35, 0.9],
+  lineWeight: 1,
   pairShrink: 15,
-  edgeMin: 4,
+  edgeMin: 2,
+  maxRawGap: 10,
   evMin: 0.03,
-  maxProgressForSignal: 0.92,
+  maxProgressForSignal: 0.85,
   defaultMu: 54.9,
 };
 
@@ -205,26 +213,28 @@ function evFor(p, americanOdds) {
  * Price one over/under market.
  * @returns call Over/Under/Pass with gap, model probability, FanDuel no-vig, EV.
  */
-function priceMarket({ mean, sd, market, edgeMin, evMin, allowSignal = true, modelWeight = DEFAULT_PARAMS.modelWeight }) {
+function priceMarket({ mean, sd, market, edgeMin, evMin, allowSignal = true, modelWeight = DEFAULT_PARAMS.modelWeight, maxRawGap = DEFAULT_PARAMS.maxRawGap }) {
   if (!market || !Number.isFinite(market.line)) {
-    return { line: null, mean: round1(mean), call: null, gap: null };
+    return { line: null, mean: round1(mean), fair: round1(mean), call: null, gap: null };
   }
-  // Our number and FanDuel's line are two estimates of the same final: blend them
-  // for the probability, keep the raw gap for the "4+ points off" rule.
+  // Our model and FanDuel's line are two estimates of the same final. The GG projection
+  // blends them by how accurate each is at this stage; the edge is GG projection - line.
   const w = clamp(modelWeight, 0.05, 0.95);
   const fairMean = w * mean + (1 - w) * market.line;
   const pOver = probOver(fairMean, sd * 0.92, market.line);
   const fair = noVigOver(market.over, market.under);
   const evOver = evFor(pOver, market.over);
   const evUnder = evFor(pOver == null ? null : 1 - pOver, market.under);
-  const gap = round1(mean - market.line);
+  const rawGap = round1(mean - market.line);
+  const gap = round1(fairMean - market.line);
   const side = gap > 0 ? 'Over' : 'Under';
   const ev = side === 'Over' ? evOver : evUnder;
   let call = 'Pass';
   let reason = null;
   if (!market.open) reason = 'Market suspended';
   else if (!allowSignal) reason = 'Too early/late for a reliable call';
-  else if (Math.abs(gap) < edgeMin) reason = `Gap under ${edgeMin} pts`;
+  else if (Math.abs(rawGap) > maxRawGap) reason = 'Unusually big disagreement — ratings may be off for this pair';
+  else if (Math.abs(gap) < edgeMin) reason = `Edge under ${edgeMin} pts`;
   else if (ev == null || ev < evMin) reason = 'Price eats the edge';
   else call = side;
   return {
@@ -236,6 +246,8 @@ function priceMarket({ mean, sd, market, edgeMin, evMin, allowSignal = true, mod
     fair: round1(fairMean),
     sd: round1(sd),
     gap,
+    rawGap,
+    weight: round3(w),
     pOver: pOver == null ? null : round3(pOver),
     fdOver: fair == null ? null : round3(fair),
     evOver: evOver == null ? null : round3(evOver),
@@ -245,6 +257,16 @@ function priceMarket({ mean, sd, market, edgeMin, evMin, allowSignal = true, mod
     call,
     reason,
   };
+}
+
+/** Trust in our model vs FanDuel's line at this stage of the game. */
+function phaseWeight(f, started, params = DEFAULT_PARAMS) {
+  const w = params.phaseWeights || DEFAULT_PARAMS.phaseWeights;
+  if (!started) return w[0];
+  if (f < 0.25) return w[1];
+  if (f < 0.75) return w[2];
+  if (f < 0.9) return w[3];
+  return w[4];
 }
 
 /**
@@ -356,7 +378,7 @@ function evaluateLive(game, ctx = {}, opts = {}) {
   const overtime = started && minutes > params.regulationMinutes + 0.6 && Math.abs((game.away?.score || 0) - (game.home?.score || 0)) <= 12
     && Number.isFinite(lines.game?.line) && lines.game.line > S + 1.5;
   const allowSignal = !overtime && f <= params.maxProgressForSignal && (!started || minutes >= 0);
-  const modelWeight = params.modelWeight;
+  const modelWeight = phaseWeight(f, started, params);
   const markets = [];
 
   // Full game
@@ -416,7 +438,7 @@ function evaluateLive(game, ctx = {}, opts = {}) {
     note: qNote,
     ...(qMean == null
       ? { line: qMarket?.line ?? null, mean: null, call: 'Pass', reason: 'Need quarter start score (keep the game open from the quarter break)', overOdds: qMarket?.over ?? null, underOdds: qMarket?.under ?? null, open: qMarket?.open ?? false }
-      : priceMarket({ mean: qMean, sd: qSd, market: qMarket, edgeMin: Math.max(2.5, edgeMin * 0.6), evMin, allowSignal: allowSignal && qRemain > 0.15, modelWeight })),
+      : priceMarket({ mean: qMean, sd: qSd, market: qMarket, edgeMin: Math.max(1.5, edgeMin * 0.75), evMin, allowSignal: allowSignal && qRemain > 0.15, modelWeight })),
   });
 
   // Team totals
@@ -499,6 +521,7 @@ module.exports = {
   DEFAULT_PARAMS,
   progressFromTime,
   estimateProgress,
+  phaseWeight,
   quarterBounds,
   windowShare,
   posteriorRate,

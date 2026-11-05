@@ -156,16 +156,20 @@ describe('projection model', () => {
   });
 
   it('prices a market: gap rule, suspension, blended probability', () => {
-    const base = { mean: 112, sd: 8, edgeMin: 4, evMin: 0.03 };
+    const base = { mean: 112, sd: 8, edgeMin: 2, evMin: 0.03, modelWeight: 0.5 };
     const open = M.priceMarket({ ...base, market: { line: 105.5, over: -110, under: -110, open: true } });
     assert.equal(open.call, 'Over');
-    assert.equal(open.gap, 6.5);
-    assert.ok(open.fair > 105.5 && open.fair < 112);
+    assert.equal(open.rawGap, 6.5);
+    assert.equal(open.fair, 108.8);
+    assert.equal(open.gap, 3.3); // edge = GG projection (blend) - line
     const small = M.priceMarket({ ...base, market: { line: 109.5, over: -110, under: -110, open: true } });
     assert.equal(small.call, 'Pass');
     const susp = M.priceMarket({ ...base, market: { line: 105.5, over: -110, under: -110, open: false } });
     assert.equal(susp.call, 'Pass');
     assert.equal(susp.reason, 'Market suspended');
+    const wild = M.priceMarket({ ...base, mean: 120, market: { line: 105.5, over: -110, under: -110, open: true } });
+    assert.equal(wild.call, 'Pass');
+    assert.match(wild.reason, /ratings may be off/);
   });
 
   it('no-vig and EV helpers', () => {
@@ -324,12 +328,22 @@ describe('collector end to end (stubbed feeds, memory store)', () => {
       boardRows = [row('live', 30, 33)];
       now = tip + 12.5 * 60000;
       await tracker.collect({ now });
+      // FanDuel drops the game mid-way while the score keeps moving: never graded on that.
       boardRows = [];
-      now += 2 * 60000;
+      let liveScore = { away: 35, home: 36 };
+      fd.liveData = async () => [{ eventId: 2, basketballDetails: { away: { score: liveScore.away }, home: { score: liveScore.home } } }];
+      now = tip + 18 * 60000;
       await tracker.collect({ now });
-      now += 4 * 60000;
+      now = tip + 23.5 * 60000;
       await tracker.collect({ now });
       const key = `track/graded/${new Date(sched).toISOString().slice(0, 10)}`;
+      assert.equal(await store.getJSON(key), null, 'not graded on a mid-game score');
+      // Game ends: score stops changing; graded once it is stable across runs.
+      liveScore = { away: 49, home: 58 };
+      now = tip + 27 * 60000;
+      await tracker.collect({ now });
+      now = tip + 31 * 60000;
+      await tracker.collect({ now });
       let graded = await store.getJSON(key);
       assert.equal(graded.length, 1);
       assert.equal(graded[0].finalSource, 'fanduel');
