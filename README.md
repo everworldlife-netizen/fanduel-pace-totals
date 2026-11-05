@@ -36,7 +36,7 @@ Data: 5,246 official H2H GG League finals (3 weeks) plus play-by-play quarter sp
   - the real tip time (`marketTime`), mapped with a curve aligned to the official play-by-play clock (25% played at about 6.3 min after tip, 50% at 12.5, 75% at 19.5, final at about 25.5–26);
   - FanDuel's quarter-market state (which of spread / total / winner is open);
   - the score, when the tip time isn't posted yet.
-- **Calls.** Edge = GG projection − FanDuel line. A call needs an edge of **2+ points** (adjustable), the market open, and positive EV. It never fires after ~85% played, in overtime, or when the raw model disagrees with FanDuel by 10+ points (that usually means the ratings are off for the pair). On the replay, these rules went 57–18 (76%), up from 47–23 (67%).
+- **Calls.** Edge = GG projection − FanDuel line. A call needs an edge of **2+ points** (adjustable), the market open, and positive EV. It never fires after ~85% played, in overtime, or when the raw model disagrees with FanDuel by 10+ points (that usually means the ratings are off for the pair). On the replay, these rules went 57–18 (76%), up from 47–23 (67%). On a fresh out-of-sample check (19 new games, Nov 5 08:00–10:00 UTC) they went 33–25 (57%, +2.6 units): strongest pregame (7–2) and after halftime (14–7), weakest in Q1 (5–9), where FanDuel's line was the better guide.
 - **Grading.** Finals come from official H2H results. A FanDuel score only counts once it stops changing late in the game, and any FanDuel-sourced final is replaced by the official one.
 
 Quarter shares: Q1 25.5%, Q2 24.7%, Q3 24.3%, Q4 24.9%.
