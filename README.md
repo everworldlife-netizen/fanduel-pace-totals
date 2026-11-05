@@ -22,7 +22,19 @@ Open http://localhost:3000
 
 From the Projections repo root you can also `npm run dev:totals` / `npm run test:totals` (existing `npm run dev` is still the NBA player-projection dashboard).
 
-## Docker (Hostinger VPS)
+## Deploy to pace.everworld.cloud (Hostinger VPS, one paste)
+
+DNS: `pace` A record → VPS `2.25.134.249` (already set in Hostinger DNS).
+
+In hPanel open **VPS → Browser terminal** and paste:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/everworldlife-netizen/fanduel-pace-totals/main/deploy/vps-setup.sh | bash
+```
+
+[`deploy/vps-setup.sh`](deploy/vps-setup.sh) installs Docker/git if needed, clones this repo to `/opt/fanduel-pace-totals`, runs the app on `127.0.0.1:3010`, and serves `https://pace.everworld.cloud` through whatever already owns ports 80/443: nothing (starts Caddy with automatic HTTPS), nginx (site + certbot), host Caddy (Caddyfile block), or Traefik (Docker labels). For anything else it leaves the proxy untouched and prints what it found. Re-run the same command to deploy the latest `main`. Optional keys go in `/opt/fanduel-pace-totals/.env`; re-run after editing.
+
+## Docker (manual)
 
 Ubuntu 24.04 + Docker. From this folder on the VM (alongside your other compose projects):
 

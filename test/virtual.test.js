@@ -32,5 +32,11 @@ describe('virtual filter', () => {
       leagueName: 'German BBL',
       name: 'Baskets Oldenburg v MBC',
     }), false);
+    assert.equal(isVirtualGame({
+      leagueName: 'WNBA',
+      name: 'Las Vegas Aces at New York Liberty',
+      home: { name: 'New York Liberty', abbrev: 'NY' },
+      away: { name: 'Las Vegas Aces', abbrev: 'LV' },
+    }), false);
   });
 });
