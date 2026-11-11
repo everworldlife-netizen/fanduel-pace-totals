@@ -31,7 +31,8 @@ function serve(dir) {
 
 async function check(name, url, waitFor) {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36', serviceWorkers: 'block' });
+  // the owner's phone: Google Pixel 9a, Chrome on Android (412 x 923 CSS pixels, about 412 x 840 inside Chrome's bars)
+  const ctx = await browser.newContext({ viewport: { width: 412, height: 840 }, screen: { width: 412, height: 923 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: 'Mozilla/5.0 (Linux; Android 16; Pixel 9a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36' });
   const page = await ctx.newPage();
   const errors = [], failed = [];
   page.on('pageerror', (e) => errors.push(String(e.message || e)));

@@ -161,16 +161,30 @@ Tests, the release build and publishing do NOT need the cache.
 
 ### What is left for Courtside 16: publish
 
-Everything up to the release folder is done (the recipe that was followed is under "Publishing" further down, with
-`tools/p1.sh`, `p2.sh`, `p3.sh` as the three fits). Left:
+Akara's phone is a Google Pixel 9a (Chrome on Android): `tools/livecheck.js` and `tools/phoneshots.js` use its screen
+size (412 x 923 CSS pixels). `node tools/phoneshots.js` walks every main screen of both working copies on the real
+feeds, checks for sideways scrolling, anything sticking out of the screen, small tap targets, page errors and the
+two banned words, and saves a screenshot of each (`--live` walks the two published links). On Nov 11 all 8
+Courtside screens and all 6 GG Winner screens passed. Chrome on Android allows about 5 million characters of
+storage, twice an iPhone, so the tight-storage path is not Akara's own case (it still matters for iPhone users).
 
-1. Publish, only when Akara says so. Hugging Face write access is needed: in a cloud session through the secure
-   sign-in card (Akara has to ask for it; never a token in chat), on Akara's own computer with `hf auth login` in a
-   terminal. Then `tools/publish.sh release-2026-11-11` (bash; on Windows use Git Bash, or run its steps by hand: the
-   three test suites, one `hf upload everworldlife/<space> release-2026-11-11/<space> . --repo-type space` per Space,
-   then `node tools/mkrelease.js --verify release-2026-11-11` and `node tools/livecheck.js`).
-2. Report to Akara (plain words, exact numbers with game counts, both links, phone update steps: Courtside
-   Settings shows "Version 16 (Nov 11, 2026)"; GG Winner's footer shows "Version 3.10.0 (Nov 11, 2026)").
+Publishing from a cloud session WORKS since the evening of Nov 11: Akara saved a Hugging Face token (write
+permission, account `everworldlife`) on the session's environment, and the session's network proxy adds it to
+requests to huggingface.co by itself. The value is never visible to the session. The `hf` tool only needs any
+placeholder to start: `PATH=/home/claude/hfenv/bin:$PATH HF_TOKEN=hf_placeholder tools/publish.sh release-2026-11-11`
+(check first with `HF_TOKEN=hf_placeholder hf auth whoami`, which must answer `user=everworldlife`). On Akara's own
+computer: `hf auth login` in a terminal, then the same script. Never ask for a token in chat.
+
+Akara's rule for this release (Nov 11): "I want everything fixed before publishing. No issues." So: the second
+review pass has to finish and every confirmed finding has to be fixed and retested first. Then:
+
+1. `tools/publish.sh release-2026-11-11` (bash; the three test suites, one upload per Space in one commit each,
+   then `node tools/mkrelease.js --verify release-2026-11-11` and `node tools/livecheck.js`), then
+   `node tools/phoneshots.js --live`.
+2. Report to Akara (plain words, exact numbers with game counts, both links, update steps for a Pixel: open the
+   link in Chrome, or the installed app, with a connection; pull down to refresh or close it from the recent apps
+   and open it again; Courtside Settings must show "Version 16 (Nov 11, 2026)", GG Winner's footer "Version 3.10.0
+   (Nov 11, 2026)").
 3. If new games have been played since Nov 9 and you want them in the lessons: refresh the data, rerun
    `tools/p3.sh` under a new name, `mkengine.js`, set `PAT_FROM` in `cs/build/app.js` to the day after the last game,
    bump `ca-shell-vNN` and `APP_VERSION`, rerun the tests and `mkrelease.js`. Do NOT rerun `mkaccuracy.js` unless
