@@ -68,6 +68,9 @@
       out.headline = `FanDuel hasn’t posted a line for ${name} yet. We expect about <b>${whole(m.full)}</b> points in it.`;
     } else if (line == null) {
       out.headline = mean != null ? `FanDuel hasn’t posted a line for ${name} yet. We expect about <b>${whole(mean)}</b>.` : `FanDuel hasn’t posted a line for ${name} yet.`;
+    } else if (mean != null && line != null && mean < line) {
+      // plus edges only: our number is never set against a line it is not ahead of (checked before every other reason, v3.10)
+      out.headline = 'No play. Our number is not ahead of this line, and we only play plus edges, where our number is ahead of the line.';
     } else if (mean == null && m.full != null) {
       out.headline = `We expect about <b>${whole(m.full)}</b> points in ${name} (line ${line}). To judge it we need the score when the quarter starts, so keep this game open through the break.`;
     } else if (/suspended/i.test(r)) {
@@ -75,7 +78,7 @@
     } else if (/ratings may be off/i.test(r)) {
       out.headline = `No bet. Player history says about <b>${whole(model)}</b> but FanDuel’s line is ${line}. A gap that big usually means our numbers on this pair are off, so we sit this one out.`;
     } else if (/Below the line/i.test(r) || (mean != null && mean < line)) {
-      out.headline = `No play. We expect about <b>${whole(mean)}</b>, ${pts(line - mean)} below FanDuel’s line of ${line}. We only play plus edges, where our number is ahead of the line.`;
+      out.headline = 'No play. Our number is not ahead of this line, and we only play plus edges, where our number is ahead of the line.';
     } else if (/Gap under|Edge under/i.test(r) || (m.gap != null && Math.abs(m.gap) < edge)) {
       out.headline = `No bet. We expect about <b>${whole(mean)}</b> and FanDuel’s line is ${line}. That’s only ${pts(m.gap || 0)} apart, and we want at least ${edge} before we call it.`;
     } else if (/Price/i.test(r)) {
@@ -96,8 +99,10 @@
       if (!call || !d) return 'info';
       return d === call ? 'yes' : 'no';
     };
+    // plus edges only: when our number is not ahead of the line, nothing is measured against that line at all
+    const belowLine = line != null && isNum(mean) && Number(mean) <= line;
     const vsLine = (v) => {
-      if (line == null || !isNum(v)) return '';
+      if (belowLine || line == null || !isNum(v)) return '';
       const d = Number(v) - line;
       if (Math.abs(d) < 0.5) return ', right on the line';
       return `, ${pts(d)} ${d > 0 ? 'ahead of' : 'behind'} the line`;
@@ -160,7 +165,7 @@
     }
 
     // Chance and how sure, in plain words.
-    if (isNum(m.pOver) && line != null) {
+    if (isNum(m.pOver) && line != null && !belowLine) {
       const p = m.pOver;
       const k = Math.round(p * 10);
       out.chance = p > 0.45 && p < 0.55 && !call ? 'Close to a coin flip.' : `We think it finishes above ${line} about ${k} times out of 10.`;
@@ -187,6 +192,8 @@
   // ---------- "Show the math" with plain labels ----------
   function mathBox(m) {
     if (!m || m.line == null) return '';
+    // a line our number is not ahead of gets no numbers of ours (plus edges only)
+    { const o = isNum(m.fair) ? m.fair : m.mean; if (isNum(o) && Number(o) <= Number(m.line)) return ''; }
     const pc = (p) => (p == null ? '—' : `${Math.round(p * 100)}%`);
     const ev = (e) => (e == null ? '—' : `${e > 0 ? '+' : ''}${Math.round(e * 1000) / 10}%`);
     return `<details class="fine pe-math" data-pe="1"><summary>Show the math</summary><div class="fine-grid">
@@ -217,7 +224,8 @@
     const v2 = gm.rawGap !== undefined;
     const ours = v2 && isNum(gm.fair) ? gm.fair : gm.mean;
     const w = v2 && gm.weight != null ? Math.round(gm.weight * 100) : mw;
-    if (gm.line != null && isNum(ours)) steps.push(`<li><b>Last check:</b> ${v2 ? `player history says ${whole(gm.mean)}. At this point of the game we trust that ${w}% and FanDuel’s live line ${100 - w}%` : `we lean ${w}% on our number and ${100 - w}% on FanDuel’s live line`}. That gives <b>${whole(ours)}</b>, vs FanDuel’s ${gm.line}.</li>`);
+    if (gm.line != null && isNum(ours) && Number(ours) <= Number(gm.line)) steps.push('<li><b>Last check:</b> our number is not ahead of FanDuel’s live line, so there is no plus edge on the full game right now.</li>');
+    else if (gm.line != null && isNum(ours)) steps.push(`<li><b>Last check:</b> ${v2 ? `player history says ${whole(gm.mean)}. At this point of the game we trust that ${w}% and FanDuel’s live line ${100 - w}%` : `we lean ${w}% on our number and ${100 - w}% on FanDuel’s live line`}. That gives <b>${whole(ours)}</b>, vs FanDuel’s ${gm.line}.</li>`);
     else if (isNum(ours)) steps.push(`<li><b>Our number now:</b> about <b>${whole(ours)}</b> for the full game.</li>`);
     const lvl = ev.confidence?.level;
     const sure = lvl === 'HIGH' ? 'High. We have lots of games on both players.' : lvl === 'LOW' ? 'Low. We don’t have many games on these players yet, so treat this as a rough guess.' : 'Medium. We have some history on these players.';

@@ -26,7 +26,10 @@ if (argv.includes('--verify')) {
     let ok = true;
     for (const sp of man.spaces) for (const f of sp.files) {
       const r = await fetch(sp.live + f.path + `?t=${Date.now()}`, { headers: { 'User-Agent': L.UA } });
-      const buf = Buffer.from(await r.arrayBuffer());
+      let buf = Buffer.from(await r.arrayBuffer());
+      // Hugging Face adds two snippets of its own to every page a static Space serves (a small script after <head> and
+      // social-preview tags before </head>): they are taken out before comparing, the rest must match byte for byte
+      if (/\.html$/.test(f.path)) buf = Buffer.from(buf.toString('utf8').replace(/<head><script>window\.huggingface=\{[^<]*<\/script>/, '<head>').replace(/(?:<meta (?:property="og:[^"]*"|name="twitter:[^"]*")[^>]*>\s*)+<\/head>/, '</head>'), 'utf8');
       const same = r.ok && sha(buf) === f.sha256;
       if (!same) ok = false;
       console.log(`${same ? 'same' : 'DIFFERENT'}  ${sp.name}/${f.path}`);

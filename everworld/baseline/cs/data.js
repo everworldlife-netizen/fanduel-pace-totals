@@ -10,6 +10,18 @@ const raw = { players: new Map(), teams: new Map(), logs: new Map() }; // full D
 // free the space held by older log formats
 try { Object.keys(localStorage).filter((k) => k.startsWith('log:') && !k.startsWith(`log:${VER}:`)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 try { Object.keys(localStorage).filter((k) => (k.startsWith('priors:') && !k.startsWith(`priors:${PVER}:`)) || (k.startsWith('glog:') && !k.startsWith(`glog:${PVER}:${etDate(0)}:`))).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+// dated keys nothing reads any more: slates older than the look-back, the working slate from before yesterday, old tip-off and
+// status maps, lines of games from more than a week ago. Left in place they crowd the game logs out of a small phone's storage.
+try {
+const today = etDate(0);
+for (const k of Object.keys(localStorage)) {
+let m;
+if ((m = k.match(/^slate:last:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -1)) localStorage.removeItem(k); }
+else if ((m = k.match(/^slate:[^:]+:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -25)) localStorage.removeItem(k); }
+else if ((m = k.match(/^(?:tip|overrides):(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -2)) localStorage.removeItem(k); }
+else if (k.startsWith('glines:')) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch { v = null; } if (!v || !(v.at > Date.now() - 7 * 86400000)) localStorage.removeItem(k); }
+}
+} catch { /* ignore */ }
 
 const store = {
 get(k) { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : null; } catch { return null; } },
@@ -36,11 +48,13 @@ mem.set(path, { data, at: Date.now() });
 return data;
 }
 
+// (function declarations, so the start-up clean-up above can use them)
+function addDays(s, n) { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+/** Today's date in US Eastern time, or that date plus a number of calendar days (shifting the clock by 24 hours instead was a day off for an hour around each daylight-saving change). */
 function etDate(offsetDays = 0) {
-const d = new Date(Date.now() + offsetDays * 86400000);
-return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+return offsetDays ? addDays(today, offsetDays) : today;
 }
-const addDays = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 const lastSlate = new Map();
 let slateSource = 'databallr', savedAt = 0;
@@ -67,8 +81,9 @@ if (date < today && rows.length && rows.every((g) => g.status_state === 'final')
 return rows;
 }
 
-async function plays(gameId, final = false) {
-const j = await getJSON(`/v1/nba/games/${gameId}/plays`, final ? 3600000 : 3000);
+async function plays(gameId, final = false, fresh = false) {
+// fresh: never reuse a copy (the last read of a live game can be a play or two short of the final)
+const j = await getJSON(`/v1/nba/games/${gameId}/plays`, fresh ? 0 : final ? 3600000 : 3000);
 return j.data || [];
 }
 const feed = {}; // gameId -> 'databallr' | 'espn' (which play-by-play feed the last read came from)
@@ -76,16 +91,16 @@ const feed = {}; // gameId -> 'databallr' | 'espn' (which play-by-play feed the 
 * Play-by-play that doesn't go dark: DataBallr first; if it fails, comes back empty mid-game, or has fallen
 * behind the scoreboard, ESPN's copy of the same play-by-play is used instead.
 */
-async function livePlays(game, { final = false, nameToPid = null, scoreNow = null } = {}) {
+async function livePlays(game, { final = false, nameToPid = null, scoreNow = null, fresh = false } = {}) {
 let rows = null, err = null;
-try { rows = await plays(game.id, final); } catch (e) { err = e; }
+try { rows = await plays(game.id, final, fresh); } catch (e) { err = e; }
 const last = rows && rows.length ? rows[rows.length - 1] : null;
 const behind = !!(scoreNow != null && last && last.away_score != null && scoreNow - ((last.away_score || 0) + (last.home_score || 0)) >= 6);
 if (rows && rows.length && !behind) { feed[game.id] = 'databallr'; return rows; }
 try {
 const ev = await espnEvent(game);
 if (ev) {
-const sum = await espnJSON(`${ESPN}/summary?event=${ev.id}`, final ? 3600000 : 3000);
+const sum = await espnJSON(`${ESPN}/summary?event=${ev.id}`, fresh ? 0 : final ? 3600000 : 3000);
 const alt = window.Engine.playsFromEspn(sum, nameToPid);
 if (alt.length && (!rows || alt.length > rows.length)) { feed[game.id] = 'espn'; return alt; }
 }
@@ -253,6 +268,8 @@ const r = await fetch(url, { headers: { Accept: 'application/json' } });
 if (!r.ok) throw new Error(`ESPN ${r.status}`);
 const v = await r.json();
 emem.set(url, { t: Date.now(), v });
+// a game summary is about 430 KB: keep only the newest few in memory
+while (emem.size > 12) emem.delete(emem.keys().next().value);
 return v;
 }
 /** League injury report → { ABBR: [{ name, status, out, doubt, why, ret }] }. */
@@ -286,13 +303,17 @@ if (teams.some((t) => t.abbr === v) && teams.some((t) => t.abbr === h)) return {
 return null;
 }
 /** Tonight's active lists from ESPN's game box (posted at tip-off): { ABBR: [{ name, starter, dnp }] }. */
+// After a game ESPN adds the players who were ruled out (injury, rest, suspension, not with team) to the box, with the
+// reason. They were never on the list while the game was on, so they are left off here too: the nightly learning then
+// replays a finished game with the same list the live app had. Players who sat by coach's decision were dressed and stay.
+const ruledOut = (x) => !!(x.dnp && x.reason && !/COACH/i.test(x.reason));
 async function espnLists(ev, ttl) {
 const j = await espnJSON(`${ESPN}/summary?event=${ev.id}`, ttl);
 const out = {};
 for (const t of (j && j.boxscore && j.boxscore.players) || []) {
 const tm = espnAbbr(t.team && t.team.abbreviation);
 const ath = (t.statistics && t.statistics[0] && t.statistics[0].athletes) || [];
-if (tm && ath.length) out[tm] = ath.map((x) => ({ name: (x.athlete && x.athlete.displayName) || '', starter: !!x.starter, dnp: !!x.didNotPlay })).filter((x) => x.name);
+if (tm && ath.length) out[tm] = ath.map((x) => ({ name: (x.athlete && x.athlete.displayName) || '', starter: !!x.starter, dnp: !!x.didNotPlay, reason: x.didNotPlay ? x.reason || '' : '' })).filter((x) => x.name && !ruledOut(x));
 }
 return out;
 }
@@ -331,6 +352,24 @@ res.doubt = res.doubt.filter((x) => !inNames.has(window.Engine.norm(x.name)));
 }
 } catch { /* lineups not posted yet */ }
 return res.report || res.confirmed ? res : null;
+}
+
+/**
+ * The posted lineup of a game that has started or finished, from ESPN's game box: who was active and who started.
+ * The nightly learning replays finished games with it, so it learns from the same lineup news the live app had.
+ */
+async function lineupFor(game) {
+const v = game.visitor_team.abbreviation, h = game.home_team.abbreviation;
+const ev = await espnEvent(game);
+if (!ev) return null;
+const lists = await espnLists(ev, 3600000);
+if (![v, h].every((tm) => lists[tm] && lists[tm].filter((x) => x.starter).length >= 5)) return null;
+const res = { confirmed: true, complete: true, report: true, source: 'confirmed lineups', in: [], out: [], doubt: [], starters: {} };
+for (const tm of [v, h]) {
+res.starters[tm] = lists[tm].filter((x) => x.starter).map((x) => x.name);
+for (const x of lists[tm]) res.in.push({ name: x.name, starter: x.starter, team: tm });
+}
+return res;
 }
 
 /** Recent finished games for a set of teams (cached forever on the phone once final). */
@@ -374,7 +413,7 @@ return out;
 }
 
 function clearCache() {
-mem.clear();
+mem.clear(); emem.clear();
 raw.players.clear(); raw.teams.clear(); raw.logs.clear();
 try { Object.keys(localStorage).filter((k) => /^(log|slate|priors|teams|glog|glines):/.test(k)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 }
@@ -386,6 +425,20 @@ const cur = m >= 8 ? y + 1 : y;
 return { cur, last: cur - 1 };
 }
 
-window.DB = { livePlays, espnScores, feed, slateSource: () => slateSource, etDate, addDays, seasons, slate, plays, lastSeasonPriors, currentSeasonPriors, injuries, props, teamLogs, clearCache, store,
-teamStats, teamAll, gameLines, linesFor, playerLogs, playersLogs, logAll, playerLogsRaw, playerAll, availability, espnInjuries };
+/**
+* The time by the server's clock: the Date header of a small file from the app's own address (never from the phone's cache), or
+* null when it cannot be read. A phone's own clock can be set wrong; what must not happen is a copy of the season tables being
+* stamped earlier than it really was taken.
+*/
+async function serverNow() {
+try {
+const t0 = Date.now();
+const r = await fetch(`manifest.webmanifest?t=${t0}`, { method: 'HEAD', cache: 'no-store' });
+const t = Date.parse((r && r.headers && r.headers.get('date')) || '');
+return Number.isFinite(t) ? t + Math.round((Date.now() - t0) / 2) : null;
+} catch { return null; }
+}
+
+window.DB = { serverNow, livePlays, espnScores, feed, slateSource: () => slateSource, etDate, addDays, seasons, slate, plays, lastSeasonPriors, currentSeasonPriors, injuries, props, teamLogs, clearCache, store,
+teamStats, teamAll, gameLines, linesFor, playerLogs, playersLogs, logAll, playerLogsRaw, playerAll, availability, espnInjuries, lineupFor };
 })();

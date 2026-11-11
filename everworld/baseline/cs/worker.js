@@ -14,7 +14,10 @@ let games = 0;
 for (const j of payload.grade) {
 for (const cp of j.cps) {
 // minutes are graded first; the stats and the chances are graded on top of the learned minutes, as they are used live
+// (payload.priors and payload.teams are the tables as the app had them BEFORE this game: see snapFor in app.js)
 const base = { game: cp.game, plays: cp.plays, logs: j.logs, priors: payload.priors, injuries: [], nsims: payload.nsims || 300, seed: cp.game.id, overrides: { in: [], out: [] }, teams: payload.teams || null,
+// the lineup that was posted for this game (active list and starters), same as the live app had from tip-off on
+avail: j.avail || null,
 // the game's pregame line as the phone saved it: the top-down team check learns from the same input it uses live (no line saved → that input sits out)
 market: j.market || null, tdOff: !j.market };
 const P = Engine.projectGame({ ...base, patterns: Engine.patMinOnly(payload.patterns || Engine.patBeta(null)) });

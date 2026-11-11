@@ -39,14 +39,19 @@ what matters most.
 
 Akara then wrote "Nevermind just continue as you were before", so the cloud session went on and FINISHED version 16.
 
-- LIVE on the two Spaces: the old builds (`ca-shell-v14`, `gg-winner-v3.9.0`; copies in `baseline/`). NOTHING from this branch is published.
+- PUBLISHED on Nov 11, 2026 at 22:24 UTC (5:24 pm Eastern): Courtside 16 (`ca-shell-v16`, Space commit `ac4a2b3`) and GG Winner 3.10.0
+  (`gg-winner-v3.10.0`, Space commit `ecb1510`). `baseline/` now holds these live files. The engine that was live before
+  (version 14) is kept as `data/engines/live14/` for lab comparisons.
+  Verified after publishing: all 11 files match the release byte for byte (`mkrelease.js --verify`; Hugging Face adds two
+  snippets of its own to every page, which the check takes out), both live links load tonight's 10 games with no page
+  errors, all 14 screens pass at Pixel 9a size (`phoneshots.js --live`), and on the live link the server-clock request
+  answers and the daily copy is saved (461 players, 30 teams).
 - `cs/build` = Courtside 16 (`ca-shell-v16`, Settings shows "Version 16 (Nov 11, 2026)"): the "anchors" build with
   its own lessons built in (`data/lessons/H4-anch7.json` = `H4-anch1` plus the chance table for points+rebounds+assists; 62 inputs, 3,709 games), the live team check at half
   strength, the middle shown for minutes in the last six minutes, a fresh learning tally on the phone
   (`pat:v5:sum`). `gg/static` = GG Winner 3.10.0 (unchanged since the version-15 round).
-- `release-2026-11-11/` holds exactly these files (Courtside: app.js, data.js, engine.js, sw.js, worker.js; GG
-  Winner: app.js, index.html, league-live.js, profiles.js, research.js, sw.js). READY TO PUBLISH, not published:
-  the cloud session had no Hugging Face write access.
+- `release-2026-11-11/` holds exactly the files that were published (Courtside: app.js, data.js, engine.js, sw.js,
+  worker.js; GG Winner: app.js, index.html, league-live.js, profiles.js, research.js, sw.js).
 - Tests: engine 85 checks, app 22, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
   (10 games on the board, `ca-shell-v16`, `gg-winner-v3.10.0`, no page errors).
 - Frozen engines for the lab (tracked): `data/engines/anch1/` (anchors as first tested), `anch3/` (lessons built
@@ -140,6 +145,8 @@ Six minutes in is now closer than tip-off, as it should be (it was worse before:
 - 20:25 to 22:30: second review pass (three of four reviewers finished): 23 findings, all fixed and re-proven (see
   "Second review pass"). Akara: "I need it done before 7pm eastern", so the build is published before the fourth
   review area can run; that last area runs right after publishing.
+- 22:24: PUBLISHED both Spaces with `tools/publish.sh` (tests, one commit per Space); verified live by 22:32.
+  Next: the fourth review area on the published build; anything it finds is a follow-up release.
 
 ### How to set up on a new computer
 

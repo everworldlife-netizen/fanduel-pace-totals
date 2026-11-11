@@ -47,6 +47,8 @@ shotEff: 0.93, // early-season makes vs last season's rates (Nov 8 backtest, 77 
 closerQ4: 0, // when the simulated game stays within 8, starters play at least this many Q4 minutes
 rot: 1, // live minutes from the coach's rotation map (stints from this season's games)
 rotK: 2, // pseudo-games of the plain map when conditioning on "on court / sitting right now"
+rotKEarly: 8, rotKLate: 0.25, rotKFrom: 39, rotKTo: 42, // rotK by game minute: rotKEarly until rotKFrom, sliding to rotKLate by rotKTo (rotKEarly 0 = the single rotK above all game)
+rotTonightEarly: 0.1, // rotTonight for the first 18 minutes (0 = same as the rest of the game)
 rotTonight: 0.25, // exponent on tonight's rotation share so far vs the map (fit on 17k live moments)
 rotTonightK: 6, // minutes of shrink on that share
 benchM50: 7, // sitting through this many of his usual on-court minutes = 50% he's done for the night
@@ -94,6 +96,40 @@ landOn: 1, // show the number he is most likely to land on (see LAND) instead of
 otSim: 1, // close games sometimes go to overtime: those simulations get the extra five minutes (0 = off)
 tdOn: 1, // top-down team check feeds the learned layer (0 = off)
 otherPM: 0.4, // points per minute for minutes played by players we don't track (deep bench), so team totals stay whole
+// v15 (Nov 11): tonight's lineup inside the number. Each switch was tested on games the lessons never saw (see NOTES.md).
+actDeep: 1, // posted active list: project deep-bench players too (they play on short-handed nights)
+actNew: 1, actNewMpg: 12, // posted active list: project players back from a layoff from their season line (non-starters need this many minutes a game)
+patCapMinUp: 1.5, // most the learned layer can raise remaining minutes (0 = same as patCapMin): a reserve who starts can more than double
+patInterp: 1, // between two learning stages, blend their lessons by game minute (0 = nearest stage)
+sitPre: 0, // situational scoring: a basket counts under the score before it (0 = the old filing, after it)
+patYCap: 0, // learning target: 1 = the old one-sided cap on big finishes, 0 = the plain miss
+repGroup: 1, // learn "before lineups are posted" as its own stage (1) or share the tip-off lessons (0)
+patLamLineup: 0.1, patLamAnchor: 0.1, // pull toward "no effect" for the lineup inputs, relative to the other inputs (1 = same; lower lets rare, strong signals through)
+condMin: 1, // before tip-off, player minutes stay "if he plays" numbers and the team total is scaled to five players' worth instead
+teamCal: 2, // apply the learned team check (TEAM_PRIOR) to team totals: 0 = off, 1 = every stage, 2 = during games only (before tip-off the scoring level moves between seasons)
+teamCalW: 0.5, // share of the check applied during games (with teamCal 2), fading to none from 33 to 42 minutes in. Measured Nov 11: live totals ran 2.5 to 5.7 points low on two unseen sets; half the check brought the total 2 to 3% closer through Q3 on 592 games and 0 to 2% on 121, the full check went past the middle on the smaller set
+// team load (also v15, lab name "v16"): how crowded tonight's rotation is, and which side is expected to win big, as learned inputs
+loadIn: 1, loadMid: 0.06, // team load = the usual minutes of everyone available tonight, added up, vs the 240 a team can play; loadMid = a typical night
+favIn: 1, // expected winning margin by role (starters of a team expected to win or lose big, bench of a team expected to lose big)
+loadStats: 0, // 0 = the team load only teaches minutes (who plays), 1 = it also teaches points, rebounds, assists and threes
+ctxUntil: 33, // game minute from which the team load and expected margin sit out (by then the live score and rotation say more)
+refillSoft: 1, // refill eligibility: 0 = fixed cut-off, 1 = smooth ramp (no jumps when a factor sits at the cut-off)
+refillMax: 0.2, refillMaxLive: 0, // most the refill can add to one player, as a share of his own minutes still to come, before tip-off and live (0 = no limit). Before tip-off a badly short-handed team handed one player all 48 minutes; live a limit of 0.35 changed nothing early and cost 0.8% on minutes in the last three minutes, where one closer really does take what is left
+startOn: 1, // live: a posted starter the play-by-play has not named yet has been on the floor since the tip (1), or counts as not checked in (0, old)
+thinK: 30, // minutes of bench-average rates mixed into the rebound and assist rates of a player with no season line (0 = his raw rates, old)
+patHalf: 0, // minutes lessons between halftime and 30 minutes in: 0 = nearest stage (jumps at 27:00), 1 = the 30-minute lessons once the third quarter is on
+// Nov 11 research (four researchers on 1,177 unseen games): with real minutes the per-minute numbers are within 0-3% of an
+// oracle at every stage, so what is left is minutes. The minutes numbers were too spread out everywhere (real = a + b x number
+// with b 0.70 to 0.90) and the learned layer could only multiply, not pull a number toward what a role normally plays.
+tipBlend: 1, // the first six minutes of a game: minutes are the tip-off projection fading out and the live one fading in (the 6-minute lessons were learned at 6:00; used whole from the opening tip they moved minutes 1.2 on average in the first second and were worse than the tip-off number until about 4:30)
+anchIn: 1, // anchor inputs for minutes: anchor / remaining minutes (a flat number of minutes once multiplied), for everyone, by role, on the floor, his pace tonight, lopsided scores, his own average, his season average
+flagIn: 1, // late game: who is on the floor in a decided game (the unit's usual minutes), deep bench in lopsided games, a starter's long stint
+condLive: 1, // a player who has not checked in yet keeps an "if he plays" number during the game too (a pick on a player who never plays is no action): never-in players are not learned from and team totals are scaled instead of squeezing every player
+patCapMinLate: 0.95, // most the layer can cut remaining minutes from 36 minutes in (a regular on the bench of a decided game is done for the night)
+refillRep: 0, // refill before the lineup is posted: 0 = off (measured: none of those handed-out minutes are played), 1 = as at tip-off
+deepRep: 1, // before the lineup is posted, deep-bench players of the recent window who are not listed out get a number too (they were 2 of 3 players with no number who went on to play 10+)
+benchRes: 1, // the 'benched' discount (sitting through minutes he usually plays) is for tonight's starters only; a reserve's usual pattern comes from other roles
+foulEdge: 1, // a foul-trouble seat still counts as one at the exact end of its rest window (halftime with 3 fouls)
 };
 const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
@@ -219,6 +255,8 @@ if (/half/i.test(t)) { period = 2; clock = '0:00'; }
 else if (/^end/i.test(t)) clock = '0:00';
 else if (t) clock = t.split(/\s+/).pop();
 }
+// tied when the fourth quarter (or an overtime) ends: five more minutes are certain, so the break already counts as the start of overtime
+if (phase === 'live' && period >= 4 && clockSec(clock) === 0 && vs === hs && vs + hs > 0) { period += 1; clock = '5:00'; }
 const el = phase === 'pre' ? 0 : elapsedSec(period, clock) / 60;
 const regLeft = Math.max(48 - el, 0);
 const left = phase === 'final' ? 0 : period > 4 ? clockSec(clock) / 60 : regLeft;
@@ -381,6 +419,9 @@ for (const [id, c] of on) { const rec = pl(id); rec.q[per] = (rec.q[per] || 0) +
 prevEnd = new Set(on.keys());
 if (per === curPeriod) for (const id of on.keys()) onNow.add(id);
 }
+// the scoreboard is already in a new period but none of its events has arrived: until one says otherwise, the five who closed
+// the last period are still on the floor (the same picture as the break)
+if (pers.length && !byPer.has(curPeriod) && curPeriod > pers[pers.length - 1]) for (const id of prevEnd) onNow.add(id);
 const players = {};
 for (const rec of P.values()) {
 const t = teamOf(rec);
@@ -660,19 +701,34 @@ const PAT_F = ['base', 'starter', 'bench', 'b2b', 'pace', 'blowout', 'roleTrend'
 // live role engine: real usage vs shot luck, game script by role, where he is right now, who he is
 'uReal', 'luck', 'leadS', 'trailS', 'lopB', 'on', 'sitLong', 'dnp', 'usgHi', 'closeStar', 'pfX', 'recent', 'mpgC', 'fadeHist', 'leadProof',
 // top-down team check: the books' line (or team ratings) and tonight's score so far vs what our player numbers add up to
-'tdMkt', 'tdLive'];
+'tdMkt', 'tdLive',
+// tonight's lineup (v15): starting tonight vs his usual role, back from a layoff, deep bench, minutes freed at his position, last game's minutes, rest, games missed
+'startUp', 'startDown', 'fresh', 'deep', 'vacPos', 'lastMin', 'rest3', 'missShare',
+// tonight's crowd (v15, lab name "v16"): how over- or under-booked the team's minutes are (full bench vs short-handed), by role; and the expected margin by role
+'loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB',
+// anchors and late-game floor picture (Nov 11): minutes only
+'aAll', 'aS', 'aB', 'aOn', 'aPace', 'aLop', 'aOwn', 'aLong', 'lopTier', 'flagOff', 'flagOn', 'deepLop', 'stintLong'];
+const PAT_MINONLY = ['aAll', 'aS', 'aB', 'aOn', 'aPace', 'aLop', 'aOwn', 'aLong', 'lopTier', 'flagOff', 'flagOn', 'deepLop', 'stintLong'];
 const PAT_D = PAT_F.length;
 const PAT_IX = Object.fromEntries(PAT_F.map((k, i) => [k, i]));
+// How hard each input is pulled toward "no effect" when the lessons are solved, relative to the others (1 = the usual pull).
+// The lineup inputs are rare but strong (about one reserve a game starts), so the usual pull would flatten them.
+// how hard each input is held near zero while learning (1 = the usual hold; lineup and anchor inputs get a light one)
+const patLamOf = (k) => (TUNE.patLamLineup > 0 && ['startUp', 'startDown', 'fresh', 'deep'].includes(k) ? TUNE.patLamLineup : TUNE.patLamAnchor > 0 && PAT_MINONLY.includes(k) ? TUNE.patLamAnchor : 1);
+const PAT_LAMF = PAT_F.map(patLamOf);
 // stages of the game: pregame, then every 6 game minutes (the learned trust in live data changes with each)
-const PAT_GROUPS = ['pre', 's6', 's12', 's18', 's24', 's30', 's36', 's42'];
+// 'rep' (v15) = before the lineups are posted, when only the injury report is known: the app knows less then, so it learns that moment separately
+const PAT_GROUPS = ['pre', 's6', 's12', 's18', 's24', 's30', 's36', 's42', 'rep'];
 // features that describe a shift of shots between teammates (shared inside the team when TUNE.shiftCenter is on)
 const PAT_SHIFT = ['track', 'shooting', 'uReal', 'luck', 'recent', 'fadeHist'];
 // The number we show. The average of the simulations is pulled up by rare big finishes; the middle of them is where a player
 // most often lands. How much of the middle to show at each stage was learned on last season (595 games) and checked on this
 // season's 123 games: average miss from the end of Q3 fell 3% on points, 13% on assists, 22% on threes (6 minutes left: 12%, 23%, 32%).
-const LAND = { pre: { fg3m: 1 }, s6: { fg3m: 1 }, s12: { ast: 0.25, fg3m: 1 }, s18: { ast: 0.5, fg3m: 1 }, s24: { pts: 0.25, ast: 1, fg3m: 1 },
-s30: { pts: 0.75, reb: 0.25, ast: 1, fg3m: 1 }, s36: { pts: 1, reb: 1, ast: 1, fg3m: 1 }, s42: { pts: 1, reb: 1, ast: 1, fg3m: 1 } };
-function patGroup(st) { if (st.phase === 'pre') return 'pre'; const k = clamp(Math.round(st.elapsed / 6), 1, 7); return 's' + k * 6; }
+// (Nov 11: a quarter of the middle for points in the first quarter too, fitted on 592 unseen games with the minutes-pace input
+// coming in from 6:00: points 4.416 -> 4.407 and 4.148 -> 4.137; on this season's 121 games 4.332 -> 4.324 and 4.133 -> 4.123)
+const LAND = { pre: { fg3m: 1 }, s6: { pts: 0.25, fg3m: 1 }, s12: { pts: 0.25, ast: 0.25, fg3m: 1 }, s18: { ast: 0.5, fg3m: 1 }, s24: { pts: 0.25, ast: 1, fg3m: 1 },
+s30: { pts: 0.75, reb: 0.25, ast: 1, fg3m: 1 }, s36: { pts: 1, reb: 1, ast: 1, fg3m: 1 }, s42: { pts: 1, reb: 1, ast: 1, fg3m: 1, min: 1 }, rep: { fg3m: 1 } };
+function patGroup(st, lineupPosted) { if (st.phase === 'pre') return lineupPosted === false && TUNE.repGroup > 0 ? 'rep' : 'pre'; const k = clamp(Math.round(st.elapsed / 6), 1, 7); return 's' + k * 6; }
 /** One feature row per graded stat for a player at this moment (all scaled to about -2..2). */
 function patFeatures(f) {
 const out = {};
@@ -685,6 +741,53 @@ const usgS = f.usgS > 0 ? f.usgS : 0.2;
 b[PAT_IX.usgHi] = clamp((usgS - 0.2) * 10, -1.5, 2.5);
 b[PAT_IX.mpgC] = clamp((f.mpg - 24) / 8, -2, 1.5);
 b[PAT_IX.tdMkt] = f.tdMkt || 0;
+b[PAT_IX.startUp] = clamp(f.startUp || 0, 0, 2.5); b[PAT_IX.startDown] = clamp(f.startDown || 0, 0, 1);
+// back from a layoff: once he is on the floor or has played he is no longer an unknown; and the 6-minute lesson ("still not in
+// after six minutes: he is probably not playing") comes on gradually from the tip instead of at the first second
+b[PAT_IX.fresh] = f.fresh && !(live && (f.on || f.min > 0)) ? (live && f.el < 6 ? clamp(f.el / 6, 0.15, 1) : 1) : 0; b[PAT_IX.deep] = f.deep ? 1 : 0;
+b[PAT_IX.vacPos] = clamp(f.vacPos || 0, 0, 2); b[PAT_IX.lastMin] = clamp((f.lastMin || 0) / 10, -2, 2);
+b[PAT_IX.rest3] = f.rest3 ? 1 : 0; b[PAT_IX.missShare] = clamp(f.missShare || 0, 0, 1);
+// team load: 0 = a typical night, +1 = the usual minutes of tonight's available players add up to 24 more than usual
+// (everyone is back: a crowded rotation), -1 = 24 fewer (short-handed)
+const ctxOn = !live || !(TUNE.ctxUntil > 0) || f.el < TUNE.ctxUntil;
+const ld = TUNE.loadIn > 0 && ctxOn && f.load != null ? clamp((f.load - TUNE.loadMid) / 0.1, -2.5, 2.5) : 0;
+b[PAT_IX.loadS] = f.starter ? ld : 0; b[PAT_IX.loadB] = f.starter ? 0 : ld; b[PAT_IX.loadBd] = f.starter ? 0 : ld * clamp((18 - f.mpg) / 8, 0, 1.5);
+b[PAT_IX.loadBq] = f.starter ? 0 : (Math.max(ld, 0) * Math.max(ld, 0)) / 2.5;
+// expected margin before tip-off (books' spread, or team ratings): past 4 points it starts to cost starters minutes
+const fv = TUNE.favIn > 0 && ctxOn ? f.favBy || 0 : 0;
+b[PAT_IX.favS] = f.starter ? clamp((fv - 4) / 6, 0, 2) : 0; b[PAT_IX.dogS] = f.starter ? clamp((-fv - 4) / 6, 0, 2) : 0; b[PAT_IX.dogB] = f.starter ? 0 : clamp((-fv - 4) / 6, 0, 2);
+// anchors: an input equal to (anchor minutes) / (his remaining minutes) becomes a flat number of minutes once the layer multiplies
+// it by his remaining minutes, so the layer can pull a number toward the anchor instead of only scaling it
+if (TUNE.anchIn > 0 && f.rem >= 0.25) {
+const L = live ? 0.5 * Math.max(f.left || 0, 0) : 24; // half of the time left (24 before tip-off)
+const a = clamp(L / f.rem, 0, 6);
+const startsT = f.sT != null ? f.sT === 1 : !!f.starter;
+b[PAT_IX.aAll] = a; b[PAT_IX.aS] = startsT ? a : 0; b[PAT_IX.aB] = f.mpg < 18 ? a : 0;
+if (live) {
+b[PAT_IX.aOn] = f.on ? a : 0;
+// his minutes pace tonight (first-half minutes once the half is over) carried over the time left
+const first = f.el <= 24 ? f.min : f.minH1;
+// (from 6:00 on, where the 12-minute lesson that carries this input starts to blend in: held back until 12:00 it left minutes
+// about a minute low through the back half of Q1 and made them jump at the horn)
+b[PAT_IX.aPace] = f.el > 6 && first != null ? clamp((first * (f.left || 0)) / Math.min(f.el, 24) / f.rem, 0, 6) : 0;
+const lop = clamp((Math.abs(f.mg || 0) - 8) / 10, 0, 2.5);
+b[PAT_IX.aLop] = clamp(lop * (a - 1), -2.5, 6);
+b[PAT_IX.lopTier] = f.el >= 18 ? lop * clamp((f.mpg - 24) / 8, -2, 1.5) : 0;
+} else {
+// before the game: how far the simulation moved him from his own recent average, and his season-long average against the recent one
+b[PAT_IX.aOwn] = clamp(f.mpg / f.rem - 1, -0.6, 1.5);
+b[PAT_IX.aLong] = f.longMin != null ? clamp((f.longMin - f.mpg) / f.rem, -1.5, 1.5) : 0;
+}
+}
+// late game: the floor picture. A bench unit on the floor of a decided game means the regulars are done (white flag)
+if (TUNE.flagIn > 0 && live && f.el >= 30) {
+const am2 = Math.abs(f.mg || 0);
+const flag = f.unitMin != null ? clamp((am2 - 10) / 10, 0, 1) * clamp((24 - f.unitMin) / 8, 0, 1.5) : 0;
+b[PAT_IX.flagOff] = !f.on && f.min > 0 && f.mpg >= 14 ? flag : 0;
+b[PAT_IX.flagOn] = f.on && f.mpg < 24 ? flag : 0;
+b[PAT_IX.deepLop] = f.mpg < 14 && f.min > 0 ? clamp((am2 - 10) / 10, 0, 2) : 0;
+b[PAT_IX.stintLong] = f.starter && f.on && f.stint != null ? clamp((f.stint - 4) / 8, -0.5, 1) : 0;
+}
 if (live) {
 const mg = f.mg || 0, am = Math.abs(mg);
 b[12] = f.foulTrouble ? 1 : 0;
@@ -713,6 +816,7 @@ b[PAT_IX.tdLive] = f.tdLive || 0;
 for (const s of PAT_LEARN) {
 const x = b.slice();
 if (s === 'min') { x[PAT_IX.tdMkt] = 0; x[PAT_IX.tdLive] = 0; } // a team's scoring level says nothing about who plays
+else { if (!(TUNE.loadStats > 0)) { x[PAT_IX.loadS] = 0; x[PAT_IX.loadB] = 0; x[PAT_IX.loadBd] = 0; x[PAT_IX.loadBq] = 0; } for (const k of PAT_MINONLY) x[PAT_IX[k]] = 0; } // how crowded the rotation is, and the anchors, only say who plays
 if (live) {
 const k = s === 'min' ? 'pts' : s;
 const exp = f.ratePM[k] * f.min;
@@ -729,6 +833,7 @@ for (const g of PAT_GROUPS) { o[g] = {}; for (const s of PAT_LEARN) o[g][s] = { 
 // running accuracy: average miss in points (players who played 10+ minutes) and how often the real top scorer was in our top 3
 o.acc = {}; for (const g of PAT_GROUPS) o.acc[g] = { n: 0, pts: 0, reb: 0, ast: 0, fg3m: 0, g: 0, top3: 0 };
 o.cal = calEmpty();
+o.team = {}; for (const g of PAT_GROUPS) o.team[g] = [0, 0, 0];
 return o;
 }
 function patAdd(acc, more, wt = 1) {
@@ -742,6 +847,7 @@ for (let i = 0; i < a.b.length; i++) a.b[i] += wt * m.b[i];
 a.n += wt * m.n; a.w += wt * m.w;
 }
 if (more && more.cal) { acc.cal = acc.cal || calEmpty(); calAdd(acc.cal, more.cal, wt); }
+if (more && more.team) { acc.team = acc.team || {}; for (const g of PAT_GROUPS) { const m = more.team[g]; if (!m) continue; const a = (acc.team[g] = acc.team[g] || [0, 0, 0]); for (let j = 0; j < 3; j++) a[j] += wt * (m[j] || 0); } }
 if (more && more.acc) { acc.acc = acc.acc || {}; for (const g of PAT_GROUPS) { const m = more.acc[g]; if (!m) continue; const a = (acc.acc[g] = acc.acc[g] || { n: 0, pts: 0, reb: 0, ast: 0, fg3m: 0, g: 0, top3: 0 }); for (const k of Object.keys(a)) a[k] += wt * (m[k] || 0); } }
 return acc;
 }
@@ -749,14 +855,21 @@ return acc;
 * Grade one projection against the final box. proj = projectGame() output (made with patW 0),
 * rows = logEntry().rows of the finished game. Adds into acc (patEmpty()).
 */
+/** The box-score row of a player we projected from tonight's posted list before he had a play-by-play id. */
+function rowByName(rows, p) {
+if (!p || !(p.pid < 0)) return undefined;
+const k = norm(p.name);
+for (const r of Object.values(rows)) if (r.team === p.team && norm(r.name) === k) return r;
+return undefined;
+}
 function patGrade(proj, rows, acc, opts) {
 const only = opts && opts.only ? opts.only : null; // grade just these stats (the fit runs in two passes)
 const live = proj.state.phase !== 'pre';
 for (const p of proj.players) {
-let a = rows[p.pid];
+let a = rows[p.pid] || rowByName(rows, p);
 if (!p.pat) continue;
 // live: a rotation player who never got in is a real miss (he finished with what he had); pregame we assume lineups are known
-if (!a || !(a.min > 0)) { if (!live) continue; a = { min: p.now.min, pts: p.now.pts, reb: p.now.reb, ast: p.now.ast, fg3m: p.now.fg3m }; }
+if (!a || !(a.min > 0)) { if (!live || TUNE.condLive > 0) continue; a = { min: p.now.min, pts: p.now.pts, reb: p.now.reb, ast: p.now.ast, fg3m: p.now.fg3m }; }
 const S = acc[p.pat.g];
 if (!S) continue;
 for (const s of PAT_LEARN) {
@@ -765,18 +878,21 @@ const T = S[s];
 if (!T) continue;
 // minutes are graded against the plain projection (the learned minutes factor backed out)
 const f0 = s === 'min' && p.pat.f && p.pat.f.min ? p.pat.f.min : 1;
-const rem = ((p.mean || p.proj)[s] - p.now[s]) / f0;
+// (the engine reports his minutes before the learned factor as minPlain: exact, where dividing the factor back out is only close)
+const rem = s === 'min' && p.minPlain != null ? p.minPlain - p.now.min : ((p.mean || p.proj)[s] - p.now[s]) / f0;
 if (!(rem >= 0.25)) continue;
 // the target is the plain miss (Nov 10: the old cap at +200% cut off big nights for small roles and taught the layer to aim low late in games)
-const y = Math.min(a[s] - (p.now[s] + rem), rem * 4 + (s === 'min' ? 14 : s === 'pts' ? 10 : 5));
+const y0 = a[s] - (p.now[s] + rem);
+const y = TUNE.patYCap > 0 ? Math.min(y0, rem * 4 + (s === 'min' ? 14 : s === 'pts' ? 10 : 5)) : y0;
 const x = p.pat.x[s];
 for (let i = 0; i < PAT_D; i++) { const xi = x[i]; if (!xi) continue; T.b[i] += rem * y * xi; for (let j = 0; j < PAT_D; j++) T.A[i * PAT_D + j] += rem * rem * xi * x[j]; }
 T.n++; T.w += rem * rem;
 }
 // were the chances right? every ladder rung still ahead of him: the simulated chance vs whether he got there
 if (acc.cal && p.laddersRaw && (!only || only.includes('pts'))) for (const s of CAL_STATS) {
-const lvl = calLevel(s, (p.mean || p.proj)[s] - p.now[s]);
-for (const L1 of p.laddersRaw[s]) { if (L1.t <= p.now[s]) continue; calObs(acc.cal, p.pat.g, s, lvl, L1.p, a[s] >= L1.t ? 1 : 0); }
+if (!p.laddersRaw[s]) continue;
+const nowS = statOf(p.now, s), lvl = calLevel(s, (p.mean || p.proj)[s] - nowS);
+for (const L1 of p.laddersRaw[s]) { if (L1.t <= nowS) continue; calObs(acc.cal, p.pat.g, s, lvl, L1.p, statOf(a, s) >= L1.t ? 1 : 0); }
 }
 }
 return acc;
@@ -784,18 +900,39 @@ return acc;
 /** Running accuracy for one graded projection: average miss (10+ minute players) and top scorer inside our top 3. */
 function patScore(proj, rows, acc) {
 if (!acc.acc) { acc.acc = {}; for (const g of PAT_GROUPS) acc.acc[g] = { n: 0, pts: 0, reb: 0, ast: 0, fg3m: 0, g: 0, top3: 0 }; }
-const A = acc.acc[patGroup(proj.state)];
+const A = acc.acc[proj.patG || patGroup(proj.state)];
 if (!A) return acc;
 let top = -1;
 for (const r of Object.values(rows)) if (r.pts > top) top = r.pts;
 const ids = new Set(Object.entries(rows).filter(([, r]) => r.pts === top).map(([id]) => +id));
 const best = proj.players.slice().sort((x, y) => y.proj.pts - x.proj.pts).slice(0, 3);
-A.g++; if (best.some((p) => ids.has(+p.pid))) A.top3++;
+const topNames = new Set(Object.values(rows).filter((r) => r.pts === top).map((r) => norm(r.name)));
+A.g++; if (best.some((p) => ids.has(+p.pid) || (+p.pid < 0 && topNames.has(norm(p.name))))) A.top3++;
+// team check: our points still to come for each team (before the check itself) against the real ones
+if (proj.teamRaw && proj.state.phase !== 'final') {
+acc.team = acc.team || {};
+const T = (acc.team[proj.patG || patGroup(proj.state)] = acc.team[proj.patG || patGroup(proj.state)] || [0, 0, 0]);
+for (const [tm, nowPts] of [[proj.state.v, proj.state.vs], [proj.state.h, proj.state.hs]]) {
+let fin = 0; for (const r of Object.values(rows)) if (r.team === tm) fin += r.pts;
+if (!(fin > 0) || proj.teamRaw[tm] == null) continue;
+T[0]++; T[1] += proj.teamRaw[tm]; T[2] += Math.max(fin - nowPts, 0);
+}
+}
+// everyone who really played 10+ minutes, on the same rule as the built-in report: a player we had no number for counts
+// as a full miss (so the phone's own table cannot look better by leaving the hard cases out)
+const seen = new Set();
 for (const p of proj.players) {
-const a = rows[p.pid];
-if (!a || !(a.min >= 10)) continue;
+const a = rows[p.pid] || rowByName(rows, p);
+if (!a) continue;
+seen.add(a);
+if (!(a.min >= 10)) continue;
 A.n++;
 for (const s of PAT_STATS) A[s] += Math.abs(p.proj[s] - a[s]);
+}
+for (const a of Object.values(rows)) {
+if (seen.has(a) || !(a.min >= 10) || (a.team !== proj.state.v && a.team !== proj.state.h)) continue;
+A.n++;
+for (const s of PAT_STATS) A[s] += Math.abs(a[s] || 0);
 }
 return acc;
 }
@@ -812,6 +949,7 @@ return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[d] / row[i]));
 /** Sufficient statistics → coefficients per checkpoint and stat: { pre: { pts: [..17], ... }, ... , n }. */
 function patSolve(acc, lam) {
 const L = lam != null ? lam : TUNE.patLam;
+PAT_F.forEach((k, i) => { PAT_LAMF[i] = patLamOf(k); });
 const out = { n: 0 };
 for (const g of PAT_GROUPS) {
 out[g] = {};
@@ -820,7 +958,7 @@ const T = acc[g] && acc[g][s];
 if (!T || T.n < 200) { out[g][s] = null; continue; }
 const A = T.A.slice();
 const avg = T.w / T.n;
-for (let i = 0; i < PAT_D; i++) A[i * PAT_D + i] += L * avg * 25;
+for (let i = 0; i < PAT_D; i++) A[i * PAT_D + i] += L * avg * 25 * PAT_LAMF[i];
 out[g][s] = solveLin(A, T.b, PAT_D).map((v) => +v.toFixed(5));
 out.n = Math.max(out.n, T.n);
 }
@@ -830,13 +968,28 @@ return out;
 // What 1,314 finished games taught the live role engine (1,191 from all of last season + 123 from Oct 21 - Nov 9 this season), projected with the same inputs the live app has (season-to-date stats, team ratings, closing lines, lineups):
 // coefficients per stage and stat (b), how much evidence sits behind each (d = diagonal weight, n = player-moments graded).
 // Held-out check: weights learned on last season only, then tested on this season's 123 games (see ACCURACY in app.js).
-const PAT_PRIOR = {"pre":{"min":{"b":[0.019,-0.0352,-0.0121,0.0047,-0.0114,0.0002,0.0114,-0.0586,-0.0124,-0.0017,-0.0032,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.0277,0,0,0,-0.0192,0,0,0,0],"d":[15700000,11900000,1330000,2790000,9310000,1080000,3600000,2090000,1820000,7840000,2540000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6220000,0,0,0,13300000,0,0,0,0],"n":24939,"w":15660000},"pts":{"b":[0.024,0.0127,-0.0245,0.0103,-0.0103,0.0037,-0.0243,-0.0609,0.0017,0.0025,0.0141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.0415,0,0,0,0.0199,0,0,0.0801,0],"d":[3680000,3040000,210000,647000,2120000,254000,728000,405000,436000,1850000,612000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2410000,0,0,0,3710000,0,0,625000,0],"n":24939,"w":3680000},"reb":{"b":[-0.0077,-0.0109,-0.0214,-0.0043,0.037,0.0054,-0.0132,-0.0235,-0.0075,-0.0027,0.0091,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.0057,0,0,0,0.0057,0,0,0.054,0],"d":[597000,430000,63000,105000,350000,41100,135000,66500,66800,299000,96800,0,0,0,0,0,0,0,0,0,0,0,0,0,0,253000,0,0,0,497000,0,0,103000,0],"n":24921,"w":597200},"ast":{"b":[-0.0309,0.0112,-0.0198,-0.005,0.0419,0.0052,0.0253,0.0263,-0.0129,0.0139,0.0297,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.0045,0,0,0,0.0164,0,0,0.06,0],"d":[255000,209000,15000,43900,146000,17500,52100,22500,30000,127000,42300,0,0,0,0,0,0,0,0,0,0,0,0,0,0,148000,0,0,0,260000,0,0,44300,0],"n":24548,"w":255300},"fg3m":{"b":[-0.0019,-0.0019,-0.0354,0.0051,0.0015,0.0026,-0.0111,-0.0981,0.027,0.0056,-0.0047,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.0382,0,0,0,0.0283,0,0,0.0914,0],"d":[46200,35200,3710,8190,27700,3180,10000,6360,5190,23300,7910,0,0,0,0,0,0,0,0,0,0,0,0,0,0,22200,0,0,0,39800,0,0,7910,0],"n":21440,"w":46150}},"s6":{"min":{"b":[0.0158,-0.0857,-0.0396,0,-0.004,-0.0145,0.0342,-0.0398,0.0019,0.0005,-0.0006,0.0102,0.0214,-0.0007,0.0004,-0.0604,0.0048,-0.0074,0.0013,0.0009,-0.0047,-0.003,0.037,0.0169,-0.1121,-0.0048,0.015,-0.0141,-0.0038,-0.0226,0,-0.0002,0,0],"d":[12300000,8970000,1300000,0,7320000,565000,2770000,1370000,1340000,6150000,2000000,11100000,222000,24100000,4590000,654000,1760000,4270000,6130000,120000,117000,113000,7660000,71600,2650000,4910000,4090000,19100000,4170000,10600000,0,45800,0,0],"n":28934,"w":12310000},"pts":{"b":[0.0156,0.0013,0.0124,0,-0.0006,-0.0019,-0.0455,-0.0204,0.0135,0.0013,0.0175,-0.0018,0.0161,-0.0029,0.0023,-0.0085,-0.0041,0.0045,-0.0225,-0.0038,0.0077,0.0041,-0.0302,0.0212,-0.0407,-0.0554,0.0257,0.0032,-0.0074,0.0478,0,0.0011,0.1039,-0.0213],"d":[2870000,2290000,183000,0,1650000,129000,565000,277000,321000,1440000,476000,3040000,51100,5650000,1060000,121000,632000,1120000,1780000,33700,26200,19000,2050000,16800,354000,1870000,1570000,4420000,1090000,2800000,0,11500,483000,741000],"n":28928,"w":2865000},"reb":{"b":[-0.021,-0.0099,0.0159,0,0.05,0.0122,-0.027,-0.0008,-0.0049,0,0.013,-0.0103,0.0032,0.0109,0.0025,-0.0339,-0.0123,-0.0078,-0.0308,0.0125,0.0021,-0.0094,-0.0513,0.0054,-0.0256,0.0063,0.0008,0.0048,0.0216,0.0257,0,-0.001,0.0785,0.0041],"d":[475000,322000,56700,0,280000,21100,107000,47100,49200,238000,76000,185000,9170,926000,174000,26800,74800,182000,230000,4460,3530,4810,322000,2900,79200,200000,168000,732000,177000,389000,0,1680,81900,125000],"n":28852,"w":474800},"ast":{"b":[-0.033,-0.0205,0.01,0,0.0429,0.0189,0.0026,0.0661,-0.0121,0.0178,0.0336,-0.0038,-0.0087,0.0092,0.0088,0.0268,-0.0146,0.0166,-0.01,0.0117,-0.009,0.0045,-0.0431,0.0081,-0.0455,0.0045,0.0035,0.005,0.002,0.0368,0,0.0096,0.0791,-0.0104],"d":[198000,157000,13100,0,113000,8690,40400,14900,22300,99000,32700,76000,3620,389000,72500,8300,34800,76300,115000,2150,1840,1380,141000,1090,26500,113000,95800,306000,74800,197000,0,698,34600,51900],"n":27972,"w":198200},"fg3m":{"b":[-0.0273,-0.0172,-0.0213,0,0.014,0.0203,-0.0176,-0.0629,0.0309,0.0163,0.0021,0.0334,0.0219,-0.0024,0.0068,-0.0606,0.0104,0.0005,-0.0278,0.0086,0.0176,-0.0063,-0.029,0.0075,0.0143,-0.0714,0.0437,0.0007,-0.0301,0.0538,0,0.0168,0.0886,-0.0178],"d":[36400,26700,3240,0,21900,1650,7850,4360,3880,18300,6260,6230,599,71800,13500,1930,6390,12100,22000,393,314,326,25100,177,6160,17400,14600,57100,11800,30700,0,151,6180,9530],"n":23676,"w":36410}},"s12":{"min":{"b":[-0.0175,-0.0511,-0.0101,0,-0.0018,-0.0249,0.031,-0.0204,-0.0008,-0.0036,-0.0026,0.0139,0.0135,-0.0005,-0.0087,0.0492,-0.0042,-0.0095,0.0073,0.0032,-0.0011,-0.0142,0.0388,0.1043,-0.2374,0.021,0.0068,0.0023,-0.0015,-0.0157,-0.0074,-0.0039,0,0],"d":[9170000,6760000,957000,0,5450000,566000,2030000,1250000,1010000,4580000,1490000,12000000,549000,13400000,6690000,302000,3530000,4790000,6900000,401000,389000,395000,4620000,1940000,330000,3640000,2440000,19500000,4570000,8060000,111000,148000,0,0],"n":29100,"w":9168000},"pts":{"b":[-0.0024,0.0139,-0.0069,0,0.0027,-0.0298,-0.0254,0.0002,0.0171,-0.0015,0.0136,0.0066,0.0115,-0.0039,0.0032,-0.022,-0.0137,-0.004,-0.0131,-0.0381,0.0208,0.0053,-0.0131,-0.0121,-0.0764,-0.0359,-0.0006,-0.0066,-0.0071,0.0328,-0.0067,0.0018,0.1005,-0.0233],"d":[2180000,1770000,143000,0,1250000,131000,419000,269000,245000,1100000,362000,3050000,138000,3240000,1560000,58100,1110000,1170000,1850000,121000,88000,61800,1100000,485000,25600,1430000,964000,4600000,1130000,2170000,19200,38900,367000,563000],"n":29054,"w":2181000},"reb":{"b":[-0.054,-0.02,-0.0066,0,0.0477,0.0123,-0.0118,0.0204,-0.0104,-0.0029,0.0116,0.0046,0.0057,0.0138,-0.0059,0.0084,-0.0024,0.0107,-0.0176,0.0205,0.0089,-0.0013,0.0043,0.0229,-0.0995,0,0.0017,-0.0039,0,0.0174,0.0057,-0.0014,0.0679,0.0034],"d":[356000,250000,41200,0,209000,20700,76700,43000,38100,178000,57000,208000,23800,521000,250000,11900,137000,197000,250000,15100,12500,14600,167000,93300,6540,153000,103000,740000,185000,299000,3980,5420,61600,93600],"n":28816,"w":355800},"ast":{"b":[-0.0726,-0.005,0.0034,0,0.0465,0.0115,0.0094,0.0806,-0.0099,0.0135,0.0343,0.0114,0.0149,0.0075,0.0172,0.0296,0.0004,0.0155,-0.0027,0.026,-0.0055,0.0073,-0.0191,-0.0295,-0.0827,-0.004,0.0106,-0.0113,-0.0137,0.0201,-0.0262,-0.0079,0.0558,-0.022],"d":[150000,121000,9920,0,85500,8450,30000,14600,17000,75100,24900,83700,9080,219000,104000,3900,69700,79000,125000,7220,5870,4460,76000,33200,1960,85900,59100,317000,76100,151000,1630,2200,26200,38200],"n":27066,"w":150500},"fg3m":{"b":[-0.0371,-0.0029,-0.0165,0,0.0268,0.003,-0.0106,-0.0662,0.0362,0.0037,-0.0084,0.0648,0.012,-0.0104,0.0024,-0.0592,-0.0089,-0.0406,-0.021,-0.0135,0.0258,-0.0027,-0.0199,-0.0135,-0.0797,-0.041,0.0083,-0.0145,0.0102,0.0376,-0.0342,0.004,0.0771,-0.0224],"d":[27600,20500,2510,0,16600,1690,5840,4270,2920,13900,4730,8670,1790,40600,20100,911,11700,14200,24400,1420,1010,1080,14500,5910,415,13200,8880,58800,13900,23800,329,499,4670,7210],"n":22353,"w":27560}},"s18":{"min":{"b":[-0.0448,-0.0466,-0.0219,0,0.0075,-0.0271,0.0318,-0.0106,0.0001,-0.0051,-0.0033,0.0202,-0.0013,-0.0027,-0.0159,0.0514,-0.008,-0.0141,0.0102,0.0042,-0.0015,-0.0074,0.0853,0.0626,-0.1652,0.0232,0.0091,-0.0048,0.0035,-0.005,-0.0088,-0.0122,0,0],"d":[6650000,5000000,635000,0,3950000,504000,1460000,889000,735000,3320000,1080000,9890000,108000,7280000,7070000,206000,3910000,3940000,6050000,585000,609000,600000,4010000,1070000,77400,2690000,1620000,16400000,3630000,5930000,90500,203000,0,0],"n":28196,"w":6652000},"pts":{"b":[-0.011,0.0259,-0.011,0,0.006,-0.0174,-0.0255,0.0045,0.0122,0.0033,0.0175,0.0058,0.0043,-0.0076,-0.0041,-0.0205,-0.0124,-0.0031,-0.0098,-0.0393,0.0268,0.0255,-0.0053,0.0094,-0.0553,-0.0331,0.0078,-0.0053,-0.0205,0.0371,-0.0023,0.0098,0.094,-0.0298],"d":[1560000,1290000,93300,0,896000,111000,297000,187000,177000,784000,260000,2370000,20900,1730000,1590000,38300,1070000,928000,1500000,173000,127000,88000,1020000,232000,5920,1060000,646000,3930000,863000,1620000,14300,49400,300000,387000],"n":28038,"w":1564000},"reb":{"b":[-0.0421,-0.0181,-0.0129,0,0.0407,-0.0066,-0.0188,0.0182,-0.0108,-0.002,0.0113,0.0043,-0.0106,0.0157,-0.0046,0.002,0.0034,0.0188,-0.0187,0.0152,0.0284,-0.0016,-0.0085,-0.0051,-0.0938,0.003,-0.0058,-0.0034,-0.0162,0.0161,0.0125,-0.014,0.0699,-0.0017],"d":[253000,182000,27300,0,148000,17500,54900,30400,27300,126000,40600,180000,4230,278000,253000,8510,154000,160000,215000,20400,18300,22600,160000,41800,1670,111000,68500,614000,144000,221000,3230,6680,50100,64000],"n":27562,"w":253000},"ast":{"b":[-0.0863,-0.006,-0.0042,0,0.0562,0.0366,0.0029,0.0892,-0.0087,0.015,0.0355,0.0125,0.0003,0.0101,-0.0023,0.0059,0.0069,0.0081,-0.001,0.0302,0.025,0.014,-0.0095,0.0202,-0.0561,-0.0096,0.035,-0.0092,-0.0019,0.0161,-0.0488,0.0087,0.0447,-0.0299],"d":[111000,90600,6470,0,62900,7330,21700,10400,12500,55100,18300,74200,1370,120000,109000,2620,71500,64200,105000,10800,9100,6140,72500,15900,412,65900,40400,278000,59600,116000,1250,2910,22100,27300],"n":25681,"w":110700},"fg3m":{"b":[-0.0425,0.0102,-0.0135,0,0.0398,0.0031,0.0029,-0.0575,0.0402,0.012,-0.0083,0.0838,0.0078,-0.0105,0.0064,-0.0413,-0.0067,-0.0278,-0.0303,-0.0112,0.0029,0.0164,-0.0093,0.0063,-0.0494,-0.0248,-0.0095,-0.0022,-0.0204,0.0528,-0.0078,0.0108,0.063,-0.0335],"d":[19400,14800,1590,0,11600,1430,4010,3010,2100,9760,3340,8090,276,21400,20200,584,12000,11300,20400,2000,1480,1540,12500,2980,80,9690,5920,49200,10900,17400,253,607,3790,4890],"n":20817,"w":19440}},"s24":{"min":{"b":[-0.0154,-0.0052,0.0065,0,0.011,-0.0363,0.0253,-0.0004,0.0023,-0.0031,-0.0031,0.0156,0.0174,-0.0014,-0.022,0.0578,-0.0124,-0.0026,0.0152,0.0066,-0.016,-0.0273,0.0052,-0.0006,0,0.0188,0.0166,0.0072,-0.0002,-0.0135,-0.0064,-0.0123,0,0],"d":[4410000,3190000,447000,0,2630000,419000,997000,581000,473000,2200000,718000,7020000,253000,4360000,6140000,163000,2930000,2890000,4340000,551000,564000,730000,2940000,1160000,0,1760000,940000,10400000,2470000,3800000,53100,186000,0,0],"n":25692,"w":4407000},"pts":{"b":[-0.0353,0.0232,-0.0239,0,0.011,-0.0066,-0.0365,0.0014,0.0139,0.0078,0.0056,0.0003,0.0005,-0.0045,-0.0006,-0.0191,-0.0087,-0.0222,-0.0275,-0.0402,0.0135,0.0357,-0.0003,0.0045,0,-0.058,-0.0034,-0.0145,0.0009,0.0585,0.0028,0.0131,0.0836,-0.0358],"d":[982000,790000,71600,0,561000,78100,191000,117000,110000,492000,164000,1640000,61200,986000,1220000,30100,687000,649000,1030000,152000,101000,91600,720000,185000,0,667000,380000,2300000,564000,1000000,7880,39200,201000,210000],"n":25655,"w":982500},"reb":{"b":[-0.0589,-0.0245,-0.0314,0,0.0518,0,-0.0227,0.0364,-0.0055,0.0043,0.0094,0.0087,-0.0118,0.0121,0.0063,0.0008,0.0037,-0.0012,-0.0269,0.0178,0.003,-0.0093,0.0041,0.0004,0,-0.0135,-0.0152,-0.003,-0.0006,0.034,-0.0001,-0.0181,0.0425,-0.0092],"d":[162000,112000,20600,0,94700,12800,35800,19100,17200,80500,26200,131000,11200,159000,201000,6960,112000,111000,151000,18100,14600,23600,105000,43800,0,71400,40100,366000,92200,141000,1850,5360,34200,34800],"n":25519,"w":161800},"ast":{"b":[-0.0972,-0.0148,-0.0241,0,0.0422,0.0236,-0.023,0.0782,-0.0214,0.0191,0.032,0.0248,-0.0151,0.0101,0.022,0.0285,0.0113,0.0023,-0.0139,0.0133,-0.0005,0.0286,-0.0012,-0.0297,0,-0.0275,0.0175,-0.0029,0.0073,0.0288,-0.0402,0.0167,0.0337,-0.0315],"d":[69800,55800,5000,0,39500,5120,14200,6480,7830,34800,11600,52600,4140,67900,83500,2070,48400,44900,73300,9440,7180,6100,50700,13100,0,41400,24100,164000,38500,71600,716,2500,14800,14800],"n":24227,"w":69810},"fg3m":{"b":[-0.0486,0.0116,-0.0341,0,0.0393,0.0321,-0.0006,-0.0458,0.0403,-0.0026,-0.0137,0.0848,0.0136,-0.0242,-0.0039,-0.0191,-0.0037,-0.0332,-0.0598,-0.0012,0.0132,0.0487,-0.0089,-0.0098,0,-0.0443,0.0079,-0.0125,-0.0182,0.0664,0.0073,0.0225,0.0437,-0.0098],"d":[12300,9080,1230,0,7340,1030,2620,1860,1310,6210,2130,6400,772,12400,15800,479,8140,7950,14200,1720,1190,1570,8440,3040,0,6150,3510,29300,7140,11000,140,471,2560,2700],"n":19496,"w":12330}},"s30":{"min":{"b":[-0.0578,0.0082,0.0234,0,0.0175,-0.0341,0.0182,0.0034,0.0148,-0.0081,-0.0012,0.0242,-0.0383,-0.0024,-0.0409,-0.0864,-0.0065,-0.0089,0.0104,-0.0099,-0.0313,-0.0103,0.0421,0.0169,0,0.0181,0.0206,-0.0122,0.0008,-0.0472,-0.0077,-0.0164,0,0],"d":[2480000,1590000,344000,0,1480000,295000,580000,436000,245000,1240000,402000,3950000,58100,2140000,4270000,152000,1540000,1710000,2500000,357000,388000,759000,1510000,1450000,0,940000,461000,6360000,1340000,2100000,27700,138000,0,0],"n":25689,"w":2478000},"pts":{"b":[-0.0224,0.0432,-0.024,0,0.0127,0.0002,-0.0181,0.0126,0.0162,0.0073,0.0036,-0.0016,-0.0411,-0.0041,0.017,-0.0063,-0.0168,-0.0024,-0.0052,-0.0597,-0.0124,0.0526,-0.0187,-0.0206,0,-0.0478,0.0132,0.0048,-0.0151,0.0832,0.0054,0.0153,0.0846,-0.0558],"d":[492000,349000,61100,0,280000,43900,99800,78100,51200,246000,81200,796000,9150,428000,711000,22900,300000,337000,518000,78800,53600,96200,325000,248000,0,300000,168000,1290000,264000,492000,3610,22600,131000,92100],"n":25632,"w":491800},"reb":{"b":[-0.0389,-0.0076,-0.0489,0,0.0476,0.016,-0.0204,0.0152,-0.0106,-0.0071,0.0065,0.0157,-0.0207,0.0142,-0.0091,0.0272,0.0045,0.0047,-0.0225,0.0138,0.0008,0.0126,0.0152,-0.0089,0,-0.0063,-0.0242,0.0076,-0.0044,0.0519,-0.0212,-0.0188,0.0316,-0.0156],"d":[86200,49200,17900,0,50500,7950,19600,13500,7940,43100,13900,71000,1740,73500,128000,5410,54200,60500,80500,9330,7740,24300,51200,60200,0,35300,18700,223000,46900,77800,918,3090,23700,16400],"n":25441,"w":86240},"ast":{"b":[-0.1017,-0.0211,-0.047,0,0.0467,0.0303,-0.0154,0.0679,-0.0263,0.0239,0.0386,0.0301,-0.0322,0.0156,0.0434,0.0226,-0.0061,0.0066,0.0051,0.0153,-0.009,0.0291,-0.0226,-0.0329,0,-0.0237,0.0211,0.0064,0.0052,0.0317,-0.0439,0.0218,0.0106,-0.0642],"d":[35700,25000,4370,0,20000,2900,7560,4540,3700,17700,5880,28000,591,30200,48800,1620,21700,24100,37700,4850,3800,6570,23500,18700,0,18900,10900,93200,19000,35100,358,1480,9850,6650],"n":23581,"w":35650},"fg3m":{"b":[-0.0507,0.0318,-0.0377,0,0.0292,0.0116,0.0196,-0.0102,0.0236,-0.0138,-0.0246,0.0831,-0.0455,-0.0229,0.0216,-0.0674,0.002,-0.0163,-0.0445,-0.0205,-0.047,0.0549,-0.0022,-0.0186,0,-0.0197,0.0044,0.0153,-0.0406,0.0698,0.0361,0.0399,0.0294,-0.0231],"d":[6510,4060,1050,0,3860,620,1430,1250,610,3270,1110,3530,109,5720,9860,376,3800,4350,7490,916,626,1670,4020,4360,0,2840,1540,17700,3590,5730,68.9,269,1750,1250],"n":17659,"w":6512}},"s36":{"min":{"b":[-0.0377,0.0478,0.0185,0,0.0197,-0.0545,0.0276,0.0029,0.0199,-0.0081,0.0012,0.0264,-0.0057,-0.0034,-0.0583,-0.037,-0.0103,-0.0022,0.0151,-0.045,-0.0497,0.0092,0.0049,0.032,0,0.0131,0.036,0.0079,-0.0129,-0.0168,-0.0147,-0.0242,0,0],"d":[1150000,760000,163000,0,688000,196000,269000,251000,116000,577000,187000,1900000,56200,908000,2340000,67300,745000,851000,1210000,178000,220000,513000,686000,348000,0,425000,201000,3000000,666000,1020000,11200,74400,0,0],"n":25786,"w":1155000},"pts":{"b":[-0.035,0.0364,-0.0129,0,0.0186,-0.0282,-0.0271,-0.0265,0.0109,0.0066,0.0111,0.0018,-0.0475,-0.0001,0.0244,-0.0251,-0.0162,-0.0135,-0.0224,-0.0665,0.0014,0.0595,-0.0083,-0.0256,0,-0.0567,-0.0094,-0.0063,0.0138,0.0649,-0.006,0.0152,0.079,-0.0536],"d":[217000,168000,21300,0,122000,21500,43200,38300,24500,109000,35100,367000,11400,170000,323000,9130,129000,160000,237000,30300,25300,52700,124000,65900,0,135000,79700,556000,126000,224000,1360,9410,81700,35300],"n":25460,"w":217400},"reb":{"b":[-0.0293,-0.0303,-0.0338,0,0.0461,-0.0067,-0.0256,-0.015,-0.0146,-0.0064,-0.0032,0.0047,-0.0101,0.0107,-0.0121,0.0412,0.0147,0.0043,-0.0348,0.026,0.0263,0.0104,0.0055,-0.0143,0,-0.0193,-0.0191,-0.0012,0.0111,0.0497,-0.0126,-0.0255,0.0136,-0.0137],"d":[38500,25700,5860,0,22200,4380,8500,6960,4070,19200,6070,34400,2340,29500,61300,2080,26200,29400,38900,4060,4030,13200,20500,14900,0,16300,8950,95400,22400,35000,345,1420,14900,6460],"n":24475,"w":38530},"ast":{"b":[-0.11,-0.0377,-0.0288,0,0.0514,-0.0075,-0.0178,0.0466,-0.009,0.0134,0.0295,0.0281,-0.0424,-0.0027,0.0553,0.0181,0.004,0.0182,0.0007,0.0238,0.0018,0.0273,-0.005,-0.0321,0,-0.0287,0.0183,0.0095,-0.0196,0.0247,-0.0337,0.0114,-0.018,-0.0633],"d":[16300,12600,1480,0,9050,1430,3400,2170,1850,8140,2640,13900,831,12700,22700,648,9800,11700,17900,1840,1850,3670,9270,4820,0,8740,5250,41700,9240,16500,131,610,6390,2640],"n":19972,"w":16320},"fg3m":{"b":[-0.0813,0.0162,-0.0181,0,0.015,-0.0051,-0.0077,-0.0195,0.0241,-0.0199,-0.0082,0.0836,-0.0591,-0.0167,0.0302,-0.056,-0.0315,-0.0431,-0.0421,0.0055,-0.0385,0.0534,0.0142,-0.0514,0,-0.0148,-0.016,0.0193,-0.0089,0.0881,0.0041,0.0177,0.008,-0.0096],"d":[2600,1860,319,0,1510,281,550,576,276,1300,438,1660,124,2030,3970,136,1510,1860,3200,289,231,840,1550,807,0,1180,712,6850,1490,2400,23,95.6,984,424],"n":11792,"w":2597}},"s42":{"min":{"b":[-0.1855,0.0821,0.0614,0,0.0265,-0.0183,0.0216,0.003,0.0024,-0.0232,0.0169,0.025,-0.0513,0.004,-0.1116,-0.072,0.0173,-0.0008,-0.0023,-0.0922,-0.0971,0.1205,0.3395,-0.1183,0,-0.0064,0.0813,0.0017,0.0084,-0.03,-0.0072,-0.0148,0,0],"d":[320000,225000,43300,0,189000,61500,70200,67700,33200,160000,51400,530000,5620,224000,681000,18900,195000,248000,340000,52600,70800,153000,221000,71500,0,125000,57700,839000,187000,320000,2430,22400,0,0],"n":25802,"w":320100},"pts":{"b":[-0.1062,0.0799,0.1139,0,0.0262,0.0399,-0.034,0.0305,0.0226,0.0293,0.0287,0.0308,-0.0273,0.0139,-0.0214,-0.011,-0.0155,0.0137,-0.0269,-0.1052,-0.0252,0.0973,0.0183,-0.0495,0,-0.0208,0.1323,-0.034,-0.0051,0.0956,-0.0165,-0.0049,0.0482,-0.0673],"d":[64400,49500,6780,0,36200,7840,12600,11400,6850,32300,10500,106000,871,45000,103000,2970,35000,48700,67800,6540,6220,24900,55900,3990,0,39200,22900,167000,38200,72000,322,2040,25500,9780],"n":22390,"w":64360},"reb":{"b":[-0.0688,0.0438,0.0392,0,0.0412,0.0735,0.0141,0.0215,-0.0323,-0.0066,0.0318,0.0157,-0.0262,0.0163,-0.0496,-0.0035,0.005,0.0231,-0.0067,-0.0007,-0.0331,0.0819,0.0507,-0.0209,0,-0.004,0.0212,-0.0003,-0.0018,0.0604,0.003,-0.0025,-0.0342,0.0024],"d":[11800,7870,1820,0,6870,1650,2560,2170,1210,5860,1870,10900,214,8100,20700,695,7760,9270,11400,858,992,5990,10200,750,0,4850,2640,29600,6900,11600,88.7,315,4830,1860],"n":17506,"w":11750},"ast":{"b":[-0.1294,-0.0115,0.018,0,0.0641,0.0163,-0.0129,0.0684,-0.0019,0.0218,0.051,0.037,-0.0471,0,0.0066,-0.0199,0.0223,0.0227,0.0121,-0.0042,-0.0106,0.0708,-0.0268,-0.0113,0,0.0156,0.0979,0.0069,0.0109,0.0154,-0.0191,-0.0265,-0.0677,-0.0588],"d":[4800,3760,425,0,2670,471,971,647,528,2430,773,4220,63.9,3340,6860,195,2680,3550,5190,370,413,1530,4270,191,0,2650,1560,12500,2820,5310,32,129,2000,711],"n":11851,"w":4805},"fg3m":{"b":[-0.0777,0.0133,0.0224,0,-0.0077,0.041,0.0394,0.0541,0.0186,-0.0051,0.0137,0.1026,-0.0037,0.0116,-0.0275,0.0339,-0.0038,0.0017,-0.0493,-0.0087,-0.0385,0.0559,0.0059,-0.0262,0,0.0491,0.0945,0.056,0.0004,0.0795,-0.002,0.0135,0.0149,-0.0263],"d":[570,419,70.9,0,341,73.2,112,138,56.4,280,98,374,6.86,403,927,31.5,288,415,689,33.9,25.8,298,541,7.35,0,284,169,1540,347,617,3.33,9.53,226,87.5],"n":4276,"w":570}}};
+const PAT_PRIOR = {"pre":{"min":{"b":[-0.09697,-0.02393,-0.01434,-0.00213,-0.02492,-0.0183,0.0076,0.00972,0.0051,0.00098,0.0043,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.01405,0,0,0,-0.02911,0,0,0,0,0.22695,-0.09642,-0.14482,0.10887,0.02968,0.02079,0.00235,-0.02943,-0.00937,-0.02143,-0.05567,0.0042,-0.01913,-0.00111,0.01081,0.07809,0.13104,-0.0111,0,0,0,0.64688,0.20747,0,0,0,0,0],"d":[43800000,35900000,2830000,7770000,23700000,3130000,13000000,8860000,7320000,21800000,6580000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,17800000,0,0,0,45100000,0,0,0,0,641000,1280000,373000,165000,11700000,10800000,2320000,2280000,52000000,13200000,3090000,1030000,19000000,18300000,4460000,40300000,20700000,10300000,0,0,0,929000,1330000,0,0,0,0,0],"n":72065,"w":43800000},"pts":{"b":[0.00377,-0.00094,0.0044,-0.00644,-0.00645,-0.00351,-0.01828,-0.00998,0.00672,-0.00143,0.00166,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.02798,0,0,0,0.02613,0,0,0.14521,0,-0.01952,0.03588,-0.08471,-0.05461,0.00641,-0.00616,0.00472,-0.00635,0,0,0,0,-0.00341,0.00153,0.00391,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[11700000,9950000,599000,2080000,6040000,828000,2950000,2240000,1970000,5880000,1770000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7310000,0,0,0,13800000,0,0,1070000,0,265000,152000,86700,69500,2940000,2520000,622000,636000,0,0,0,0,5790000,4290000,991000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":72043,"w":11700000},"reb":{"b":[-0.03502,-0.01964,0.01966,-0.00958,0.03069,0.00273,-0.00319,0.01578,-0.00478,-0.0038,-0.00681,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.00044,0,0,0,0.01585,0,0,0.09581,0,-0.01782,-0.028,-0.02583,-0.02281,-0.00111,-0.0195,0.01615,-0.00688,0,0,0,0,0.02257,-0.00656,-0.0189,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1850000,1390000,178000,327000,988000,130000,519000,353000,286000,922000,278000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,780000,0,0,0,1860000,0,0,169000,0,71000,34000,11300,16000,378000,441000,97100,101000,0,0,0,0,762000,632000,255000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":71654,"w":1850000},"ast":{"b":[-0.04575,-0.00095,-0.00644,-0.02246,0.05912,-0.00687,0.00108,0.0542,-0.01468,0.01482,0.01994,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00982,0,0,0,0.01764,0,0,0.07848,0,0.03525,-0.03561,0.03447,-0.01443,0.00126,-0.01608,-0.00853,-0.01163,0,0,0,0,0.0283,-0.01657,-0.01325,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[741000,628000,37500,130000,350000,51500,182000,109000,123000,368000,113000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,427000,0,0,0,877000,0,0,71200,0,14100,10800,4540,3390,188000,154000,40600,38300,0,0,0,0,353000,255000,59600,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":70042,"w":741000},"fg3m":{"b":[-0.00884,-0.00892,-0.01991,-0.01231,-0.01454,0.00409,-0.00679,-0.05624,0.0111,0.01516,0.01228,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.02522,0,0,0,0.02356,0,0,0.13585,0,-0.02154,0.03552,-0.07763,-0.1,0.00228,-0.00287,-0.00052,-0.0477,0,0,0,0,-0.0058,0.00991,0.00833,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[149000,117000,11000,26800,78000,10600,41600,35800,24300,74400,22500,0,0,0,0,0,0,0,0,0,0,0,0,0,0,65900,0,0,0,153000,0,0,13600,0,4670,2720,1130,1270,46800,34800,8140,8310,0,0,0,0,66300,54800,16700,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":60612,"w":149000}},"s6":{"min":{"b":[-0.22877,-0.08653,0.00137,0,-0.01915,-0.03082,0.01429,0.00958,0.00588,-0.00527,-0.00124,0.01573,0.00694,-0.00079,-0.00739,-0.01957,0.00188,-0.01345,-0.00469,0.01859,0.0167,-0.00186,-0.12486,-0.02089,-0.00445,0.02085,0.01627,0.00092,0.00146,0.0459,0,0.00151,0,0,0.10612,-0.0066,-0.14133,0.02778,0.01659,0.02746,0.00234,-0.04961,0.00045,0.03325,-0.06042,0.0474,-0.01228,-0.0071,0.00518,0.31497,-0.02137,-0.05549,0.19392,0,0.04841,0,0,0,0,0,0,0],"d":[33000000,26300000,2460000,0,18000000,1600000,9830000,7160000,5330000,16400000,4960000,32300000,565000,66100000,12600000,1580000,5270000,12300000,17000000,365000,365000,225000,22500000,139000,6330000,13200000,10900000,51500000,12000000,33500000,0,167000,0,0,562000,866000,117000,104000,8950000,8160000,1730000,1760000,38900000,11000000,2480000,923000,13700000,13500000,3700000,30900000,15900000,7930000,15900000,0,119000,0,0,0,0,0,0,0],"n":72148,"w":33000000},"pts":{"b":[-0.02452,-0.00662,0.00952,0,-0.00921,-0.04783,-0.01901,-0.00415,0.00885,-0.00013,0.00373,0.00713,0.03085,-0.00022,0.00407,-0.01621,0.00554,-0.01084,-0.01176,-0.03216,0.04142,0.00221,-0.00754,-0.00103,-0.01769,-0.02545,0.00728,-0.02858,-0.00522,0.03544,0,-0.02541,0.14306,-0.04465,-0.02348,0.01272,-0.07768,-0.08786,0.01139,-0.0058,0.00669,-0.02507,0,0,0,0,-0.00158,0.00767,0.01453,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[8550000,7030000,545000,0,4370000,411000,2200000,1740000,1390000,4290000,1290000,9240000,148000,17000000,3250000,320000,1990000,3400000,5170000,117000,80700,50800,6160000,36800,1240000,5210000,4310000,13200000,3350000,9960000,0,46800,925000,2400000,162000,147000,22300,49100,2140000,1860000,455000,485000,0,0,0,0,4100000,3000000,819000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":72113,"w":8550000},"reb":{"b":[-0.06453,-0.02379,0.02463,0,0.03614,0.00657,-0.00338,0.01329,-0.0068,-0.00182,-0.0031,-0.00249,0.01572,0.00945,0.00383,0.00794,0.01154,-0.01337,-0.01298,0.00174,0.01352,-0.01233,-0.01277,0.0013,-0.00693,0.00678,-0.00282,-0.02708,0.01631,0.02514,0,-0.01677,0.08421,-0.00863,-0.02145,-0.00411,-0.05218,-0.02653,0.00687,-0.01876,0.02354,-0.0205,0,0,0,0,0.02081,-0.01236,-0.01708,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1360000,969000,160000,0,726000,63700,390000,278000,198000,676000,204000,547000,27500,2710000,512000,63900,224000,520000,622000,14600,11600,12100,914000,6120,272000,563000,466000,2090000,509000,1370000,0,6400,149000,394000,44900,32200,3740,10700,280000,329000,71100,79000,0,0,0,0,521000,445000,209000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":71683,"w":1360000},"ast":{"b":[-0.07213,-0.00319,0.00592,0,0.05875,0.0002,0.00301,0.0543,-0.02138,0.01255,0.02092,-0.01169,0.01316,0.01116,-0.00055,0.02612,0.00803,0.0013,0.00132,0.01119,-0.00214,0.00812,-0.02277,-0.02025,-0.01954,0.00929,0.00206,-0.02345,0.00353,0.0167,0,0.01214,0.06026,-0.02219,0.00504,-0.00268,0.04313,-0.065,0.00387,-0.01783,-0.00689,-0.01086,0,0,0,0,0.03273,-0.01716,-0.01655,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[541000,443000,33900,0,255000,24400,136000,84900,87500,269000,82300,212000,8830,1070000,202000,20100,104000,216000,311000,6600,5300,3210,389000,2160,79000,303000,252000,841000,212000,632000,0,2580,61300,150000,8570,10400,1150,2380,138000,114000,29600,29000,0,0,0,0,245000,180000,49900,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":70083,"w":541000},"fg3m":{"b":[-0.07202,-0.02396,-0.01407,0,-0.01085,-0.02534,-0.00766,-0.03994,0.01478,0.02105,0.01457,0.03395,0.00753,-0.00018,0.00608,-0.01314,0.00214,-0.00411,0.00064,-0.02851,0.02984,0.00058,0.00768,0.0012,0.01279,-0.02276,0.00475,-0.02865,-0.01859,0.03156,0,-0.00612,0.13623,-0.05149,-0.03684,0.03807,-0.12157,-0.14118,0.00169,-0.00126,-0.00364,-0.06014,0,0,0,0,-0.00103,0.02099,0.01957,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[112000,84600,9990,0,58000,5560,31900,27900,17700,56000,16900,19700,1690,223000,43200,5640,19800,38400,62900,1440,1010,939,75400,406,23700,47700,39400,177000,37600,113000,0,615,12100,32000,2770,2620,387,874,34600,26500,6130,6580,0,0,0,0,48000,39000,14000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":60464,"w":112000}},"s12":{"min":{"b":[-0.27048,-0.06519,-0.03084,0,-0.01476,-0.03238,0.01269,0.0061,0.01,-0.00649,-0.00217,0.01252,-0.00857,-0.00205,-0.01513,-0.02311,-0.00781,0.0036,0.00774,0.01289,0.0309,-0.01855,-0.10409,0.00607,-0.03802,0.02335,0.00576,0.00276,-0.01757,0.02291,-0.00393,-0.00264,0,0,0.1438,-0.08128,-0.13525,-0.00831,0.01467,0.02577,0.00371,-0.04501,0.00056,0.0286,-0.03072,0.03213,-0.01238,-0.00839,0.00415,0.24025,0.0999,-0.02663,0.13969,0.06163,0.12082,0,0,0,0,0,0,0],"d":[24400000,19600000,1810000,0,13200000,1710000,7130000,4990000,4000000,12100000,3660000,32700000,1390000,38800000,19200000,907000,10100000,14500000,19000000,1350000,1380000,894000,13000000,4760000,550000,9720000,6360000,52100000,13000000,25100000,321000,688000,0,0,442000,639000,34400,45500,6950000,5940000,1280000,1350000,27600000,7930000,2070000,580000,10100000,9970000,2690000,22800000,11900000,5950000,11700000,31100000,463000,0,0,0,0,0,0,0],"n":71948,"w":24400000},"pts":{"b":[-0.04998,0.00712,0.00205,0,-0.00915,-0.06237,-0.01279,-0.00397,0.01549,-0.00033,0.00443,0.00986,0.02777,-0.00169,0.01232,-0.05704,-0.00686,0.00236,-0.00715,-0.06947,0.05493,0.01603,0.00731,0.01317,0.0043,-0.02487,-0.0032,-0.01873,-0.01707,0.02707,-0.0065,-0.01728,0.15199,-0.03862,-0.02696,0.00316,-0.06146,-0.05638,0.01167,-0.00242,0.00961,-0.0152,0,0,0,0,-0.00474,0.00774,0.01912,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[6400000,5360000,383000,0,3240000,438000,1610000,1210000,1070000,3210000,965000,8990000,372000,9970000,4970000,209000,3450000,3890000,5510000,448000,292000,179000,3430000,1200000,95500,3980000,2610000,13600000,3470000,7550000,58200,187000,842000,1840000,154000,85100,3990,18300,1690000,1370000,342000,365000,0,0,0,0,3150000,2250000,566000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":71883,"w":6400000},"reb":{"b":[-0.08562,-0.01587,0.00985,0,0.03162,0.00053,-0.0045,0.0154,-0.00026,0.00065,-0.00281,0.00081,0.01604,0.01422,-0.00497,-0.03154,0.00361,0.00497,-0.00664,-0.00082,0.00699,0.00338,0.01061,0.01762,-0.00865,0.00104,-0.00453,-0.01709,0.00108,0.01721,0.00867,-0.02149,0.07506,-0.00132,-0.01445,-0.02119,-0.07412,-0.01175,0.00922,-0.01339,0.0176,-0.00572,0,0,0,0,0.01973,-0.01024,-0.01195,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1030000,755000,113000,0,547000,68600,289000,197000,155000,511000,154000,618000,67600,1620000,787000,40700,420000,616000,713000,53700,45200,45100,510000,235000,23400,430000,285000,2140000,558000,1050000,11600,25400,139000,307000,43000,19000,776,4050,223000,245000,54300,60200,0,0,0,0,406000,344000,147000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":71366,"w":1030000},"ast":{"b":[-0.10201,-0.00197,-0.00568,0,0.05337,0.00252,0.0107,0.05161,-0.02422,0.00999,0.02263,0.00474,0.01223,0.01449,0.0164,-0.0145,0.00625,-0.00096,-0.00314,-0.01204,-0.02717,-0.00204,-0.00032,0.0036,-0.01298,0.006,-0.01029,-0.0175,0.00578,0.01289,-0.03283,0.01005,0.04567,-0.02472,0.02956,0.00435,0.04785,-0.03451,0.01078,-0.0181,-0.0045,0.00348,0,0,0,0,0.02934,-0.01372,-0.01966,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[409000,342000,23800,0,192000,25800,101000,59800,67800,203000,62200,227000,22200,630000,306000,12400,203000,248000,347000,24600,19300,11200,215000,78400,6030,233000,155000,880000,221000,485000,4620,10800,55900,115000,7800,6060,205,941,110000,85300,22500,22100,0,0,0,0,189000,138000,34300,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":69317,"w":409000},"fg3m":{"b":[-0.07184,-0.00563,-0.01615,0,-0.01442,-0.02518,-0.0013,-0.04252,0.01823,0.02161,0.01612,0.06318,0.0167,-0.00406,0.01097,-0.06355,-0.00861,0.00094,-0.00819,-0.05325,0.03231,0.00188,-0.01826,-0.02591,0.00618,-0.01257,-0.01947,-0.02435,-0.02999,0.02669,-0.00438,0.0117,0.13123,-0.04125,-0.01621,0.02341,-0.07568,-0.10976,0.0006,-0.00067,-0.00595,-0.0576,0,0,0,0,-0.00858,0.02124,0.03325,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[82100,63500,6970,0,42200,5880,22900,19400,13300,41100,12400,27100,4500,127000,65200,3390,36500,48600,72900,5290,3670,3310,44900,15200,1800,35900,23500,178000,43500,84800,996,2350,10800,24100,2690,1490,77.1,306,26800,19200,4510,4870,0,0,0,0,36400,28800,9610,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":58870,"w":82100}},"s18":{"min":{"b":[-0.1861,-0.06725,-0.046,0,0.00849,-0.01995,0.01724,0.00666,-0.00517,-0.01341,-0.00239,0.02268,-0.01302,-0.00057,-0.0326,-0.02852,-0.00756,-0.0113,0.00492,0.01147,0.01941,-0.01372,-0.06617,0.03657,-0.00408,0.02886,0.00514,-0.00368,-0.00012,0.01587,-0.00446,0.00259,0,0,0.09566,-0.08266,0,0,0.00227,0.02188,-0.00029,-0.02934,0.00351,0.02881,-0.01866,0.00668,-0.01909,-0.01772,-0.00117,0.02774,0.08213,0.02243,0.18805,0.13653,0.17059,0,0,-0.00313,0,0,0,0],"d":[6440000,4860000,579000,0,1410000,500000,1450000,1190000,718000,3210000,1040000,9610000,104000,7330000,6940000,198000,3790000,3830000,5840000,585000,604000,605000,3850000,1090000,34100,2480000,1480000,15800000,3560000,5620000,88100,197000,0,0,130000,175000,0,0,2190000,1250000,317000,386000,5810000,3010000,863000,20500,2330000,2200000,943000,5850000,2920000,1600000,2920000,6670000,178000,0,0,1570000,0,0,0,0],"n":26126,"w":6440000},"pts":{"b":[-0.0369,0.00966,-0.00617,0,0.00291,-0.02228,-0.01931,-0.00334,0.00257,0.00691,0.01384,0.0157,-0.0024,-0.00775,-0.00498,-0.04458,-0.01381,-0.01003,-0.00914,-0.06251,0.05812,0.0173,0.01865,0.0277,0.00955,-0.02321,0.00535,-0.01371,-0.02114,0.03137,-0.00272,0.01288,0.07961,-0.05302,0.00189,-0.02419,0,0,0.00955,0.00089,0.00738,-0.01407,0,0,0,0,-0.00467,0.00042,0.00449,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1620000,1330000,100000,0,343000,118000,315000,272000,185000,811000,265000,2470000,22600,1830000,1660000,40000,1120000,965000,1550000,199000,117000,98000,1040000,238000,3710,996000,607000,4030000,909000,1660000,14900,51800,200000,397000,36200,23200,0,0,509000,278000,81000,99700,0,0,0,0,743000,493000,170000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":26114,"w":1620000},"reb":{"b":[-0.06059,-0.02834,-0.01807,0,0.0415,-0.00771,-0.00352,0.0247,-0.01115,-0.00033,0.00549,0.00747,-0.01242,0.01293,-0.00463,-0.03228,-0.00235,0.01488,-0.00383,0.00496,0.03608,-0.00827,0.00063,0.00183,-0.00419,0.01422,-0.00954,-0.01473,-0.01385,0.0091,0.00986,-0.00964,0.05293,-0.00258,0.00835,-0.00749,0,0,0.00717,-0.01429,0.01828,0.00309,0,0,0,0,0.01796,-0.01187,-0.01402,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[254000,181000,29100,0,54800,17900,56400,42600,27100,126000,40400,182000,4400,290000,255000,8570,154000,161000,213000,20800,18200,24100,159000,41400,1030,104000,64400,608000,146000,220000,3220,6650,32200,64900,10400,4720,0,0,66300,48900,12200,15500,0,0,0,0,89200,72000,41300,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":26039,"w":254000},"ast":{"b":[-0.12444,-0.01634,-0.01177,0,0.05258,0.03827,0.01487,0.07168,-0.02082,0.0189,0.02492,0.00993,-0.00484,0.00832,0.00307,-0.01857,0.00569,0.00657,0.00521,0.02483,0.02868,0.01308,0.01295,0.03608,-0.00086,-0.00857,0.03398,-0.01251,-0.00466,0.0203,-0.04072,0.01357,0.04404,-0.03669,0.0459,0.00023,0,0,0.02404,-0.02065,0.00196,-0.0002,0,0,0,0,0.00718,-0.01725,0.00191,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[109000,88300,6810,0,22700,7170,22000,14700,12300,53600,17800,73300,1410,122000,106000,2610,70600,62500,103000,10500,8780,6290,69800,15300,271,59400,36800,270000,59000,112000,1220,2750,13800,26900,2470,1710,0,0,35500,19200,5510,6270,0,0,0,0,45000,34200,12300,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25112,"w":109000},"fg3m":{"b":[-0.07883,0.00514,-0.00916,0,0.02279,0.00152,-0.00135,-0.07292,0.01888,0.02432,0.00757,0.09108,0.009,-0.01113,0.00286,-0.06361,-0.00799,-0.03033,-0.0285,-0.02624,0.01565,0.0155,0.00247,0.01793,-0.00269,-0.02925,-0.0083,-0.0097,-0.02055,0.04852,-0.01028,0.0087,0.07121,-0.05045,0.01608,-0.03835,0,0,0.03178,0.00486,-0.05288,-0.04218,0,0,0,0,-0.02322,0.01857,0.02738,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[19900,15200,1720,0,4390,1530,4190,4200,2160,9990,3390,8340,289,22400,21200,616,12400,11700,20800,2310,1400,1690,12600,3060,55.8,9240,5600,50000,11300,17900,257,651,2500,5000,555,374,0,0,7330,3620,1070,1290,0,0,0,0,8050,5730,2710,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":20900,"w":19900}},"s24":{"min":{"b":[-0.1761,-0.06312,-0.04523,0,0.0161,-0.01707,0.01664,0.00994,-0.00199,-0.01195,-0.00039,0.01647,-0.01098,0.00067,-0.03634,-0.00844,-0.01206,-0.00251,0.00924,0.01447,0.00807,-0.01871,-0.05735,0.00096,0,0.02255,0.00615,0.02086,0.00023,0.01385,-0.00211,0.00667,0,0,0.07768,-0.05733,0,0,0.00709,0.01797,-0.00153,-0.02571,0.0084,0.03431,-0.02293,0.00099,-0.02288,-0.01785,0.00565,-0.05139,0.01618,0.03239,0.06679,0.32272,0.23391,0,0,-0.0267,0,0,0,0],"d":[4260000,3080000,431000,0,937000,416000,985000,781000,460000,2130000,689000,6770000,260000,4240000,6050000,159000,2810000,2780000,4150000,550000,560000,740000,2790000,1260000,0,1620000,854000,9980000,2400000,3660000,52000,188000,0,0,91600,117000,0,0,1230000,837000,211000,261000,4270000,2450000,661000,2790,1480000,1380000,694000,3650000,1860000,928000,1870000,4310000,131000,0,0,1530000,0,0,0,0],"n":25391,"w":4260000},"pts":{"b":[-0.0514,0.01913,-0.00486,0,0.00686,-0.01127,-0.02113,-0.00755,0.01105,0.00418,0.00091,0.01821,0.00985,-0.00687,-0.00818,-0.04686,-0.01295,-0.02588,-0.01808,-0.0617,0.05373,0.02339,0.00321,0.01504,0,-0.03654,0.00669,-0.02059,-0.00595,0.03629,-0.0008,0.01605,0.06882,-0.05475,0.00565,-0.04728,0,0,0.01604,0.00165,0.0061,-0.01358,0,0,0,0,-0.00381,-0.00826,0.01226,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1020000,823000,69900,0,214000,85500,201000,171000,115000,513000,168000,1670000,61400,1010000,1310000,30800,711000,668000,1030000,179000,95700,102000,747000,189000,0,618000,344000,2360000,590000,1030000,8100,43400,141000,221000,24000,15800,0,0,274000,177000,51400,64200,0,0,0,0,457000,299000,115000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25386,"w":1020000},"reb":{"b":[-0.08481,-0.02551,-0.01327,0,0.05245,-0.00423,0.00417,0.03988,0.00102,0.00113,0.00198,0.00835,0.00321,0.01224,0.00011,-0.0255,-0.00936,0.00292,0.0013,0.00873,0.01462,-0.01199,0.00584,0.01209,0,0.01053,-0.00884,-0.00953,0.00221,0.01899,-0.00567,-0.00911,0.03795,-0.00454,0.02667,-0.03108,0,0,0.01116,-0.01668,0.01183,0.00275,0,0,0,0,0.009,-0.01236,-0.00466,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[163000,113000,20200,0,35100,13300,36800,26900,17100,80800,26100,133000,11000,161000,207000,6900,112000,112000,147000,18900,14900,25200,105000,43600,0,66300,36700,364000,93100,140000,1820,5660,23200,35700,6770,3240,0,0,36700,31600,7970,10000,0,0,0,0,56000,43900,28300,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25328,"w":163000},"ast":{"b":[-0.12275,-0.00919,-0.01411,0,0.03221,0.02491,0.00701,0.05277,-0.02788,0.01864,0.0232,0.01902,-0.00002,0.01157,0.01931,0.00878,0.00733,0.00459,0.00497,0.01152,0.01483,0.02723,0.00182,-0.01656,0,-0.01348,0.02619,0.00035,0.00758,0.01558,-0.0341,0.02923,0.03982,-0.0314,0.03906,0.02761,0,0,0.0344,-0.0278,-0.005,0.01972,0,0,0,0,0.00415,-0.02617,0.0068,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[69000,55200,4770,0,14300,5100,14200,9320,7720,34200,11400,52500,3870,67500,83000,2020,47800,43900,69500,9260,7200,6240,50100,12800,0,37200,21400,161000,38400,70500,690,2410,9820,14700,1670,1150,0,0,19300,12300,3560,4040,0,0,0,0,28000,21000,8400,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":24282,"w":69000},"fg3m":{"b":[-0.08605,0.01854,-0.01407,0,0.02307,0.02839,-0.00076,-0.04853,0.02991,0.01324,0.00636,0.10731,0.01952,-0.02241,-0.01831,-0.05846,0.00714,-0.03216,-0.05885,-0.01312,0.02712,0.03404,-0.01187,0.01136,0,-0.03652,0.01426,-0.02137,-0.02184,0.04818,0.0098,0.01023,0.04568,-0.02446,0.01891,-0.09448,0,0,0.02542,0.01351,-0.03792,-0.03114,0,0,0,0,-0.02503,0.01455,0.05188,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[12700,9430,1190,0,2770,1130,2710,2640,1340,6390,2180,6450,770,12500,17000,486,8460,8120,14100,2080,1160,1750,8720,3060,0,5800,3220,29800,7380,11300,140,527,1780,2840,363,255,0,0,4020,2320,686,836,0,0,0,0,4980,3460,1830,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":19638,"w":12700}},"s30":{"min":{"b":[-0.19419,-0.0478,-0.05603,0,0.01683,-0.00951,0.01575,0.01384,0.00067,-0.01311,0.0088,0.01997,-0.05404,0.00104,-0.0548,-0.04285,-0.00098,-0.00529,0.00568,0.01099,0.00493,-0.02514,-0.09573,-0.02938,0,0.02929,0.0091,0.01228,0.00408,0.07417,-0.00333,0.00928,0,0,-0.05338,0.06775,0,0,0.01121,0.02087,-0.00078,-0.02117,-0.00399,0.01792,-0.04875,0.00119,-0.02918,-0.01272,0.01145,0.06779,-0.30098,0.04882,0.17311,0.34045,0.13666,0,0,-0.09135,-0.09789,0.02701,0.05148,-0.05127],"d":[2370000,1520000,331000,0,523000,294000,573000,597000,238000,1190000,383000,3760000,55300,2190000,4210000,148000,1450000,1610000,2360000,348000,380000,779000,1400000,1560000,0,857000,413000,6110000,1280000,1990000,27000,139000,0,0,64600,57100,0,0,709000,484000,117000,155000,2080000,1650000,447000,2670,714000,685000,485000,2050000,1040000,529000,1050000,2420000,129000,0,0,1230000,11400,13400,85900,618000],"n":25411,"w":2370000},"pts":{"b":[-0.05727,0.02557,0.00522,0,0.01347,0.002,-0.02033,-0.00164,0.00998,0.00219,0.00324,0.01652,-0.04349,-0.0037,0.01028,-0.04271,-0.0074,-0.01436,-0.01503,-0.07819,0.04457,0.02556,-0.01035,-0.00137,0,-0.04392,0.03092,-0.01539,-0.0188,0.06064,0.00788,0.0221,0.07721,-0.07515,0.01367,-0.08005,0,0,0.02907,0.00849,-0.00142,-0.02706,0,0,0,0,0.00747,-0.00692,0.02273,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[520000,375000,57900,0,110000,49300,108000,121000,55300,260000,85300,840000,10700,473000,783000,24900,321000,353000,544000,94200,51400,113000,346000,244000,0,287000,157000,1330000,280000,519000,3840,24600,99500,98600,7350,13800,0,0,143000,92900,26700,37500,0,0,0,0,197000,135000,80700,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25397,"w":520000},"reb":{"b":[-0.07233,-0.00075,-0.01976,0,0.05146,0.01067,-0.00902,0.02,-0.01199,-0.00835,0.00212,0.01569,-0.02573,0.01197,-0.0116,-0.01635,0.00548,0.0077,-0.01282,0.00405,0.0112,0.00467,-0.00072,0.01005,0,0.01,-0.02323,-0.00886,-0.0046,0.03169,-0.01929,-0.0079,0.02687,-0.01041,0.04533,-0.0613,0,0,0.02683,-0.0052,0.01313,-0.00295,0,0,0,0,0.00917,-0.01698,0.00855,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[86700,50500,16500,0,18700,8450,20300,19500,8130,43100,13800,72600,1890,79600,133000,5680,54800,60800,80000,10000,7960,26200,52600,55900,0,33600,17700,219000,47100,77700,919,3160,17100,17000,1930,2830,0,0,20200,17300,4290,6170,0,0,0,0,23900,19900,19500,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25324,"w":86700},"ast":{"b":[-0.13286,-0.02711,-0.00908,0,0.03712,0.03389,-0.00443,0.05469,-0.03308,0.01641,0.0326,0.02967,-0.04036,0.0159,0.03509,0.02289,-0.0108,0.00814,0.01957,0.01546,0.01705,0.02381,-0.02978,-0.02732,0,-0.01472,0.03312,-0.00517,0.00552,0.01548,-0.04416,0.03889,0.02163,-0.05433,-0.01979,0.08524,0,0,0.02323,-0.00599,-0.0041,0.00476,0,0,0,0,0.01261,-0.02504,0.01635,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[35800,25500,3890,0,7410,2950,7790,6760,3800,17700,5870,28100,677,32700,49700,1660,22000,24000,37000,4800,3850,6960,23800,17600,0,17500,9950,91900,19300,35400,363,1400,7050,6760,528,993,0,0,10700,6620,1840,2350,0,0,0,0,12100,9860,6010,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":23830,"w":35800},"fg3m":{"b":[-0.09365,0.01449,-0.00399,0,0.00924,0.00637,0.00774,-0.01855,0.02067,-0.00835,-0.00106,0.09281,-0.05504,-0.01841,0.01118,-0.09373,0.02195,-0.02058,-0.06095,-0.03161,-0.00553,0.03335,0.00691,0.00836,0,-0.03663,0.02773,-0.00272,-0.04104,0.05059,0.03463,0.04816,0.03229,-0.04126,0.00877,-0.11882,0,0,0.0153,0.02523,-0.02604,-0.03971,0,0,0,0,0.00225,0.01849,0.06836,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[6830,4400,977,0,1490,716,1530,1890,660,3420,1160,3760,126,6240,11000,405,4090,4570,7850,1160,611,1960,4290,4200,0,2790,1470,18200,3800,6000,71.1,319,1330,1330,110,224,0,0,2180,1300,373,525,0,0,0,0,2220,1580,1300,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":18011,"w":6830}},"s36":{"min":{"b":[-0.20908,-0.0307,-0.0837,0,0.02063,-0.04459,0.02011,0.01692,0.00767,-0.02131,0.00435,0.02232,-0.03981,0.00285,-0.06494,-0.03718,-0.0072,0.00241,0.01639,-0.01142,0.02959,-0.04032,-0.12488,0.01317,0,0.02041,0.01471,0.02467,-0.00945,0.09264,-0.00771,0.01349,0,0,0.00278,-0.01637,0,0,0.01825,0.02573,-0.00916,-0.02563,0,0,0,0,0,0,0,0.04598,-0.04522,0.05144,0.22329,0.24209,0.09178,0,0,-0.15192,-0.2345,0.03379,0.08324,-0.17461],"d":[1090000,715000,154000,0,239000,194000,261000,322000,111000,545000,175000,1790000,54100,926000,2280000,64400,699000,794000,1130000,172000,215000,516000,613000,397000,0,382000,176000,2840000,630000,961000,10700,73500,0,0,28600,29000,0,0,318000,223000,54200,76600,0,0,0,0,0,0,0,915000,461000,239000,466000,1070000,104000,0,0,802000,26300,31300,73500,87600],"n":25571,"w":1090000},"pts":{"b":[-0.05733,0.03096,0.00535,0,0.00607,-0.01635,-0.01794,-0.02676,0.00503,0.01186,0.00721,0.02487,-0.03993,-0.00131,0.02371,-0.04795,-0.01276,-0.016,-0.02332,-0.11355,0.03163,0.03425,-0.00886,0.01348,0,-0.04842,0.02136,-0.01462,0.00374,0.04902,-0.00575,0.02162,0.0555,-0.08242,-0.05363,-0.04083,0,0,0.00396,0.00812,0.02341,-0.02001,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[228000,174000,22800,0,46600,25500,45900,58500,25400,114000,37200,377000,11900,190000,362000,9970,135000,165000,242000,38500,24300,64400,132000,64800,0,124000,70200,577000,132000,234000,1390,9910,66100,38100,4500,4350,0,0,63800,40600,11700,16100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25511,"w":228000},"reb":{"b":[-0.07643,-0.01553,-0.02145,0,0.04808,0.01627,-0.01157,-0.00553,0.00282,-0.00294,-0.00417,0.01059,-0.00928,0.00764,-0.01881,0.00271,0.00458,0.01517,-0.00655,0.01902,0.02141,0.01223,0.00259,0.03665,0,0.00603,-0.00974,-0.01163,-0.00046,0.02665,-0.01738,-0.0195,0.00144,-0.00921,0.03821,-0.08611,0,0,0.01296,-0.01285,0.01532,0.0029,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[39600,25700,6330,0,8430,4760,8990,9790,4060,19700,6250,35800,2400,33700,65600,2240,27000,29700,38400,4320,4120,15100,21700,14000,0,15200,8170,97100,23100,35900,352,1450,11800,6840,1240,953,0,0,9160,7840,1980,2700,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":25079,"w":39600},"ast":{"b":[-0.15217,-0.04095,-0.03042,0,0.0344,0.00132,-0.00258,0.04154,-0.00698,0.0185,0.03268,0.02383,-0.03247,0.00459,0.0554,0.02056,0.00345,0.02891,0.01301,0.00685,0.00843,0.02576,-0.01522,-0.0153,0,-0.02312,0.0442,0.00449,-0.02813,0.01683,-0.03153,0.00913,-0.00581,-0.06951,0.00753,0.04712,0,0,0.00492,0.00139,0.00326,0.02333,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[16400,12500,1510,0,3300,1500,3450,3200,1830,8070,2650,14000,836,13800,23500,651,9880,11600,17100,1910,1840,4020,9460,4570,0,7810,4530,41400,9360,16500,132,576,4880,2690,297,340,0,0,4730,3000,879,1040,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":21083,"w":16400},"fg3m":{"b":[-0.08106,0.00302,0.00476,0,-0.00841,-0.00512,-0.02001,-0.01864,0.01472,-0.00393,-0.02018,0.10863,-0.04659,-0.01108,0.0295,-0.07497,-0.00565,-0.02815,-0.05735,-0.03325,-0.02144,0.03931,0.03339,-0.00889,0,-0.03623,0.01513,0.01398,-0.00054,0.06519,0.00634,0.01048,-0.00225,-0.04872,-0.13899,-0.13043,0,0,-0.00195,0.01192,0.01009,-0.008,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[2720,1930,331,0,580,341,576,872,281,1350,468,1680,130,2260,4560,147,1580,1930,3210,404,227,1030,1660,766,0,1140,647,7090,1580,2530,22.1,112,796,466,64.5,61.9,0,0,893,511,153,203,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":12500,"w":2720}},"s42":{"min":{"b":[-0.38276,0.01572,-0.08481,0,-0.00489,0.05788,0.00654,0.00772,-0.01694,-0.02046,0.01712,0.01958,-0.07279,0.0029,-0.13574,0.01687,0.00843,-0.00409,-0.00028,0.04616,0.07157,0.07636,-0.12042,-0.06573,0,0.0011,0.06395,0.003,0.00202,0.11384,-0.02067,0.04115,0,0,-0.03467,-0.10445,0,0,0.02047,0.00234,0.00291,-0.00877,0,0,0,0,0,0,0,0.01039,0.0768,0.10887,0.84044,0.0614,0.1052,0,0,-0.09096,-0.38413,0.15316,0.0824,-0.06214],"d":[910000,660000,116000,0,511000,215000,277000,285000,136000,455000,136000,1600000,15100,1260000,2320000,58600,562000,825000,984000,233000,325000,470000,689000,186000,0,356000,143000,2450000,585000,1010000,8920,129000,0,0,26900,22100,0,0,249000,236000,48100,65600,0,0,0,0,0,0,0,597000,322000,140000,322000,772000,180000,0,0,1300000,30800,58500,117000,119000],"n":67062,"w":910000},"pts":{"b":[-0.08748,0.10611,0.14346,0,-0.02529,-0.0161,-0.00982,-0.02987,-0.00045,0.01177,0.03062,0.02064,-0.00346,-0.00136,-0.00452,-0.05969,-0.0127,0.01835,0.00327,-0.17113,-0.0456,0.14216,-0.12774,0.01615,0,-0.01412,0.10133,-0.03636,0.02416,0.08505,-0.00724,0.00347,0.13799,-0.10537,-0.06233,-0.06598,0,0,0.01685,0.02238,0.00914,-0.01158,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[200000,162000,18900,0,96800,31900,49800,51300,31200,100000,30300,349000,2460,247000,385000,9200,107000,176000,214000,43600,32700,76700,183000,9750,0,121000,63100,531000,130000,251000,1180,17200,79000,36700,4350,2610,0,0,48600,43600,11300,13200,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":58296,"w":200000},"reb":{"b":[-0.08198,0.08358,0.0599,0,0.02189,0.01247,0.01455,0.00223,-0.00221,0.01104,0.03012,0.02647,-0.02479,0.01595,-0.04686,-0.0184,-0.00296,0.00454,0.00806,-0.01642,-0.06377,0.10015,-0.0829,0.03675,0,-0.02837,0.04572,-0.0054,0.0238,0.0475,0.01841,-0.05688,0.03312,-0.0126,-0.03022,-0.09159,0,0,0.01131,0.00761,0.01698,0.05413,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[37000,26500,5300,0,19400,6460,10200,9950,5380,18400,5580,35600,626,48800,76000,2200,25800,32900,36200,6090,6250,19300,34100,1800,0,15200,7490,93600,23500,41500,307,2850,15400,7380,1250,608,0,0,7410,8860,2020,2560,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":46461,"w":37000},"ast":{"b":[-0.14535,0.02783,0.03191,0,0.03628,-0.03211,-0.00352,0.03332,-0.01096,0.03571,0.0511,0.03643,-0.02968,0.01383,0.00261,-0.021,-0.01278,0.00235,0.02584,-0.01374,-0.05032,0.09559,-0.12662,0.0248,0,-0.00065,0.06924,-0.01282,0.02842,0.01058,-0.03649,0.00145,-0.03845,-0.06199,-0.0682,-0.01077,0,0,0.00329,-0.00235,0.01985,-0.00259,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[14200,11900,1050,0,6460,1850,3480,2680,2290,7100,2160,13200,159,17200,24200,552,7800,12600,15500,2620,2240,4130,13300,406,0,8090,4340,38100,9210,17800,104,1120,5760,2400,243,186,0,0,3500,3020,811,840,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":32972,"w":14200},"fg3m":{"b":[-0.0877,0.02864,0.07868,0,0.00834,0.04822,0.01761,0.01318,-0.00532,0.02133,0.04662,0.07942,-0.01589,-0.00271,-0.06702,-0.05168,-0.00804,-0.00071,-0.01784,-0.08162,-0.02559,0.11112,-0.06116,-0.00581,0,0.04874,0.05212,-0.02211,0.00105,0.06251,0.00122,-0.00953,0.03261,-0.08195,-0.13988,-0.11161,0,0,-0.0371,0.01943,0.02269,-0.00739,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1960,1480,243,0,938,350,518,692,301,976,297,1370,17.9,2360,4020,117,968,1700,2330,384,205,1110,1900,21.2,0,913,485,5430,1280,2340,14.8,163,763,365,59.9,27.9,0,0,609,441,114,141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":14164,"w":1960}},"rep":{"min":{"b":[-0.06259,-0.01964,-0.00147,0.00214,0.00161,-0.00896,0.01127,0.01322,0.00034,-0.004,-0.0011,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.01556,0,0,0,-0.00197,0,0,0,0,0,0,0,0.00633,0.0387,0.02659,-0.00333,-0.02942,-0.00835,-0.03258,-0.03372,-0.0016,-0.01355,-0.0104,-0.0085,0.06669,0.03683,-0.02028,0,0,0,0.62661,0.28544,0,0,0,0,0],"d":[47900000,37900000,3700000,8550000,27500000,3440000,14900000,12400000,7820000,23900000,7200000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,19200000,0,0,0,49200000,0,0,0,0,0,0,0,304000,13500000,12400000,2510000,2230000,64800000,22900000,5960000,370000,19600000,20400000,6140000,40200000,21600000,10500000,0,0,0,1120000,1350000,0,0,0,0,0],"n":71291,"w":47900000},"pts":{"b":[0.00805,-0.00028,-0.00102,-0.00845,-0.00672,0.0003,-0.01944,-0.00788,0.00801,-0.00343,0.00276,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.02944,0,0,0,0.02094,0,0,0.13643,0,0,0,0,-0.07776,0.00593,-0.01039,0.00425,0.00263,0,0,0,0,-0.00171,-0.00037,0.00308,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[11700000,9950000,579000,2070000,6060000,825000,2990000,2610000,1990000,5860000,1770000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7280000,0,0,0,13900000,0,0,1040000,0,0,0,0,70500,2900000,2530000,617000,547000,0,0,0,0,5790000,4290000,965000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":71281,"w":11700000},"reb":{"b":[-0.0289,-0.01591,0.01357,-0.01027,0.0354,0.00883,-0.00308,0.01497,-0.00299,-0.00521,-0.00643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.00401,0,0,0,0.01538,0,0,0.08947,0,0,0,0,-0.03889,0.00176,-0.01873,0.01604,-0.00286,0,0,0,0,0.0232,-0.00758,-0.0205,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[1800000,1360000,171000,318000,973000,127000,509000,404000,281000,899000,272000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,760000,0,0,0,1830000,0,0,161000,0,0,0,0,16100,362000,431000,94900,88000,0,0,0,0,746000,614000,245000,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":70997,"w":1800000},"ast":{"b":[-0.04667,0.00141,0.00362,-0.02283,0.05247,-0.00387,0.00185,0.04884,-0.01514,0.01398,0.02057,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0.00864,0,0,0,0.01328,0,0,0.07302,0,0,0,0,-0.00331,0.00395,-0.01653,-0.00737,-0.00781,0,0,0,0,0.02974,-0.01605,-0.00985,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[731000,622000,35400,129000,344000,50700,180000,118000,123000,363000,111000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,421000,0,0,0,870000,0,0,68800,0,0,0,0,3170,182000,152000,39500,33100,0,0,0,0,350000,249000,56100,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":69526,"w":731000},"fg3m":{"b":[-0.00589,-0.01567,-0.01783,-0.01145,-0.01262,0.00809,-0.00593,-0.04722,0.01009,0.0133,0.01244,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-0.02225,0,0,0,0.0238,0,0,0.12859,0,0,0,0,-0.10323,0.0025,-0.00634,0.00084,-0.04579,0,0,0,0,-0.00529,0.00764,0.00693,0,0,0,0,0,0,0,0,0,0,0,0,0],"d":[149000,118000,10700,26800,78900,10600,42300,41200,24600,74600,22400,0,0,0,0,0,0,0,0,0,0,0,0,0,0,65700,0,0,0,154000,0,0,13300,0,0,0,0,1270,45900,35200,8070,7230,0,0,0,0,66600,55300,16300,0,0,0,0,0,0,0,0,0,0,0,0,0],"n":60262,"w":149000}}};
 // How often the simulated chances really came in over those games: [count, sum of chances, sum of hits] per 10% bin.
-const CAL_PRIOR = {"pre":{"pts":[[[77766,716.27,1186],[6171,871.95,1137],[3624,894.85,1153],[3576,1239.72,1440],[1875,832.52,968],[2013,1105.96,1221],[2395,1557.58,1651],[1542,1127.96,1146],[29,23.56,24],[0,0,0]],[[54159,1460.26,574],[14173,2033.01,1312],[9798,2386.72,2065],[6803,2354.82,2338],[6972,3113.15,3482],[5918,3233.39,3647],[5033,3250.05,3690],[5975,4488.76,4993],[7766,6591.53,6913],[8863,8402.7,8578]]],"reb":[[[40018,471.5,751],[3314,481.68,670],[2753,658.7,839],[1127,394.31,540],[1675,755.61,975],[2094,1147.18,1316],[451,277.76,308],[0,0,0],[0,0,0],[0,0,0]],[[65457,1683.77,995],[17368,2480.21,1899],[11009,2712.49,2430],[9839,3400.97,3475],[7649,3409.13,3605],[6386,3494.2,3847],[7518,4879.26,5393],[8040,6008.99,6541],[7991,6769.83,7233],[6823,6445.02,6576]]],"ast":[[[70053,962.69,936],[7320,1055.64,1187],[4878,1170.51,1322],[2876,997.86,1197],[2850,1274.85,1477],[2576,1404.11,1565],[503,310.33,342],[0,0,0],[0,0,0],[0,0,0]],[[19987,679.94,402],[8148,1155.25,829],[5062,1256.83,1104],[4797,1657.61,1616],[3585,1596.62,1615],[2765,1513.34,1622],[3914,2546.93,2789],[4021,3003.44,3303],[3574,3019.56,3224],[2725,2563.03,2635]]],"fg3m":[[[63948,871.07,1604],[7030,975.79,1324],[5017,1244.01,1532],[2958,1004.11,1197],[2530,1137.4,1336],[3189,1750.98,1924],[1818,1144,1177],[12,8.45,7],[0,0,0],[0,0,0]],[[20018,882.71,708],[10370,1512.23,1398],[6164,1495.76,1427],[5643,1972.09,2066],[4650,2063.48,2140],[3138,1706.63,1754],[3783,2480.35,2601],[5029,3748.28,3843],[3574,3010.81,3069],[763,702.35,698]]]},"s6":{"pts":[[[122570,1009.6,1776],[8519,1211.53,1608],[5284,1294.11,1600],[4403,1521.92,1720],[2860,1275.62,1452],[2653,1452.57,1583],[2499,1620.23,1652],[1633,1204.09,1161],[861,731.43,755],[578,539.27,544]],[[46162,1208.23,541],[11456,1645.47,1147],[7578,1852.53,1646],[5529,1911.28,1948],[5411,2418.22,2644],[4586,2505.77,2787],[4223,2733.17,3029],[4828,3623.26,3902],[5782,4907.86,5049],[9727,9325.48,9400]]],"reb":[[[76614,822.76,1336],[6260,902.56,1183],[4341,1045.4,1290],[2700,944.12,1085],[2640,1178.52,1361],[2752,1501.16,1639],[633,393.29,446],[365,276.48,318],[292,240.83,257],[0,0,0]],[[60552,1470.16,933],[14678,2086.1,1804],[9331,2304.11,2249],[8150,2808.09,2860],[6360,2839.48,3072],[5171,2827.51,3099],[6605,4289.73,4556],[6416,4786.74,5072],[6163,5225.81,5436],[7089,6724.69,6804]]],"ast":[[[97707,1244.23,1190],[9724,1386.42,1506],[5827,1411.5,1604],[3793,1317.58,1396],[2857,1273.67,1460],[2352,1283.59,1439],[932,595.37,647],[766,574.96,620],[338,278.29,282],[1,0.91,1]],[[16177,558.41,333],[6322,900.16,671],[4111,1017.79,952],[3526,1215.19,1164],[2858,1275.5,1355],[2309,1259.54,1373],[3015,1961.31,2120],[2774,2064.71,2213],[2922,2484.16,2623],[2977,2813.61,2897]]],"fg3m":[[[91377,1207.22,1986],[9721,1353.67,1663],[6962,1721.74,1951],[4196,1427.06,1551],[3520,1580.06,1641],[3952,2166.88,2250],[2267,1426.83,1457],[13,9.14,9],[0,0,0],[0,0,0]],[[15768,675.9,559],[7778,1140.7,1059],[4349,1049.5,989],[4403,1545.09,1594],[3523,1561.39,1563],[1984,1076.69,1081],[2975,1958.98,2013],[4135,3082.55,3086],[2182,1829.74,1855],[240,220.61,211]]]},"s12":{"pts":[[[138074,1098.66,1634],[8896,1259.85,1497],[5463,1336.14,1508],[4109,1419.27,1521],[3093,1378.72,1516],[2759,1508.97,1639],[2586,1672.62,1771],[2332,1737.91,1788],[2285,1937.06,1958],[1410,1317.14,1298]],[[36238,946.67,382],[8912,1274.61,909],[5845,1432.35,1332],[4495,1556.34,1523],[4004,1788.3,1970],[3596,1966.95,2167],[3439,2225.42,2505],[3674,2755.35,2946],[4250,3605.81,3767],[8349,8006.54,8075]]],"reb":[[[92767,929.32,1248],[7558,1075.45,1268],[4634,1121.02,1299],[2977,1037.05,1213],[2395,1066.19,1251],[2329,1275.1,1483],[1149,735.63,855],[1502,1130.75,1238],[737,606.09,656],[0,0,0]],[[48897,1218.62,683],[12078,1720.77,1340],[7911,1948.24,1755],[6315,2173.45,2221],[5512,2466.78,2568],[4501,2458.92,2641],[5209,3377.07,3671],[4751,3544.22,3798],[5648,4810.34,5034],[6131,5793.55,5869]]],"ast":[[[105336,1284,1101],[9519,1345.34,1373],[5704,1385.37,1493],[3845,1333.33,1468],[2581,1149.35,1329],[2351,1287.49,1477],[1445,928.4,1020],[1406,1051.6,1144],[594,488.82,525],[0,0,0]],[[12277,439.53,246],[4924,703.21,515],[3339,821.81,709],[2674,920.9,896],[2339,1047.44,1083],[1882,1026.49,1149],[2422,1570.87,1690],[1885,1405.02,1508],[2561,2184.07,2323],[2335,2194.95,2251]]],"fg3m":[[[100419,1275.92,1999],[10457,1458.55,1731],[7410,1824.38,2057],[4288,1459.48,1623],[3440,1540.87,1652],[4055,2223.54,2355],[2312,1455.13,1494],[18,12.8,10],[0,0,0],[0,0,0]],[[11116,482.07,366],[5604,825.47,731],[2964,710.65,662],[3410,1201.23,1201],[2512,1112.32,1110],[1268,687.77,658],[2208,1462.47,1496],[3263,2427.02,2451],[1227,1021.12,1011],[77,70.34,70]]]},"s18":{"pts":[[[146686,1145.08,1676],[9245,1311.57,1498],[5696,1392.41,1606],[4246,1464.94,1616],[3479,1553.25,1683],[3123,1703.63,1827],[2970,1920.14,2001],[2730,2038.76,2067],[2761,2338.92,2332],[1903,1780.11,1754]],[[24447,646.94,261],[6129,873.44,625],[4041,989.96,899],[3143,1086.43,1076],[2696,1202.45,1273],[2463,1345.94,1459],[2478,1603.72,1723],[2555,1910.38,2031],[2911,2472.21,2572],[6077,5830.1,5861]]],"reb":[[[103978,1070.05,1215],[8506,1205.27,1339],[5110,1243.04,1424],[3738,1299.54,1500],[2762,1223.81,1395],[2832,1552.55,1776],[1775,1140.49,1266],[2228,1672.6,1833],[1017,837.71,869],[1,0.9,1]],[[35530,900.15,468],[8801,1260.19,966],[5706,1405.01,1331],[4554,1566.35,1532],[4002,1789.14,1910],[3335,1819.99,1910],[3842,2487.83,2692],[3267,2435.26,2574],[4297,3664.62,3824],[4167,3924.8,3987]]],"ast":[[[107595,1288.47,1066],[9806,1387.92,1397],[5538,1344.03,1411],[3798,1313.05,1512],[2808,1246.52,1408],[2573,1410.01,1597],[1583,1017.75,1129],[1544,1154.36,1250],[624,514.17,547],[0,0,0]],[[7812,292.31,124],[3409,490.78,370],[2255,556.14,496],[1783,613.95,606],[1704,764.09,803],[1281,696.74,750],[1553,1007.17,1067],[1373,1020.94,1079],[1832,1565.42,1653],[1543,1447.35,1484]]],"fg3m":[[[103611,1315.09,2010],[10784,1519.6,1787],[7347,1810.58,2058],[4444,1518.08,1700],[3818,1709.3,1813],[4048,2216.84,2267],[2051,1292.28,1330],[7,4.95,5],[0,0,0],[0,0,0]],[[6584,286.5,210],[3492,519.2,450],[1749,416.59,348],[2255,794.86,787],[1642,725.13,702],[656,352.83,318],[1522,1013.04,1030],[2166,1606.43,1597],[633,525.06,507],[24,21.89,21]]]},"s24":{"pts":[[[143069,1163.46,1612],[9816,1398.03,1595],[6147,1503.29,1720],[4640,1602.49,1673],[3904,1743.64,1881],[3520,1921.08,2014],[3312,2143.66,2206],[3128,2339.59,2327],[3146,2663.93,2619],[2285,2137.16,2061]],[[11300,310.47,164],[2976,425.74,322],[1939,473.11,428],[1527,531.21,506],[1355,605.4,642],[1126,616.34,643],[1173,759.42,800],[1294,966.56,1039],[1417,1202.21,1239],[2907,2787.19,2788]]],"reb":[[[105189,1157.03,1193],[9425,1336.09,1462],[5755,1402.77,1629],[4423,1534.98,1766],[3261,1452.33,1658],[3324,1821.37,2054],[2375,1531.37,1692],[2570,1925.38,2082],[1102,907.36,930],[2,1.81,2]],[[20306,537.05,267],[5295,759.26,559],[3449,851.41,768],[2665,914.01,896],[2531,1133.69,1192],[1891,1031.77,1079],[2390,1550.84,1625],[1798,1338.12,1391],[2779,2376.62,2473],[2030,1900.8,1913]]],"ast":[[[101209,1274.6,1008],[9833,1387.81,1434],[5565,1354.43,1470],[4015,1387.99,1553],[2980,1327.1,1499],[2578,1411.07,1580],[1778,1145.59,1286],[1492,1116.44,1217],[610,502.81,536],[0,0,0]],[[3190,131.26,53],[1651,238.81,158],[1142,283.21,247],[862,294.65,279],[859,386.51,404],[670,363.7,371],[826,535.61,594],[598,444.43,465],[999,855.81,897],[621,577.62,597]]],"fg3m":[[[97699,1273.39,1919],[10736,1517.2,1786],[7387,1815.91,2123],[4858,1672.66,1773],[4338,1941.42,2089],[3669,1998.15,2002],[1604,1009.32,973],[10,7.05,6],[0,0,0],[0,0,0]],[[2215,98.63,65],[1366,207.57,149],[522,121.97,88],[1054,374.16,345],[607,265.7,230],[138,73.87,69],[758,506.31,508],[900,663.34,629],[136,112.82,105],[4,3.63,3]]]},"s30":{"pts":[[[158545,1195.71,1874],[9997,1422.86,1707],[6160,1503.93,1619],[4732,1637.92,1766],[4070,1817.12,1887],[3469,1898.98,1896],[3431,2220.37,2166],[3134,2340.9,2300],[2914,2467.55,2359],[1609,1501.96,1449]],[[1809,60.41,40],[653,93.76,73],[416,102.1,105],[317,109.18,106],[301,135.21,130],[265,145.64,159],[236,152.84,155],[274,205.43,210],[318,270.1,271],[554,529.7,534]]],"reb":[[[124718,1342.83,1482],[10909,1550.08,1803],[6536,1594.1,1856],[4874,1686.97,1939],[3801,1693.02,1890],[3798,2076.12,2315],[2867,1848.96,1983],[2388,1782.97,1841],[800,658.91,682],[0,0,0]],[[6666,192.38,88],[1983,287.28,196],[1261,312.34,255],[932,317.57,268],[1056,474.3,476],[618,335.4,305],[942,610.83,607],[645,478.97,469],[1147,982.03,1007],[506,468.32,453]]],"ast":[[[108390,1285.83,1028],[9715,1367.66,1457],[5326,1300.04,1472],[4150,1432.12,1589],[2912,1295.77,1432],[2165,1179.27,1340],[1478,953.38,1026],[1109,827.68,881],[277,227.7,239],[0,0,0]],[[435,18.97,5],[280,41.09,22],[207,51.97,37],[135,44.79,26],[212,95.47,97],[91,49.12,44],[205,133.09,132],[70,52.01,53],[252,216.68,224],[61,56.07,55]]],"fg3m":[[[104116,1223.09,1854],[10160,1438.52,1742],[6937,1702.82,1844],[5622,1938.75,2012],[3888,1728.29,1744],[2160,1168.39,1126],[567,356.53,308],[1,0.7,1],[0,0,0],[0,0,0]],[[260,12.26,5],[209,31.94,19],[45,10.09,9],[194,68.31,48],[69,29.5,24],[3,1.74,1],[159,105.94,109],[120,87.34,73],[5,4.17,3],[0,0,0]]]},"s36":{"pts":[[[168185,973.38,1813],[8103,1152.82,1429],[5007,1224.56,1357],[3909,1351.27,1396],[3193,1426.36,1415],[2821,1541.47,1456],[2488,1606.54,1511],[2147,1597.48,1461],[1442,1215.88,1139],[631,587,572]],[[28,0.98,1],[10,1.36,0],[14,3.32,2],[5,1.77,0],[11,4.83,1],[10,5.58,5],[5,3.22,2],[3,2.27,0],[12,10.08,8],[15,14.11,14]]],"reb":[[[138784,1300.95,1643],[10012,1422.29,1643],[6045,1478.52,1746],[4498,1553.86,1716],[3385,1507.9,1619],[2803,1529.4,1599],[1923,1239,1281],[1157,857.36,859],[277,228.72,210],[0,0,0]],[[804,27.99,7],[356,51.72,38],[237,59.17,45],[167,56.49,54],[209,93.9,89],[112,60.2,49],[195,127.18,124],[104,76.97,68],[244,209.17,205],[77,70.7,74]]],"ast":[[[115014,1138.47,1057],[8001,1131.66,1256],[4567,1113.17,1257],[2989,1028.96,1199],[1874,830.94,903],[1351,734.83,788],[754,484.75,520],[342,252.32,267],[58,47.52,41],[0,0,0]],[[8,0.39,0],[3,0.38,0],[7,1.91,1],[2,0.61,0],[6,2.75,2],[1,0.56,0],[9,5.83,4],[3,2.15,1],[6,5.17,4],[2,1.8,2]]],"fg3m":[[[110888,1029.21,1764],[9257,1324.11,1548],[5954,1454.1,1558],[3699,1267.91,1263],[1588,695.98,624],[480,256.98,235],[61,38.23,28],[0,0,0],[0,0,0],[0,0,0]],[[5,0.24,0],[8,1.13,0],[0,0,0],[9,3.14,1],[0,0,0],[0,0,0],[8,5.38,4],[2,1.48,0],[0,0,0],[0,0,0]]]},"s42":{"pts":[[[179205,704.71,1288],[5865,833.52,898],[3551,869.2,873],[2394,825.52,769],[1806,804.31,767],[1477,805.02,758],[1156,745.34,699],[753,559.01,523],[433,364.33,347],[131,121.47,121]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]],"reb":[[[151241,1063.14,1251],[7615,1071.14,1170],[4002,973.89,1065],[2726,940.7,1041],[1835,814.74,903],[1228,667.1,708],[627,403.24,420],[298,220.68,225],[49,40.46,42],[0,0,0]],[[28,0.61,0],[6,0.82,0],[7,1.73,2],[3,1.04,1],[6,2.64,1],[0,0,0],[7,4.54,1],[4,2.84,3],[7,5.91,4],[2,1.9,2]]],"ast":[[[124418,888.39,879],[5374,752.15,841],[2515,608.89,726],[1343,459.68,508],[689,303.21,328],[326,175.66,201],[88,55.92,63],[11,7.9,7],[0,0,0],[0,0,0]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]],"fg3m":[[[120978,853.93,1280],[6670,944.28,1035],[3039,726.92,754],[935,313.91,300],[181,78.21,72],[16,8.55,8],[1,0.62,0],[0,0,0],[0,0,0],[0,0,0]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]]}};
+const CAL_PRIOR = {"pre":{"pts":[[[222500,2199.34,2383],[18115,2573.67,2807],[10284,2557.83,2807],[9997,3472.88,3827],[5018,2238.1,2353],[5815,3200.86,3346],[6777,4400.34,4697],[3554,2587.5,2718],[27,21.85,19],[0,0,0]],[[150691,4298.91,1572],[43133,6228.8,3785],[29427,7197.94,5981],[20797,7205.95,7115],[21281,9521.41,10518],[17872,9782.13,11288],[15478,10012.52,11612],[18397,13848.46,15422],[23497,19961.86,21386],[26213,24889.12,25581]]],"reb":[[[118882,1427.55,1586],[9556,1393.4,1664],[7780,1863.74,2134],[3093,1080.78,1263],[4342,1958.87,2189],[5538,3035.13,3501],[969,595.13,663],[0,0,0],[0,0,0],[0,0,0]],[[183965,4852.59,2293],[50330,7221.2,5111],[32767,8105.53,7015],[28798,9972.61,9946],[22734,10151.93,10834],[19033,10416.04,11560],[22503,14613.64,16408],[23539,17613.9,19593],[23137,19623.28,21216],[19810,18737.11,19324]]],"ast":[[[213797,2934.31,2195],[21252,3065.62,2923],[14088,3417.57,3631],[8984,3129.87,3543],[7976,3565.69,3982],[6700,3658.02,4081],[1151,707.78,762],[0,0,0],[0,0,0],[0,0,0]],[[53468,1893.5,949],[21860,3124.89,2201],[13791,3430.54,2939],[13137,4540.72,4495],[9756,4349.05,4544],[7549,4137.29,4534],[11219,7291.68,8165],[10818,8087.4,8911],[9910,8410.42,9067],[7126,6693.14,6940]]],"fg3m":[[[177899,2429.89,3919],[19224,2684.92,3388],[13298,3316.37,3989],[7352,2493.9,2870],[6432,2896.56,3188],[7987,4397.18,4785],[4607,2889.59,3108],[3,2.11,2],[0,0,0],[0,0,0]],[[58842,2704.16,2302],[32561,4759.67,4291],[19989,4874.1,4691],[17685,6183.29,6415],[14734,6564.77,6896],[10153,5524.72,5795],[12155,7967.39,8443],[15556,11622.26,12174],[11504,9707.57,10012],[2601,2398.98,2437]]],"pra":[[[261007,2415.27,2958],[19596,2832.81,3112],[11181,2727.1,2945],[9929,3455.29,3732],[5897,2605.32,2806],[5402,2967.71,3185],[4676,3002.66,3196],[376,268.93,270],[1,0.82,0],[0,0,0]],[[194283,4985.44,1790],[51852,7446.76,4288],[36594,9025.03,7163],[28173,9754.67,9221],[26962,12087.42,13047],[24448,13395.2,15241],[23550,15297.98,17777],[27320,20461.39,23099],[29172,24753.91,26930],[32648,30993.09,31974]]]},"s6":{"pts":[[[255018,2523.23,2856],[20278,2890.77,3204],[12364,3060.36,3431],[10760,3725.79,4062],[6799,3042.45,3293],[6900,3782.01,3979],[7515,4877.51,5132],[4161,3059.29,3183],[2195,1867.99,1930],[1247,1164.09,1169]],[[132222,3640.45,1432],[35153,5071.13,3295],[23829,5842.19,5025],[17090,5928.68,5903],[16994,7601.32,8332],[14295,7831.66,8902],[12807,8290.29,9307],[15134,11386.83,12488],[17936,15226.5,16167],[27979,26819.34,27245]]],"reb":[[[141026,1694.07,1879],[11806,1717.26,2045],[9043,2173.09,2449],[4349,1531.56,1885],[5181,2327.59,2671],[6608,3622.92,4186],[1289,800.62,925],[804,612.25,685],[612,502.85,557],[0,0,0]],[[173740,4412.32,2076],[44288,6334.43,4712],[28500,7055.55,6394],[24605,8501.57,8576],[19458,8689.31,9167],[16086,8811.27,9643],[20108,13059.75,14478],[19158,14314.82,15692],[18918,16069.09,17119],[19802,18782.54,19248]]],"ast":[[[231854,3154.81,2282],[23168,3333.56,3175],[15791,3856.26,4165],[10324,3585.59,3834],[7387,3291.15,3653],[5960,3260.07,3691],[2395,1531.4,1739],[2028,1522.85,1627],[804,660.11,705],[0,0,0]],[[42990,1533.87,821],[17286,2468.07,1741],[11324,2812.34,2461],[9756,3367.81,3324],[7842,3507.97,3716],[6381,3491.03,3825],[8517,5535.48,6158],[7477,5584.31,6088],[7937,6745.38,7249],[7691,7260.23,7480]]],"fg3m":[[[196381,2793.56,4402],[22079,3066.72,3836],[15664,3901.49,4652],[8526,2885.81,3230],[7578,3411.24,3771],[9840,5418.2,5872],[5738,3602.29,3814],[3,2.12,1],[0,0,0],[0,0,0]],[[49831,2233.2,1767],[25733,3783.97,3357],[14872,3602.87,3414],[14556,5112.58,5215],[11776,5231.95,5343],[6882,3738.26,3844],[10103,6659.1,6976],[13206,9846.45,10115],[7599,6382.33,6495],[871,800.26,820]]],"pra":[[[300375,2759.78,3470],[22485,3241.8,3757],[13626,3333.49,3717],[11026,3835.54,4237],[7573,3368.38,3683],[6435,3526.59,3844],[5701,3668.96,3895],[2496,1857.04,1966],[1809,1529.94,1591],[1280,1210.96,1217]],[[173113,4258.25,1699],[42482,6106.59,3839],[29651,7308.44,6093],[23019,7973.46,7697],[21649,9700.28,10454],[19756,10823.44,11962],[19120,12411.87,14130],[21792,16323.69,18035],[23932,20332.07,21849],[44281,42686.11,43316]]]},"s12":{"pts":[[[302274,2884.81,3080],[23108,3303.55,3611],[14722,3618.4,3964],[11517,3996.42,4257],[8791,3930.4,4166],[7687,4201.21,4499],[6944,4500.67,4695],[6257,4667.93,4817],[5881,4989.45,5045],[3408,3180.29,3172]],[[97969,2729.39,1128],[26108,3755.91,2578],[17272,4247.26,3818],[13209,4576.68,4557],[11922,5328.51,5770],[10631,5834.4,6485],[10203,6608.76,7410],[10933,8205.97,8935],[12428,10561.85,11167],[23897,22911.11,23188]]],"reb":[[[191094,2227.2,2207],[16756,2406.02,2624],[11113,2697.75,3105],[7768,2718.16,3125],[6434,2871.64,3383],[6555,3589.03,4079],[2557,1635,1861],[3787,2855.56,3182],[1756,1441.68,1555],[0,0,0]],[[135880,3480.7,1664],[34270,4920.2,3687],[22587,5577.4,5045],[18151,6263.56,6228],[15879,7107.11,7592],[12941,7078.03,7694],[15263,9910.69,10822],[13497,10076.28,11020],[16108,13723.8,14472],[16772,15853.93,16210]]],"ast":[[[250217,3279.63,2301],[25341,3639.56,3455],[15788,3847.51,4005],[9956,3449.06,3753],[6839,3046.71,3473],[6329,3466.87,3885],[3770,2428.05,2681],[3523,2639.73,2879],[1398,1147.4,1228],[0,0,0]],[[31430,1168.71,590],[12891,1859.19,1327],[8680,2149.4,1863],[6907,2381.04,2356],[6365,2849.11,3001],[5152,2818.24,3088],[6010,3903.45,4358],[5196,3879.05,4195],[6625,5650.16,6058],[5964,5600.15,5759]]],"fg3m":[[[221350,3190.59,4685],[25148,3512.94,4255],[17825,4423.47,5068],[10212,3473.47,3847],[8991,4051.6,4456],[11117,6110.42,6546],[6053,3799.98,3875],[4,2.81,4],[0,0,0],[0,0,0]],[[34737,1551.18,1210],[17883,2659.7,2390],[9639,2316.58,2141],[10996,3883.49,3959],[8069,3574.02,3618],[4233,2297.02,2327],[7519,4981.17,5135],[9943,7398.53,7559],[4227,3529.52,3546],[263,241.03,247]]],"pra":[[[367254,3230.42,3913],[26333,3772.8,4087],[16309,4000.48,4412],[12303,4261.75,4682],[9786,4370.25,4714],[8509,4659.2,5013],[7522,4869.21,5200],[6701,5006.28,5242],[6007,5093.78,5234],[5607,5327.85,5351]],[[123301,3136.86,1318],[30765,4435.19,2959],[21172,5214.25,4480],[17102,5938.6,5885],[15256,6827.34,7211],[14287,7832.25,8678],[14398,9340.38,10410],[15293,11460.59,12639],[18237,15516.72,16509],[43378,41963.11,42370]]]},"s18":{"pts":[[[128182,1136.06,1295],[9314,1338.71,1460],[5902,1445.99,1518],[4355,1507.4,1665],[3569,1596.96,1681],[3276,1792.21,1891],[2946,1911.38,1927],[2814,2101.11,2155],[2833,2403.03,2381],[1854,1732.31,1726]],[[23937,655.69,229],[6156,884.74,648],[4030,991.98,902],[3116,1080.33,1074],[2796,1253.52,1348],[2405,1319.32,1443],[2428,1574.93,1702],[2634,1975.03,2134],[2870,2441.86,2578],[5849,5609.48,5651]]],"reb":[[[87095,997.75,857],[7863,1128.53,1162],[5000,1220.46,1337],[3818,1334.04,1474],[2695,1201.41,1383],[2771,1523.23,1730],[1807,1164.86,1277],[2174,1633.95,1763],[983,808.27,852],[0,0,0]],[[36132,931.74,466],[9038,1299.83,977],[5878,1452.92,1323],[4495,1546.95,1552],[4305,1930.78,2049],[3335,1822.71,1973],[3899,2530.6,2724],[3268,2440.14,2600],[4524,3859.2,4064],[3978,3745.14,3812]]],"ast":[[[95210,1259.65,870],[9830,1402.86,1359],[5602,1365.38,1368],[3912,1357.36,1535],[2782,1242.41,1378],[2567,1408.33,1578],[1749,1124.57,1232],[1550,1162.1,1273],[569,467.14,488],[0,0,0]],[[7670,295.61,134],[3370,490.21,363],[2257,557.79,500],[1757,606.44,606],[1768,791.93,813],[1251,682.41,757],[1606,1043.84,1121],[1285,957.31,1023],[1844,1575.31,1692],[1488,1393.59,1423]]],"fg3m":[[[91400,1283.86,1755],[10226,1446.51,1672],[7327,1813.08,2028],[4487,1535.67,1615],[4014,1801.84,1861],[4163,2282.32,2373],[2004,1260.68,1294],[3,2.11,2],[0,0,0],[0,0,0]],[[6650,293.82,206],[3550,529.39,484],[1762,421.02,372],[2340,828.66,837],[1601,709.6,717],[656,352.78,339],[1567,1045.69,1070],[2205,1634.29,1635],[566,468.59,457],[19,17.33,18]]],"pra":[[[156876,1281.8,1597],[10533,1504.98,1696],[6693,1641.16,1802],[5099,1769.03,1888],[4216,1885.71,2016],[3843,2102.82,2185],[3427,2220.42,2304],[3431,2567.17,2633],[3607,3062.08,3086],[5120,4894.01,4879]],[[29142,741.9,308],[7214,1038.12,741],[4868,1197.21,1027],[3890,1348.88,1315],[3555,1589.31,1677],[3210,1758.22,1920],[3326,2155.6,2409],[3505,2625.21,2834],[4242,3609.65,3809],[11651,11297.08,11373]]]},"s24":{"pts":[[[140668,1196.78,1342],[10060,1443.46,1532],[6180,1514.49,1648],[4677,1622.16,1705],[4028,1803.11,1884],[3550,1944.92,1975],[3252,2105.16,2163],[3249,2430.48,2437],[3222,2733.73,2684],[2170,2026.04,1983]],[[10870,310.72,154],[3001,429.92,323],[1897,466.4,421],[1573,545.85,555],[1264,565.13,591],[1155,631.67,701],[1225,794.89,859],[1228,917.71,1006],[1383,1177.53,1224],[2831,2711.18,2740]]],"reb":[[[102849,1177.28,936],[9344,1336.26,1339],[5860,1432.21,1537],[4310,1501.47,1645],[3239,1443.12,1641],[3379,1854.81,2043],[2504,1616.08,1787],[2589,1941.26,2069],[1091,895.98,945],[0,0,0]],[[20213,551.23,254],[5399,780.8,564],[3431,849.79,764],[2734,940.51,937],[2541,1139.09,1204],[1891,1032.73,1096],[2439,1584.85,1689],[1840,1367.77,1456],[2797,2392.42,2496],[1979,1851.98,1892]]],"ast":[[[99122,1295.64,843],[9999,1424.74,1365],[5448,1333.84,1371],[3996,1384.15,1507],[3059,1363.81,1575],[2628,1436.08,1595],[1801,1159.91,1300],[1499,1119.47,1248],[561,460.8,489],[0,0,0]],[[3291,137.19,58],[1694,243.85,167],[1187,295.94,253],[858,293.61,287],[933,420.18,424],[634,345.33,387],[865,563.13,600],[614,457.44,491],[1024,876.98,926],[584,542.76,567]]],"fg3m":[[[95863,1305.03,1703],[10802,1534.63,1776],[7222,1783.97,1938],[4994,1723.04,1835],[4645,2078.68,2178],[3718,2029.74,2076],[1586,996.65,980],[0,0,0],[0,0,0],[0,0,0]],[[2144,99.17,76],[1341,205.42,161],[515,120.06,93],[1052,372.35,353],[600,262.24,230],[120,64.05,60],[791,529.56,523],[880,647.37,633],[99,81.88,82],[1,0.91,1]]],"pra":[[[174327,1397.82,1718],[11567,1655.53,1778],[7399,1817.41,2006],[5777,2001.69,2141],[4706,2103.32,2190],[4307,2359.75,2474],[4114,2668.5,2705],[4175,3125.08,3159],[4580,3892.42,3883],[7905,7573.43,7523]],[[11123,318.43,138],[3067,442.47,323],[2094,512.48,444],[1708,591.62,580],[1486,663.86,714],[1434,784.9,852],[1396,903.69,1004],[1519,1137.42,1229],[1848,1571.86,1659],[5258,5102.55,5125]]]},"s30":{"pts":[[[155522,1233.46,1517],[9951,1426.92,1635],[6332,1553.88,1639],[4804,1667.61,1734],[3952,1769.19,1818],[3574,1954.88,1963],[3471,2247.5,2190],[3192,2388.11,2338],[2929,2481.39,2402],[1495,1395.06,1372]],[[1982,66.58,32],[685,97.81,76],[460,113.49,117],[349,120.81,127],[313,140,145],[304,166.57,171],[261,169.47,182],[285,213.76,223],[351,298.25,297],[594,568.07,576]]],"reb":[[[121524,1376.6,1140],[10879,1557.28,1550],[6753,1653.06,1780],[4855,1686.28,1894],[3964,1771.75,1919],[3769,2068.3,2277],[2994,1934.8,2091],[2439,1820.65,1908],[790,648.79,657],[0,0,0]],[[6987,201.66,99],[2104,304.31,231],[1342,335.21,294],[955,327.3,311],[1097,491.84,491],[622,337.64,351],[1007,654.53,667],[641,475.17,490],[1213,1039.05,1072],[450,416.8,423]]],"ast":[[[106387,1322.82,840],[9832,1395.17,1397],[5481,1345.02,1422],[4132,1432,1586],[2997,1334.2,1451],[2277,1243.66,1398],[1549,999.04,1106],[1073,800.06,858],[312,256.51,273],[0,0,0]],[[382,17.18,10],[265,39.16,25],[189,47.38,33],[143,48.02,39],[188,84.59,96],[91,49.49,42],[186,121.39,129],[77,56.76,61],[219,187.87,192],[69,63.29,67]]],"fg3m":[[[102032,1263.71,1641],[9982,1425.32,1618],[7097,1756.47,1817],[5878,2033.92,2143],[4048,1798.82,1822],[2099,1138.52,1078],[600,376.18,357],[0,0,0],[0,0,0],[0,0,0]],[[307,14.55,8],[224,34.26,24],[51,11.21,7],[230,81.26,66],[66,28.3,20],[7,3.79,2],[199,133.53,134],[113,82.67,70],[5,4.03,3],[0,0,0]]],"pra":[[[191722,1415.4,1936],[11688,1674.91,1969],[7414,1821.51,1970],[5682,1965.24,2074],[4781,2137.47,2254],[4304,2353.61,2352],[4230,2740.71,2722],[4084,3057.13,3027],[4661,3962.42,3871],[7077,6750.14,6601]],[[993,37.59,19],[441,64.23,35],[299,73.69,69],[264,92.87,95],[226,100.93,117],[209,114.45,126],[237,154.43,159],[209,156.08,162],[273,231.62,242],[793,767.79,770]]]},"s36":{"pts":[[[165181,1026.16,1591],[8148,1162.54,1302],[5139,1262.27,1324],[3932,1366.33,1398],[3326,1489.7,1437],[2990,1639.28,1557],[2708,1752.11,1609],[2121,1579.38,1503],[1438,1214.07,1153],[557,518.78,513]],[[32,1.37,0],[15,2.34,0],[10,2.41,4],[9,3.15,1],[7,3.05,1],[9,5.03,5],[5,3.25,1],[9,6.72,6],[6,5.03,5],[17,16.28,17]]],"reb":[[[135509,1346.72,1225],[10395,1477.47,1549],[6073,1489.53,1630],[4812,1671.93,1781],[3715,1655.85,1738],[2964,1616.85,1670],[2012,1296.93,1377],[1222,908.55,909],[268,220.28,215],[0,0,0]],[[743,27.15,14],[338,49.8,41],[215,53.62,54],[174,59.16,57],[201,90.72,90],[92,49.43,54],[206,133.99,133],[106,78.19,80],[238,204.76,211],[53,48.55,49]]],"ast":[[[112757,1190.51,895],[7983,1137.62,1155],[4934,1207.65,1328],[3111,1072.8,1154],[2031,902.93,1032],[1350,737.1,814],[800,514.7,542],[332,244.81,262],[42,34.59,37],[0,0,0]],[[10,0.28,0],[8,1.22,1],[6,1.56,1],[1,0.32,0],[8,3.54,4],[2,1.1,0],[9,5.84,6],[1,0.79,0],[7,5.94,5],[1,0.9,1]]],"fg3m":[[[108199,1051.13,1502],[9478,1380.91,1514],[6618,1618.14,1679],[3834,1312.59,1287],[1663,731.43,684],[470,251.93,244],[64,40.09,33],[0,0,0],[0,0,0],[0,0,0]],[[8,0.4,0],[12,1.83,0],[2,0.47,1],[10,3.54,2],[3,1.33,1],[0,0,0],[10,6.67,5],[4,2.96,3],[1,0.8,1],[0,0,0]]],"pra":[[[201985,1128.46,1998],[9043,1291.87,1606],[5722,1400.26,1535],[4462,1546.95,1641],[3768,1685.4,1687],[3424,1873.58,1738],[3208,2080.32,1967],[3241,2427.04,2306],[3449,2928.22,2707],[3543,3352.8,3172]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]]},"s42":{"pts":[[[448352,1929.96,3027],[16050,2299.5,2405],[9394,2300.4,2279],[6735,2330.73,2276],[5318,2378.65,2228],[4538,2481.98,2342],[3437,2219.69,2085],[2267,1687.32,1624],[1347,1134.8,1076],[383,354.85,340]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]],"reb":[[[379652,2862.49,2663],[20545,2915.05,2932],[10806,2643.23,2846],[7631,2638.81,2919],[5505,2452.35,2646],[3459,1884.12,2034],[1837,1181.22,1231],[873,647.15,691],[166,136.29,140],[0,0,0]],[[44,1.11,0],[10,1.58,1],[12,3.1,1],[5,1.73,1],[14,6.06,7],[5,2.84,1],[15,9.73,8],[3,2.16,1],[20,17.21,18],[2,1.88,2]]],"ast":[[[318764,2399.45,1748],[14308,2025.56,2203],[6770,1644.56,1926],[3740,1288.15,1457],[2055,908.2,984],[805,434.49,484],[186,118.13,141],[32,23.28,24],[0,0,0],[0,0,0]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]],"fg3m":[[[301067,2240.04,3015],[18163,2617.26,2899],[9660,2325.97,2351],[3180,1073.45,1043],[611,264.75,250],[79,42.23,45],[6,3.7,3],[0,0,0],[0,0,0],[0,0,0]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]],"pra":[[[547554,2078.64,3667],[16459,2359.28,2691],[10261,2518.82,2474],[7838,2721.21,2623],[6331,2825.47,2698],[5367,2938.04,2683],[4966,3215.32,2983],[4734,3538.85,3244],[4305,3646.51,3462],[2869,2697.02,2589]],[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]]]},"rep":{"pts":[[[217086,2075.9,2350],[17475,2483.54,2730],[9717,2420.04,2657],[9823,3413.31,3696],[4836,2151.52,2305],[5462,3002.36,3045],[6815,4428.5,4629],[4175,3055.07,3168],[47,38.05,31],[0,0,0]],[[153548,4260.48,1691],[41806,6042.24,3815],[28781,7036.8,6004],[20201,7007.59,6990],[20586,9206.4,10119],[17707,9693.22,11149],[15078,9755.7,11164],[17649,13284.46,14781],[23342,19826.28,21064],[27521,26161.48,26772]]],"reb":[[[112003,1319.27,1501],[8848,1295.08,1533],[7334,1756.23,2006],[2846,997.3,1127],[4048,1824.46,2024],[5291,2904.3,3293],[1030,633.28,701],[0,0,0],[0,0,0],[0,0,0]],[[187766,4871.1,2489],[49676,7124.94,5217],[32181,7960.69,6994],[28480,9870.55,9816],[22306,9963.93,10522],[18602,10184.71,11152],[22210,14428.61,15997],[23353,17482.02,19214],[23243,19710.81,21106],[21143,20010.01,20551]]],"ast":[[[209945,2862.09,2183],[21040,3030.35,2895],[13775,3340.08,3526],[9031,3144.86,3483],[8184,3658.81,4058],[6542,3574.99,3932],[1231,758.56,799],[0,0,0],[0,0,0],[0,0,0]],[[54067,1885.23,996],[21618,3084.15,2227],[13582,3382.35,2997],[13005,4500.03,4479],[9383,4180.38,4377],[7487,4100.85,4461],[10872,7072.45,7899],[10691,7988.9,8770],[9879,8378.57,8973],[7438,6993.15,7213]]],"fg3m":[[[175041,2352.03,3814],[18937,2634.44,3377],[13164,3275.89,3930],[7500,2538.27,2888],[6051,2724.85,2980],[7984,4395.24,4787],[4963,3122.55,3359],[6,4.22,6],[0,0,0],[0,0,0]],[[59043,2678.68,2329],[31926,4668.64,4212],[19366,4714.02,4601],[17457,6105.68,6352],[14598,6507.14,6728],[10002,5449.02,5682],[11756,7709.28,8165],[15459,11549.36,12004],[11740,9911.97,10178],[2777,2563.79,2592]]],"pra":[[[251519,2223.31,3008],[18056,2614.24,2922],[10370,2532.51,2782],[9297,3245.09,3471],[5513,2435.27,2564],[5220,2869.74,3069],[4872,3138.77,3289],[633,455.32,462],[1,0.8,1],[0,0,0]],[[202334,4964.37,2119],[50568,7263.43,4525],[35746,8816.36,7284],[27159,9405.89,9191],[25999,11660.72,12600],[23865,13064.07,14707],[22434,14557.49,16726],[26812,20089.74,22328],[28802,24454.68,26292],[35045,33350.16,34168]]]}};
 /**
 * Coefficients from the built-in lessons plus whatever this phone has graded since (dev = patEmpty()
 * sums). With nothing new graded this is exactly the built-in set.
 */
+// How each team's points still to come really ran against the sum of our player numbers, per stage:
+// [team-games graded, sum of our points still to come, sum of the real ones]. Learned with every other lesson applied.
+const TEAM_PRIOR = {"pre":[7418,833818,831601],"s6":[2596,254576,262030],"s12":[2596,217573,223466],"s18":[2596,183243,188043],"s24":[2596,143421,148622],"s30":[2596,106528,111110],"s36":[2596,69750,73039],"s42":[2596,36891,38293],"rep":[7418,839406,831601]};
+/** The team check factor per stage from the built-in record plus what this phone has graded (shrunk toward 1, capped). */
+function teamTableFrom(dev, prior) {
+const out = {};
+for (const g of PAT_GROUPS) {
+const P0 = (prior && prior[g]) || [0, 0, 0], T = (dev && dev[g]) || [0, 0, 0];
+const n = P0[0] + T[0], sp = P0[1] + T[1], sa = P0[2] + T[2];
+if (n < 100 || !(sp > 0)) continue;
+const K = 60 * (sp / n);
+out[g] = +clamp((sa + K) / (sp + K), 0.85, 1.15).toFixed(4);
+}
+return out;
+}
 function patBeta(dev, lam) {
 const L = lam != null ? lam : TUNE.patLam;
 const out = { n: 0, graded: 0 };
@@ -850,32 +1003,36 @@ if (!P0) { out[g][s] = null; continue; }
 const A = T ? T.A.slice() : new Array(PAT_D * PAT_D).fill(0);
 const b = T ? T.b.slice() : new Array(PAT_D).fill(0);
 const avg0 = P0.w / Math.max(P0.n, 1);
-for (let i = 0; i < PAT_D; i++) { const di = (P0.d[i] || 0) + L * avg0 * 25; A[i * PAT_D + i] += di; b[i] += di * (P0.b[i] || 0); }
+for (let i = 0; i < PAT_D; i++) { const di = (P0.d[i] || 0) + L * avg0 * 25 * PAT_LAMF[i]; A[i * PAT_D + i] += di; b[i] += di * (P0.b[i] || 0); }
 out[g][s] = solveLin(A, b, PAT_D).map((v) => +v.toFixed(5));
 out.n = Math.max(out.n, P0.n + (T ? T.n : 0));
 out.graded = Math.max(out.graded, T ? T.n : 0);
 }
 }
 out.cal = calTable(dev && dev.cal);
+out.team = teamTableFrom(dev && dev.team, TEAM_PRIOR);
 return out;
 }
 /** The correction factor and each feature's share of it. */
-function patApply(beta, x, cap, shift) {
+function patApply(beta, x, cap, shift, capUp) {
 let z = 0;
 const c = cap != null ? cap : TUNE.patCap;
+const cu = capUp != null ? capUp : c;
 const parts = new Array(PAT_D).fill(0);
 for (let i = 0; i < PAT_D; i++) { parts[i] = (beta[i] || 0) * x[i]; z += parts[i]; }
 // shift: the team's average usage-shift, taken back out so one player's extra shots come off his teammates'
 const zz = z - (shift || 0);
-return { f: 1 + TUNE.patW * clamp(zz, -c, c), z: zz, parts, shift: shift || 0 };
+return { f: 1 + TUNE.patW * clamp(zz, -c, cu), z: zz, parts, shift: shift || 0 };
 }
 /** The usage-shift part of a correction (hot/cold starts, real usage, luck): the part that is shared inside a team. */
 function patShiftPart(beta, x) { let z = 0; for (const k of PAT_SHIFT) { const i = PAT_IX[k]; z += (beta[i] || 0) * x[i]; } return z; }
 // ---- learned calibration of the chances: when the simulations said 70%, how often did it happen?
 // Counted in 10 probability bins per stage, stat and "a lot / a little still to come". The sums add up
 // across nights, so the phone keeps learning; the map is kept monotone and shrunk toward "as simulated".
-const CAL_STATS = ['pts', 'reb', 'ast', 'fg3m'];
-const CAL_LEVEL = { pts: 9, reb: 2.5, ast: 2.5, fg3m: 1.2 }; // expected amount still to come that counts as "a lot"
+const CAL_STATS = ['pts', 'reb', 'ast', 'fg3m', 'pra'];
+const CAL_LEVEL = { pts: 9, reb: 2.5, ast: 2.5, fg3m: 1.2, pra: 14 }; // expected amount still to come that counts as "a lot"
+// what a box line holds for a stat (the combined stat is not a field of its own)
+const statOf = (o, s) => (s === 'pra' ? (o.pts || 0) + (o.reb || 0) + (o.ast || 0) : o[s]);
 const calLevel = (s, rem) => (rem >= CAL_LEVEL[s] ? 1 : 0);
 function calEmpty() { const o = {}; for (const g of PAT_GROUPS) { o[g] = {}; for (const s of CAL_STATS) o[g][s] = [0, 1].map(() => Array.from({ length: 10 }, () => [0, 0, 0])); } return o; }
 function calObs(acc, g, s, lvl, p, y) { const c = acc[g] && acc[g][s] && acc[g][s][lvl]; if (!c) return; const b = c[Math.min(9, Math.floor(p * 10))]; b[0]++; b[1] += p; b[2] += y; }
@@ -914,11 +1071,11 @@ const xs = map[0], ys = map[1];
 for (let i = 1; i < xs.length; i++) if (p <= xs[i]) { const d = xs[i] - xs[i - 1]; return d > 0 ? ys[i - 1] + ((p - xs[i - 1]) / d) * (ys[i] - ys[i - 1]) : ys[i]; }
 return p;
 }
-/** The calibrated chance for one player's stat line (pra and anything unlearned stay as simulated). */
+/** The calibrated chance for one player's stat line (anything unlearned stays as simulated). */
 function calProb(player, stat, p) { const m = player && player.cal && player.cal[stat]; return m ? calP(m, p) : p; }
 /** What the phone has learned, packed small for storage (each table is symmetric: keep the upper half; skip empty stages). */
 function patPack(sum) {
-const out = { v: 2, acc: sum.acc || null, cal: sum.cal || null, g: {} };
+const out = { v: 2, acc: sum.acc || null, cal: sum.cal || null, team: sum.team || null, g: {} };
 const r5 = (x) => +(+x).toPrecision(5);
 for (const g of PAT_GROUPS) { if (!sum[g]) continue; for (const s of PAT_LEARN) { const T = sum[g][s]; if (!T || !T.n) continue; const u = []; for (let i = 0; i < PAT_D; i++) for (let j = i; j < PAT_D; j++) u.push(r5(T.A[i * PAT_D + j])); (out.g[g] = out.g[g] || {})[s] = { u, b: T.b.map(r5), n: T.n, w: r5(T.w) }; } }
 return out;
@@ -934,6 +1091,7 @@ T.b = P.b.slice(); T.n = P.n; T.w = P.w;
 }
 if (pk.acc) patAdd(sum, { acc: pk.acc });
 if (pk.cal) patAdd(sum, { cal: pk.cal });
+if (pk.team) patAdd(sum, { team: pk.team });
 return sum;
 }
 /** Keep only the minutes lessons (the nightly learning grades the stats on top of corrected minutes). */
@@ -1016,8 +1174,9 @@ const starOn = (u) => !!(sSt && sSt.some(([a, b]) => u >= a && u < b));
 const d = String(lg.date).slice(0, 10), td = datesBy[tm] || [], di = td.indexOf(d);
 const isB2b = di > 0 && td[di - 1] === addDaysStr(d, -1);
 const gameCats = [side === 1 ? 'home' : 'away', isB2b ? 'b2b' : 'rest'];
-const catsAt = (u) => {
-const mm = mAt(u);
+const catsAt = (u, own) => {
+// a basket belongs to the score it was scored at: take his own points back out of the margin (v15; before, scoring itself pushed baskets into "ahead")
+const mm = mAt(u) - (TUNE.sitPre > 0 && own ? own : 0);
 const out = ['q' + Math.min(4, Math.floor(u / 12) + 1), mm >= 12 ? 'ahead' : mm <= -12 ? 'behind' : 'close'];
 if (u >= len - 5 && Math.abs(mm) <= 5) out.push('clutch');
 if (starId != null) out.push(starOn(u) ? 'starOn' : 'starOff');
@@ -1035,7 +1194,7 @@ gm += dt; if (mid < 24) m1 += dt;
 const onAt = (u) => row.st.some(([a, b]) => u >= a - 0.1 && u <= b + 0.1);
 for (const e of lg.sc) {
 if (e[3] !== +pid || e[1] !== side || !onAt(e[0])) continue;
-for (const k of catsAt(e[0])) c[k][0] += e[2];
+for (const k of catsAt(e[0], e[2])) c[k][0] += e[2];
 for (const k of gameCats) c[k][0] += e[2];
 gp += e[2]; if (e[0] < 24) p1 += e[2];
 }
@@ -1180,7 +1339,7 @@ const lastName = (n) => { const w = String(n).split(' ').filter((x) => !/^(jr\.?
 function explain(p, r, c) {
 const out = [];
 const ri = p.rotInfo;
-const remPlayed = Math.max(c.minProj, 0);
+const remPlayed = Math.max(c.minShown != null ? c.minShown : c.minProj, 0); // the number on the card (the middle of the simulations in the last stage)
 if (r.ejected) out.push({ icon: '🟥', text: 'Ejected: he is done for the night.', so: 'His projection is locked at what he has now, so skip any pick that needs more from him.', effect: 'down' });
 else if (r.pf >= 6) out.push({ icon: '🟥', text: 'Fouled out: he is done for the night.', so: 'His projection is locked at what he has now, so skip any pick that needs more from him.', effect: 'down' });
 if (ri) {
@@ -1192,8 +1351,8 @@ const restBites = ri.foulRest && Math.min(fr[0], fr[1]) < 0.95;
 if (restBites && ri.foulSit) out.push({ icon: '⚠️', text: `Sitting with ${r.pf} fouls. This coach usually rests a player in this spot until about ${clockLabel(ri.foulRest)}, then puts him back in.`, so: minSo, effect: 'down' });
 else if (restBites && r.on) out.push({ icon: '⚠️', text: `${r.pf} fouls and still playing. The coach is letting him play through it for now, but a rest before ${clockLabel(ri.foulRest)} is likely.`, so: minSo, effect: 'down' });
 else if (r.pf >= 4 && r.pf < 6 && c.el < 44) out.push({ icon: 'ℹ️', text: `${r.pf} fouls, but coaches this season mostly keep players in with ${r.pf === 4 ? '4 fouls in the 3rd quarter' : 'foul trouble this late'}.`, so: 'Only a small trim to his minutes, so his number barely moves.', effect: 'info' });
-if (!r.on && !ri.foulSit && ri.benched < 0.5) out.push({ icon: '🪑', text: `Out of the rotation: he's been on the bench for ${fmtMin(ri.sitFor)}, when he'd normally have played ${ri.missed.toFixed(1)} of those minutes. Either he's hurt or the coach has gone away from him.`, so: `${cuts(minEffect(c, dmin))} Only ${remPlayed.toFixed(1)} more minutes projected.`, effect: 'down' });
-else if (!r.on && !ri.foulSit && ri.missed >= 2) out.push({ icon: '🪑', text: `Longer rest than usual: ${fmtMin(ri.sitFor)} on the bench. Watch whether he checks back in.`, so: dmin < -0.3 ? cuts(minEffect(c, dmin)) : 'His number assumes he comes back on his normal schedule.', effect: 'down' });
+if (!r.on && !r.dnpYet && !ri.foulSit && ri.benched < 0.5) out.push({ icon: '🪑', text: `Out of the rotation: he's been on the bench for ${fmtMin(ri.sitFor)}, when he'd normally have played ${ri.missed.toFixed(1)} of those minutes. Either he's hurt or the coach has gone away from him.`, so: `${cuts(minEffect(c, dmin))} Only ${remPlayed.toFixed(1)} more minutes projected.`, effect: 'down' });
+else if (!r.on && !r.dnpYet && !ri.foulSit && ri.missed >= 2) out.push({ icon: '🪑', text: `Longer rest than usual: ${fmtMin(ri.sitFor)} on the bench. Watch whether he checks back in.`, so: dmin < -0.3 ? cuts(minEffect(c, dmin)) : 'His number assumes he comes back on his normal schedule.', effect: 'down' });
 if (r.on && ri.stintAvg && p.r.stints && p.r.stints.length) {
 const cur = c.el - p.r.stints[p.r.stints.length - 1][0];
 if (cur > ri.stintAvg + 2) out.push({ icon: '🔄', text: `On the floor for ${fmtMin(cur)} straight; his usual stretch is ${fmtMin(ri.stintAvg)}. A rest is coming.`, so: 'Already built in: his projection expects a short break before he returns.', effect: 'info' });
@@ -1234,7 +1393,7 @@ const mins = (k) => Math.round(S.c[k][1]);
 if (S.star && Math.abs(M.star - 1) >= 0.02 && Math.abs(R.starOff - 1) >= 0.08) {
 const star = lastName(S.star.name);
 const why = M.starOffShift >= 0.99 ? `${star} is out tonight, so he plays every minute without him.` : M.starOffShift > 0.05 ? `${star} is projected to sit more than usual tonight.` : M.starOffShift < -0.05 ? `${star} is projected to play more than usual tonight.` : '';
-push({ icon: '🔁', key: 'sit-star', chip: R.starOff > 1 ? `TAKES OVER FOR ${star.toUpperCase()}` : `NEEDS ${star.toUpperCase()}`,
+push({ icon: '🔁', key: 'sit-star', chip: R.starOff > 1 ? `STEPS UP FOR ${star.toUpperCase()}` : `NEEDS ${star.toUpperCase()}`,
 text: `With ${star} off the floor he scores ${pc(R.starOff)} ${more(R.starOff)} per minute than his normal rate (${mins('starOff')} minutes without him lately). ${why}`.trim() }, eff(M.star, TUNE.sitStarW));
 }
 // crunch time / game script
@@ -1282,7 +1441,17 @@ uReal: ['players getting more of the shots than usual', 'players getting fewer o
 leadS: ['starters on a team with a big lead', ''], trailS: ['starters on a team that is far behind', ''], lopB: ['bench players in a lopsided game', ''],
 on: ['players on the floor right now', ''], sitLong: ['players who have sat a long stretch', ''], dnp: ['players who have not checked in yet', ''],
 usgHi: ['high-usage scorers', 'low-usage role players'], closeStar: ['go-to scorers in a close game', 'role players in a close game'],
-pfX: ['players with more fouls than usual by now', 'players with fewer fouls than usual'], recent: ['players who took over in the last few minutes', 'players who went quiet in the last few minutes'],
+pfX: ['players with more fouls than usual by now', 'players with fewer fouls than usual'], recent: ['players who took charge in the last few minutes', 'players who went quiet in the last few minutes'],
+startUp: ['players who start tonight after coming off the bench', ''], startDown: ['usual starters left out of tonight\'s starting five', ''],
+fresh: ['players back from a layoff', ''], deep: ['deep-bench players on a short-handed night', ''], vacPos: ['players whose position is short-handed tonight', ''],
+lastMin: ['players who played more than usual last game', 'players who played less than usual last game'], rest3: ['teams coming off three or more days of rest', ''], missShare: ['players who have missed recent games', ''],
+loadS: ['starters on a team with a full bench tonight', 'starters on a short-handed team'], loadB: ['bench players on a team with a full bench tonight', 'bench players on a short-handed team'],
+loadBd: ['deep-bench players on a team with a full bench tonight', 'deep-bench players on a short-handed team'], loadBq: ['bench players in a crowded rotation', ''],
+favS: ['starters on a team expected to win big', ''], dogS: ['starters on a team expected to lose big', ''], dogB: ['bench players on a team expected to lose big', ''],
+aAll: ['players overall', 'players overall'], aS: ["tonight's starters", ''], aB: ['light-minute players', ''], aOn: ['players on the floor right now', ''], aPace: ['players getting more minutes than usual tonight', ''],
+aLop: ['players in a lopsided game', ''], aOwn: ['players the lineup news moved away from their usual minutes', 'players the lineup news moved away from their usual minutes'], aLong: ['players whose season-long minutes are higher than their recent ones', 'players whose season-long minutes are lower than their recent ones'],
+lopTier: ['heavy-minute players in a lopsided game', 'light-minute players in a lopsided game'], flagOff: ['regulars on the bench with the reserves finishing a decided game', ''], flagOn: ['reserves finishing a decided game', ''],
+deepLop: ['deep-bench players in a lopsided game', ''], stintLong: ['starters who have been on the floor a long stretch', 'starters who just checked back in'],
 mpgC: ['heavy-minute players', 'light-minute players'], fadeHist: ['players whose starts usually carry', 'players whose starts usually reverse'], leadProof: ['blowout-proof starters in a lopsided game', ''],
 };
 /** Lessons from graded games (learned patterns) and, live, how he's tracking vs his normal pace. */
@@ -1323,6 +1492,20 @@ const out = [];
 const pre = c.phase === 'pre';
 const mates = c.absentMates.filter((x) => x.pid !== r.pid);
 const names = mates.map((x) => lastName(x.name)).join(', ');
+// tonight's role vs his usual one (known once the lineups are posted; the change in minutes is already in his number)
+if (p.sT != null && c.phase !== 'final') {
+const mp = c.pat && c.pat.F && c.pat.F.min && c.pat.F.min.parts ? c.pat.F.min.parts : null;
+const plainRem = Math.max((p.minPlain || 0), 0);
+if (p.sT === 1 && p.startShare <= 0.3 && p.lineupF.startUp > 0) {
+const dmin = mp ? mp[PAT_IX.startUp] * plainRem : 0;
+out.push({ icon: '🚀', key: 'starts', chip: 'STARTS TONIGHT', effect: 'up', text: `${lastName(r.name)} ${pre ? 'starts' : 'started'} tonight. He came off the bench in most of his recent games.`,
+so: dmin >= 0.5 ? helps(minEffect(c, dmin)) + ' New starters usually play more.' : 'New starters usually play more: that is built into his minutes.' });
+} else if (p.sT === 0 && p.startShare >= 0.7) {
+const dmin = mp ? mp[PAT_IX.startDown] * plainRem : 0;
+out.push({ icon: '🪑', key: 'notstarting', chip: 'NOT STARTING', effect: 'down', text: `${lastName(r.name)} usually starts but ${pre ? 'is' : 'was'} not in tonight's starting five.`,
+so: (dmin <= -0.5 ? cuts(minEffect(c, dmin)) + ' ' : '') + (pre ? 'Usual starters who are left out often sit the whole game, so check his status before using a pick on him.' : 'Usual starters who come off the bench play less, and some do not play at all.') });
+}
+}
 if (pre && p.n) {
 if (p.n >= 4 && p.recent3 != null && p.recent3 - p.mpgFlat >= 3) out.push({ icon: '📈', key: 'role', chip: 'ROLE UP', effect: 'up', text: `His minutes are growing: ${p.recent3.toFixed(0)} a game in his last 3 vs ${p.mpgFlat.toFixed(0)} for the season. Recent games count more in his projection.`, so: helps(minEffect(c, p.mpg - p.mpgFlat)) });
 else if (p.n >= 4 && p.recent3 != null && p.recent3 - p.mpgFlat <= -3) out.push({ icon: '📉', key: 'role', chip: 'ROLE DOWN', effect: 'down', text: `His minutes are shrinking: ${p.recent3.toFixed(0)} a game in his last 3 vs ${p.mpgFlat.toFixed(0)} for the season.`, so: cuts(minEffect(c, p.mpg - p.mpgFlat)) });
@@ -1370,7 +1553,9 @@ out.push({ icon: '💤', key: 'script', chip: `BLOWOUT ${pct0(c.pBlow)}`, effect
 }
 if (pre && c.b2b) out.push({ icon: '🛌', key: 'rest', chip: 'B2B', effect: p.starter && TUNE.b2bMin > 0 ? 'down' : 'info', text: 'Second night of a back-to-back.', so: p.starter && TUNE.b2bMin > 0 ? `Starters play a little less on these nights. ${cuts(minEffect(c, c.minProj * (1 - 1 / (1 - TUNE.b2bMin))))}` : 'Bench players play their normal minutes on these nights, so his number doesn\'t change.' });
 if (pre && c.doubt) out.push({ icon: '⚠️', key: 'status', chip: 'CHECK STATUS', effect: 'down', text: `Not confirmed to play: ${c.doubt}.`, so: 'His projection assumes he plays. Check his status before tip-off.' });
-else if (c.lineup && c.lineup.confirmed && c.inList) out.push({ icon: '✅', key: 'status', chip: 'CONFIRMED', effect: 'info', text: `Confirmed in tonight's lineup${c.lineup.source ? ` (${c.lineup.source})` : ''}.`, so: 'No guesswork on whether he plays.' });
+else if (c.lineup && c.lineup.confirmed && c.inList && (pre || !r.dnpYet)) out.push({ icon: '✅', key: 'status', chip: 'CONFIRMED', effect: 'info', text: `Confirmed in tonight's lineup${c.lineup.source ? ` (${c.lineup.source})` : ''}.`, so: 'No guesswork on whether he plays.' });
+// during the game a player still waiting to check in keeps the same kind of number as before tip-off
+if (!pre && r.dnpYet && TUNE.condLive > 0) out.push({ icon: '⏳', key: 'notin', effect: 'info', text: `${lastName(r.name)} has not checked in yet.`, so: 'These numbers are what he does if he gets in tonight.' });
 return out.concat(sitItems(p, r, c), patternItems(p, r, c));
 }
 
@@ -1432,7 +1617,7 @@ if (ps.length < 5) continue;
 const sb = ps.reduce((a, p) => a + p.shift.baseRem, 0), sr = ps.reduce((a, p) => a + p.shift.rem, 0);
 const k = sb > 0 ? sr / sb : 1;
 const d = ps.map((p) => ({ p, d: p.shift.rem - k * p.shift.baseRem }));
-const up = d.filter((x) => x.d >= 2 && x.p.shift.baseRem > 0 && x.d / Math.max(x.p.shift.baseRem * k, 2) >= 0.15).sort((a, b) => b.d - a.d)[0];
+const up = d.filter((x) => !x.p.dnpYet && x.d >= 2 && x.p.shift.baseRem > 0 && x.d / Math.max(x.p.shift.baseRem * k, 2) >= 0.15).sort((a, b) => b.d - a.d)[0];
 const cause = (p) => {
 const r = p.rot;
 if (p.now.pf >= 6) return { w: 3, t: `${lastName(p.name)} has fouled out` };
@@ -1519,13 +1704,19 @@ const forceIn = new Set((ov.in || []).map(Number)), forceOut = new Set((ov.out |
 // lineup / injury report from outside DataBallr (ESPN in the app): names → ids on these two rosters
 const av = o.avail || null;
 const availOut = new Map(), availIn = new Set(), availDoubt = new Map();
+const startT = new Set(); // tonight's starters, once the lineups are posted
+const freshIn = []; // on tonight's active list with no recent games in our logs (back from a layoff, new to the team)
 const byName = {};
 for (const [pid, hs] of Object.entries(hist)) byName[norm(hs[hs.length - 1].name)] = +pid;
 for (const r of Object.values(now.players)) if (r.team === v || r.team === h) byName[norm(r.name)] = r.pid;
 if (av) {
 const idOf = (n) => byName[norm(n)];
 for (const x of av.out || []) { const id = idOf(x.name || x); if (id != null) availOut.set(id, x.why || (av.confirmed ? 'inactive tonight' : 'out on injury report')); }
-for (const x of av.in || []) { const id = idOf(x.name || x); if (id != null) availIn.add(id); }
+for (const x of av.in || []) {
+const id = idOf(x.name || x);
+if (id != null) { availIn.add(id); if (x.starter) startT.add(+id); }
+else if (av.confirmed && x.name && (x.team === v || x.team === h)) freshIn.push(x);
+}
 for (const x of av.doubt || []) { const id = idOf(x.name || x); if (id != null && !availIn.has(id)) availDoubt.set(id, x.why || 'questionable'); }
 }
 const lineup = { confirmed: !!(av && av.confirmed), report: !!(av && (av.report || av.confirmed)), source: (av && av.source) || null, out: availOut.size, in: availIn.size };
@@ -1573,7 +1764,9 @@ doubt[pid] = doubt[pid] || 'missed last game';
 const recent = hs.slice(-3);
 const tm = hs[hs.length - 1].team;
 if (tm !== v && tm !== h) continue;
-if (recent.reduce((a, r) => a + r.min, 0) / 3 < 6) continue;
+// deep bench: skipped unless tonight's posted active list has him (short-handed nights are when he plays)
+const deepIn = TUNE.actDeep > 0 && ((lineup.confirmed && availIn.has(+pid) && (st.phase === 'pre' || el <= 12.5)) || (TUNE.deepRep > 0 && st.phase === 'pre' && !lineup.confirmed));
+if (recent.reduce((a, r) => a + r.min, 0) / 3 < 6 && !deepIn) continue;
 // a game in progress: starters who haven't checked in early, and anyone by halftime, are out
 if (st.phase === 'live') {
 if (el >= 24) continue;
@@ -1582,9 +1775,39 @@ absent.push({ pid: +pid, name: lastRow.name, team: lastRow.team, why: "hasn't ch
 continue;
 }
 }
-roster[pid] = { pid: +pid, name: hs[hs.length - 1].name, team: tm, pts: 0, reb: 0, oreb: 0, ast: 0, fg3m: 0, fg3a: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, tov: 0, pf: 0, tech: 0, ejected: false, min: 0, qmin: {}, on: false, dnpYet: true };
+roster[pid] = { pid: +pid, name: hs[hs.length - 1].name, team: tm, pts: 0, reb: 0, oreb: 0, ast: 0, fg3m: 0, fg3a: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, tov: 0, pf: 0, tech: 0, ejected: false, min: 0, qmin: {}, on: false, dnpYet: true,
+deep: recent.reduce((a, r) => a + r.min, 0) / 3 < 6 };
+}
+// back from a layoff: on tonight's posted list, no recent games here, but a real season line (starters always; others with a regular role)
+if (TUNE.actNew > 0 && (st.phase === 'pre' || el <= 12.5)) for (const x of freshIn) {
+const k = norm(x.name);
+const lpF = mergePrior(last[k], cur[k]);
+if (!lpF || !(lpF.mpg > 0) || (!x.starter && !(lpF.mpg >= TUNE.actNewMpg && lpF.gp >= 5))) continue;
+if (Object.values(roster).some((r) => norm(r.name) === k)) continue;
+const pid = -(Math.abs(+lpF.nba_id || 0) || 1000 + Object.keys(roster).length);
+roster[pid] = { pid, name: lpF.name || x.name, team: x.team, pts: 0, reb: 0, oreb: 0, ast: 0, fg3m: 0, fg3a: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, tov: 0, pf: 0, tech: 0, ejected: false, min: 0, qmin: {}, on: false, dnpYet: true, fresh: true };
+availIn.add(pid); if (x.starter) startT.add(pid);
 }
 }
+// tonight's starters: from the posted lineup before tip, from who was on the floor at the opening tip once the game is on
+// (early in a game the play-by-play has not named every starter yet: a starter with no shot, rebound or foul so far is
+// missing from it, so the posted lineup stays in and the play-by-play only adds to it; fewer than 8 known = not known)
+const postedStarters = startT.size;
+if (st.phase === 'live') for (const r of Object.values(now.players)) if ((r.team === v || r.team === h) && r.stints && r.stints[0] && r.stints[0][0] < 0.05) startT.add(+r.pid);
+// known = the posted lineup named them (8 of 10 is enough: names can fail to match), or the play-by-play has found all ten.
+// With no posted lineup and only 8 or 9 found so far, the missing one or two are starters the play-by-play has not named
+// yet, not benched players (they were being flagged NOT STARTING at minutes 3 to 6).
+const startKnown = postedStarters >= 8 || startT.size >= 10;
+// a posted starter with no line in the box yet has had no shot, rebound, foul or substitution: he has been out there since the tip
+if (TUNE.startOn > 0 && st.phase === 'live' && st.period <= 4 && postedStarters >= 8) for (const r of Object.values(roster)) {
+if (!r.dnpYet || !startT.has(+r.pid) || (now.players[r.pid] && now.players[r.pid].min > 0)) continue;
+r.dnpYet = false; r.on = true; r.min = el; r.stints = [[0, el]];
+r.qmin = {}; for (let q = 1; q <= 4; q++) { const m = clamp(el - (q - 1) * 12, 0, 12); if (m > 0) r.qmin[q] = m; }
+}
+const teamGames = {}, lastGameDay = {};
+for (const tm of [v, h]) { const tl = logs.filter((l) => tm in l.margin); teamGames[tm] = tl.length; lastGameDay[tm] = tl.reduce((a, l) => (String(l.date).slice(0, 10) > a ? String(l.date).slice(0, 10) : a), ''); }
+const rest3 = {};
+for (const tm of [v, h]) rest3[tm] = !!gameDate && !!lastGameDay[tm] && lastGameDay[tm] < addDaysStr(gameDate, -3);
 
 // live pace / possessions left
 const tNow = now.teams;
@@ -1599,7 +1822,8 @@ const ppV = (shr(v, 'ortg') * shr(h, 'drtg')) / lgOrtg, ppH = (shr(h, 'ortg') * 
 paceMkt = clamp((100 * mk.total) / (ppV + ppH), 88, 112);
 seasonPace = (1 - TUNE.mktTotalW) * seasonPace + TUNE.mktTotalW * paceMkt;
 }
-const livePace = el > 0 ? (possNow * 48) / Math.max(el, 1) : seasonPace;
+// (no reading before 3:00: only finished possessions are counted, so the first minutes read 30 to 85 and pulled the total down)
+const livePace = el >= 3 ? (possNow * 48) / el : seasonPace;
 const w = el / (el + TUNE.paceK);
 const q4Left = st.phase === 'final' ? 0 : st.period > 4 ? left : Math.min(left, 12);
 const possLeft = (((1 - w) * seasonPace + w * livePace) * (left - q4Left + q4Left * TUNE.q4Pace)) / 48;
@@ -1633,9 +1857,10 @@ const mQ3 = new Float64Array(N);
 // team strength drift (visitor perspective): net-rating gap minus home court, over the minutes to Q3
 const marginModel = ((ctx[v].net - ctx[h].net) / 100) * seasonPace - TUNE.homeAdv; // visitor, per 48
 const marginMkt = mk && mk.spreadHome != null ? mk.spreadHome : null; // home +7.5 → visitor by 7.5
-const drift = (marginMkt != null && TUNE.mktSpreadW > 0
+const expV48 = marginMkt != null && TUNE.mktSpreadW > 0
 ? (1 - TUNE.mktSpreadW) * TUNE.drift * marginModel + TUNE.mktSpreadW * marginMkt
-: TUNE.drift * marginModel) * (toQ3 / 48);
+: TUNE.drift * marginModel; // visitor's expected winning margin over a full game, as seen before tip-off
+const drift = expV48 * (toQ3 / 48);
 for (let i = 0; i < N; i++) mQ3[i] = marginNow + drift + R.normal(0, st.phase === 'pre' ? TUNE.preQ3Sd : TUNE.marginK * Math.sqrt(Math.max(toQ3, 0.01)));
 let pBlow = 0, pBig = 0;
 for (let i = 0; i < N; i++) { const a = Math.abs(mQ3[i]); if (a >= 20) pBlow++; if (a >= 15) pBig++; }
@@ -1682,6 +1907,7 @@ usgPrior = (lp.tsa100 + tov100) / 100;
 }
 let usg;
 if (usgCur != null && usgPrior) { const wc = a.on / (a.on + TUNE.usgPriorK); usg = wc * usgCur + (1 - wc) * usgPrior; }
+else if (usgCur != null && TUNE.thinK > 0) { const wc = a.on / (a.on + TUNE.usgPriorK); usg = wc * usgCur + (1 - wc) * 0.16; }
 else usg = usgCur != null ? usgCur : usgPrior || 0.16;
 const gl = (o.gameLogs && o.gameLogs[norm(r.name)]) || null;
 if (gl && gl.n >= 2 && gl.avg && gl.avg.usg > 0.03 && gl.avg.usg < 0.5 && TUNE.glUsgW > 0) {
@@ -1734,6 +1960,7 @@ const cur = a.min > 0 ? a[k] / a.min : null;
 const pr = lp ? lp[k] : null;
 let base;
 if (cur != null && pr != null) { const wc = n / (n + 6); base = wc * cur + (1 - wc) * pr; }
+else if (cur != null && TUNE.thinK > 0) base = (cur * a.min + BENCH_RATE[k] * TUNE.thinK) / (a.min + TUNE.thinK); // no season line: a few garbage minutes are not a rate
 else base = cur != null ? cur : pr != null ? pr : BENCH_RATE[k];
 const tn = r.min > 0 ? r[k] / r.min : base;
 // the season part follows tonight's environment; tonight's own rate already lives in it
@@ -1769,7 +1996,7 @@ const pfT = r.pfAt || [];
 const FR = { 2: [12, 18], 3: [24, 24], 4: [36, 39], 5: [42, 42] }; // foul # → [picked up before, rests until]
 let restEnd = 0, lvl = 0;
 for (const k of [5, 4, 3, 2]) {
-if (r.pf >= k && pfT.length >= k && pfT[k - 1] < FR[k][0] && el < FR[k][1]) { restEnd = FR[k][1]; lvl = k; break; }
+if (r.pf >= k && pfT.length >= k && pfT[k - 1] < FR[k][0] && (TUNE.foulEdge > 0 ? el <= FR[k][1] : el < FR[k][1])) { restEnd = FR[k][1]; lvl = k; break; }
 }
 const fr = TUNE.foulRest[lvl] || [1, 1];
 const fIn = restEnd > el ? (r.on ? fr[0] : fr[1]) : 1;
@@ -1777,20 +2004,29 @@ const fAfter = r.pf >= 4 ? TUNE.foulAfter : 1;
 const seg = (x, a, b) => (b <= a ? 0 : restEnd > a ? fIn * onBetween(x.st, a, Math.min(b, restEnd)) + fAfter * onBetween(x.st, Math.max(a, restEnd), b) : fAfter * onBetween(x.st, a, b));
 const pre = (x) => seg(x, el, 36), post = (x) => seg(x, Math.max(el, 36), 48);
 const match = rotG.filter((x) => onAt(x.st, el) === !!r.on);
-const wm = match.length / (match.length + TUNE.rotK);
+// how far to trust "games where he was also on the floor (or sitting) at this minute" over his plain rotation map:
+// little early in the game (the coach's usual pattern says more), almost fully in the last six minutes (who is out there
+// now is the closing group). Measured on finished games: one fixed value was a compromise that was wrong at both ends.
+// (Before tip-off nobody is on the floor, so there is nothing to match: the plain rotK stays. Tried with the schedule:
+// the before-lineups stage came out 1.7% worse on minutes on 121 unseen games.)
+const rk = TUNE.rotKEarly > 0 && st.phase === 'live' ? (el <= TUNE.rotKFrom ? TUNE.rotKEarly : el >= TUNE.rotKTo ? TUNE.rotKLate : TUNE.rotKEarly * Math.pow(TUNE.rotKLate / TUNE.rotKEarly, (el - TUNE.rotKFrom) / (TUNE.rotKTo - TUNE.rotKFrom))) : TUNE.rotK;
+const wm = match.length / (match.length + Math.max(rk, 0.05));
 let rPre = wm * (match.length ? mean(match.map(pre)) : 0) + (1 - wm) * mean(rotG.map(pre));
 let rQ4 = wm * (match.length ? mean(match.map(post)) : 0) + (1 - wm) * mean(rotG.map(post));
 const expSoFar = mean(rotG.map((x) => onBetween(x.st, 0, el)));
 let tonight = 1;
-if (TUNE.rotTonight > 0 && el >= 3) tonight = Math.pow((Math.max(r.min, 0) + TUNE.rotTonightK) / (Math.max(expSoFar, 0) + TUNE.rotTonightK), TUNE.rotTonight);
+const rtE = TUNE.rotTonightEarly > 0 && el < 18 ? TUNE.rotTonightEarly : TUNE.rotTonight;
+if (rtE > 0 && el >= 3) tonight = Math.pow((Math.max(r.min, 0) + TUNE.rotTonightK) / (Math.max(expSoFar, 0) + TUNE.rotTonightK), rtE);
 // sitting through minutes he normally plays = the coach has gone away from him (or he's hurt)
 const sts = r.stints || [];
 const sitFor = r.on ? 0 : sts.length ? el - sts[sts.length - 1][1] : el;
 // a foul-trouble seat is the coach's normal foul rest, not a benching
 const pfAt = r.pfAt || [];
-const foulSit = restEnd > el && !r.on && sts.length && pfAt.length && sts[sts.length - 1][1] >= pfAt[pfAt.length - 1] - 0.1;
+const foulSit = (TUNE.foulEdge > 0 ? restEnd >= el && restEnd > 0 : restEnd > el) && !r.on && sts.length && pfAt.length && sts[sts.length - 1][1] >= pfAt[pfAt.length - 1] - 0.1;
 const missed = r.on || foulSit ? 0 : mean(rotG.map((x) => onBetween(x.st, el - sitFor, el)));
-const benched = TUNE.benchM50 > 0 ? 1 / (1 + Math.exp((missed - TUNE.benchM50) / TUNE.benchS)) : 1;
+// (tonight's reserves are exempt: their usual pattern often comes from games in another role, and measured they come back)
+const reserveTonight = TUNE.benchRes > 0 && startKnown && !startT.has(+r.pid);
+const benched = TUNE.benchM50 > 0 && !reserveTonight ? 1 / (1 + Math.exp((missed - TUNE.benchM50) / TUNE.benchS)) : 1;
 rPre *= tonight * benched; rQ4 *= tonight * benched;
 remCur = rPre; remMid = 0; q4 = rQ4;
 const stintLens = rotG.flatMap((x) => x.st.filter(([a, b]) => b <= 48).map(([a, b]) => b - a));
@@ -1807,6 +2043,7 @@ const ph = hab0.players && hab0.players[r.name];
 const hab = TUNE.blowPlayer && ph ? ph : hab0;
 const b2bM = b2b[tm] && starter && st.phase === 'pre' ? 1 - TUNE.b2bMin : 1;
 const foul = r.ejected || r.pf >= 6 || forceOut.has(+r.pid) ? 0 : rotInfo ? 1 : r.pf >= 5 ? 0.65 : r.pf === 4 && st.period <= 3 ? 0.82 : r.pf === 3 && st.period <= 2 ? 0.93 : 1;
+const playShare = r.deep && !(r.min > 0) && teamGames[tm] > 0 ? clamp(n / teamGames[tm], 0.1, 1) : 1;
 const mins = new Float64Array(N);
 for (let i = 0; i < N; i++) {
 const lead = (tm === v ? 1 : -1) * Math.sign(mQ3[i]);
@@ -1816,7 +2053,7 @@ if (am >= 20) q4i = starter ? q4 * (lead > 0 ? hab.lead : hab.trail) : q4 * (lea
 else if (am >= 15) q4i = starter ? q4 * (lead > 0 ? (1 + hab.lead) / 2 : 0.9) : q4 * 1.15;
 else if (am < 8 && starter && TUNE.closerQ4 > 0) q4i = Math.max(q4, Math.min(TUNE.closerQ4, 12));
 const shock = clamp(R.normal(1, TUNE.minShock), 0.4, 1.5);
-mins[i] = Math.min((remCur + remMid + q4i) * foul * shock * b2bM, left);
+mins[i] = Math.min((remCur + remMid + q4i) * foul * shock * b2bM * playShare, left);
 }
 // his minutes still to come, quarter by quarter (for his quarter-by-quarter scoring shape)
 const qRem = { 1: 0, 2: 0, 3: 0, 4: q4 };
@@ -1831,7 +2068,20 @@ for (let q = st.period; q <= 3; q++) qRem[q] = tw > 0 ? ((remCur + remMid) * wq[
 const ratePM = {};
 for (const k of ['pts', 'reb', 'ast', 'fg3m']) { const pk = lp && lp[k] != null ? lp[k] : k === 'pts' ? 0.42 : BENCH_RATE[k] || 0.05; ratePM[k] = (a[k] + pk * 60) / (a.min + 60); }
 const sit = TUNE.sitOn !== 0 ? sitProfile(logs, r.pid, tm, stars[tm], sitPrior[r.pid] || null) : null;
-players.push({ sit, qRem, ratePM, usgBase: usg, p2fA: p2f, r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, mpgFlat, qavg, starter, n, rotInfo, lp, gl, zone, recent3: n ? mean(hs.slice(-3).map((x) => x.min)) : null });
+// tonight's role vs his usual one
+const startShare = n ? hs.filter((x) => Array.isArray(x.st) && x.st[0] && x.st[0][0] < 0.05).length / n : (lp && lp.mpg >= 26 ? 0.8 : 0.2);
+const sT = startKnown ? (startT.has(+r.pid) ? 1 : 0) : null;
+const lineupF = { startUp: sT === 1 ? (1 - startShare) * clamp((30 - mpg) / Math.max(mpg, 6), 0, 2.5) : 0, startDown: sT === 0 ? startShare : 0, fresh: !!r.fresh, deep: !!r.deep,
+lastMin: n >= 2 ? hs[n - 1].min - mpg : 0, rest3: rest3[tm], missShare: teamGames[tm] > 0 ? clamp(1 - n / teamGames[tm], 0, 1) : 0 };
+if (st.phase === 'pre' && sT === 0 && startShare >= 0.7 && mpg >= 20 && !forceIn.has(+r.pid)) doubt[r.pid] = doubt[r.pid] || 'usual starter, not in tonight\'s starting five';
+// long memory: his minutes over the whole season so far, with five games of last season mixed in (the recent window forgets)
+let longMin = null;
+// (o.noLong leaves it out: for a replay whose season table already holds the game being replayed. The phone does not need
+// it: it replays finished games with a dated copy of the table saved before the game, see snapFor in app.js)
+if (!o.noLong) { const kN = norm(r.name), cs = cur[kN], ls = last[kN];
+if (cs && cs.gp >= 3 && cs.mpg > 0) longMin = ls && ls.gp >= 10 && ls.mpg > 0 ? (cs.mpg * cs.gp + 5 * ls.mpg) / (cs.gp + 5) : cs.mpg;
+else if (ls && ls.gp >= 10 && ls.mpg > 0) longMin = ls.mpg; }
+players.push({ longMin, lineupF, sT, startShare, sit, qRem, ratePM, usgBase: usg, p2fA: p2f, r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, mpgFlat, qavg, starter, n, rotInfo, lp, gl, zone, recent3: n ? mean(hs.slice(-3).map((x) => x.min)) : null });
 }
 
 // position groups of the missing players: their minutes go first to the same group (guards for guards)
@@ -1920,13 +2170,42 @@ const full = mk && mk.total ? (mk.spreadHome != null ? (mk.total + (tm === v ? 1
 const priorRem = (full * Math.min(left, 48)) / 48;
 if (bu > 1 && priorRem > 1) tdF[tm].mkt = clamp(Math.log(priorRem / bu) * 5, -2, 2);
 const ptsNow = tm === v ? st.vs : st.hs;
-if (st.phase === 'live' && el >= 3 && full > 0) tdF[tm].live = clamp(Math.log(Math.max(ptsNow, 1) / ((full * el) / 48)) * 5 * (el / (el + 12)), -2, 2);
+// (on from the opening tip: its own damping, el / (el + 12), already keeps it near zero in the first minutes. It used to be held
+// at zero until 3:00 and then switched on whole, which moved a team's projected final 1.8 points on average in one second, up to
+// 9.7 for a team with a cold start. From 3:00 on its values are what they always were)
+if (st.phase === 'live' && el > 0 && full > 0) tdF[tm].live = clamp(Math.log(Math.max(ptsNow, 1) / Math.max((full * el) / 48, 1)) * 5 * (el / (el + 12)), -2, 2);
 }
 }
+// team load: the usual minutes of everyone available tonight, added up, against the 240 a team can play. When players
+// are out it falls short of 240, when everyone is back it runs well past it. The simulation shares the difference out
+// by its own rules; who really absorbs it (measured on 1,199 unseen games: the regular bench far less than assumed, in
+// both directions) is learned from finished games.
+const loadT = {};
+for (const tm of [v, h]) { let s = 0; for (const p of players) if (p.tm === tm) s += +p.mpg || 0; loadT[tm] = s / 240 - 1; }
+// the five on the floor right now, as their usual minutes (a bench unit out there late in a decided game = white flag)
+const unitT = {};
+for (const tm of [v, h]) { let s2 = 0, n2 = 0; for (const p of players) if (p.tm === tm && p.r.on) { s2 += +p.mpg || 0; n2++; } unitT[tm] = st.phase === 'live' && n2 >= 4 ? s2 / n2 : null; }
 // learned layer, pass 1: each player's features and his learned minutes factor
 const patOn = !!(o.patterns && TUNE.patW > 0);
-const patG = patGroup(st);
-const patB = patOn ? o.patterns[patG] || {} : {};
+const patG = patGroup(st, lineup.confirmed);
+// lessons for the injury-report stage fall back to the posted-lineup ones until they have been learned
+const patSrc = (g) => (o.patterns[g] || (g === 'rep' ? o.patterns.pre : null) || {});
+let patB = patOn ? patSrc(patG) : {};
+if (patOn && TUNE.patInterp > 0 && st.phase === 'live' && st.period <= 4) {
+// the lessons were learned at exact stages (6, 12, ... 42 minutes in): between two stages, mix them by how far along the game is
+const lo = clamp(Math.floor(el / 6) * 6, 6, 42), hi = Math.min(lo + 6, 42), t = hi > lo ? clamp((el - lo) / 6, 0, 1) : 0;
+const A = o.patterns['s' + lo] || {}, B = o.patterns['s' + hi] || {};
+if (t > 0.001 && t < 0.999) {
+patB = {};
+for (const s2 of PAT_LEARN) {
+const a = A[s2], b2 = B[s2];
+// (just after halftime the minutes lessons do not blend: the halftime ones describe a break with nobody on the floor.
+// Measured on 400 unseen games: blending them made minutes 2% worse at 27 minutes, and better everywhere else)
+if (s2 === 'min' && lo === 24 && TUNE.patInterp < 2) { patB[s2] = (TUNE.patHalf > 0 ? b2 || a : (o.patterns[patG] || {}).min || a || b2) || null; continue; }
+patB[s2] = a && b2 ? a.map((x, i) => (1 - t) * (x || 0) + t * (b2[i] || 0)) : a || b2 || null;
+}
+} else patB = (t >= 0.999 ? B : A) || {};
+}
 for (const p of players) {
 const r = p.r;
 const proofP = !!(p.starter && ((habits[p.tm].players || {})[r.name] || {}).proof);
@@ -1938,26 +2217,64 @@ const patX = patFeatures({ phase: st.phase, starter: p.starter, mpg: p.mpg, b2b:
 scale: p.uMul != null ? p.uMul : scale[p.tm], proof: proofP, home: p.tm === h, zoneF2: p.zone ? p.zone.f2 : 1, ratePM: p.ratePM, min: r.min, now: r,
 foulTrouble: st.phase !== 'pre' && r.pf >= Math.min(st.period + 1, 5) && !(r.ejected || r.pf >= 6), livePace, absMargin: Math.abs(st.vs - st.hs),
 minTrack: p.rotInfo ? (r.min + 6) / (p.rotInfo.expSoFar + 6) : 1, fga: r.fga, fgm: r.fgm,
-usgS: p.usgBase, lu, mg: (p.tm === v ? 1 : -1) * (st.vs - st.hs), on: !!r.on, dnp: !!r.dnpYet, sitting: !r.on && lastS0 ? el - lastS0[1] : 0, el, fade: p.sit ? p.sit.fade : null, d1, tdMkt: tdF[p.tm].mkt, tdLive: tdF[p.tm].live });
-const Fm = patB.min && !(r.ejected || r.pf >= 6) ? patApply(patB.min, patX.min, TUNE.patCapMin) : { f: 1, z: 0, parts: null };
+startUp: p.lineupF.startUp, startDown: p.lineupF.startDown, fresh: p.lineupF.fresh, deep: p.lineupF.deep, lastMin: p.lineupF.lastMin, rest3: p.lineupF.rest3, missShare: p.lineupF.missShare,
+vacPos: posNeed[p.tm] && p.grp ? (posNeed[p.tm].min * (posNeed[p.tm][p.grp] || 0)) / 48 : 0,
+usgS: p.usgBase, lu, mg: (p.tm === v ? 1 : -1) * (st.vs - st.hs), on: !!r.on, dnp: !!r.dnpYet, sitting: !r.on && lastS0 ? el - lastS0[1] : 0, el, fade: p.sit ? p.sit.fade : null, d1, tdMkt: tdF[p.tm].mkt, tdLive: tdF[p.tm].live, load: loadT[p.tm], favBy: (p.tm === v ? 1 : -1) * expV48,
+rem: mean(p.mins), left, sT: p.sT, longMin: p.longMin, unitMin: unitT[p.tm], minH1: r.qmin ? (r.qmin[1] || 0) + (r.qmin[2] || 0) : null,
+stint: r.on && lastS0 ? el - lastS0[0] : null });
+const Fm = patB.min && !(r.ejected || r.pf >= 6) ? patApply(patB.min, patX.min, st.phase === 'live' && el >= 36 && TUNE.patCapMinLate > 0 ? TUNE.patCapMinLate : TUNE.patCapMin, 0, TUNE.patCapMinUp > 0 ? TUNE.patCapMinUp : null) : { f: 1, z: 0, parts: null };
 p.lu = lu; p.pat = { g: patG, x: patX, F: { min: Fm } };
 p.minPlain = mean(p.mins);
 if (Fm.f !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i] * Fm.f);
 }
+// The first six minutes: carry the tip-off number into the game. The same lineup is projected once more as if the game had not
+// started (the tip-off lessons), and each player's minutes are a mix of the two: all tip-off at 0:00, all live at 6:00.
+let wTip = 0; // share of the tip-off projection still in the numbers (1 at the opening tip, 0 from 6:00)
+const tipOf = new Map(); // player -> his line in the tip-off projection
+if (TUNE.tipBlend > 0 && patOn && patB.min && st.phase === 'live' && st.period === 1 && el < 6 && !o.noTipBlend) {
+let tip = null;
+try { tip = projectGame({ ...o, game: { ...o.game, status_state: 'scheduled', display_status: '', status: '', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 }, plays: [], nsims: Math.min(o.nsims || 300, 150), noTipBlend: true }); } catch (e) { tip = null; }
+if (tip && tip.state && tip.state.phase === 'pre') {
+wTip = 1 - el / 6;
+const byPid = new Map(tip.players.map((q) => [q.pid, q])), byName = new Map(tip.players.map((q) => [`${q.team}:${norm(q.name)}`, q]));
+for (const p of players) {
+if (p.r.ejected || p.r.pf >= 6) continue;
+const q = byPid.get(p.r.pid) || byName.get(`${p.tm}:${norm(p.r.name)}`);
+const liveRem = mean(p.mins);
+if (!q || !(liveRem > 0.05) || !Number.isFinite(q.mean.min)) continue;
+tipOf.set(p, q);
+const target = (1 - wTip) * (p.r.min + liveRem) + wTip * q.mean.min; // final minutes
+const k = clamp((target - p.r.min) / liveRem, 0.25, 4);
+if (k !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i] * k);
+}
+}
+}
 // a team can't play more than 5 x the time left (it can play fewer of the players we track: deep bench in garbage time)
+// Before tip-off each player's number answers "what if he plays": someone on the active list who ends up sitting is no
+// action on a pick. Those minutes can add up to more than a team has, so before tip-off they are left as they are and the
+// TEAM total is scaled to five players' worth of minutes instead (v15). Once the game is on, minutes are squeezed as before.
+const teamK = { [v]: null, [h]: null };
+// who takes the refill: teammates the layer did not cut. refillSoft 0 = the old fixed cut-off (a factor of 0.97 or more, all
+// or nothing: a player sitting right at it flipped in and out, and his number jumped about a point with nothing happening);
+// 1 = a ramp from 0.90 to 1.00
+// (the ramp is for games in progress. Before tip-off the fixed cut-off stays: with the ramp the before-lineups stage came out
+// 1.7% worse on minutes on 1,177 games, z 5.9, whichever lessons were used.)
+const refillW = (p) => (p.r.ejected || p.r.pf >= 6 ? 0 : TUNE.refillSoft > 0 && st.phase === 'live' ? clamp((p.pat.F.min.f - 0.9) / 0.1, 0, 1) : p.pat.F.min.f >= 0.97 ? 1 : 0);
 if (patOn && patB.min) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 const amNow = Math.abs(st.vs - st.hs);
 const close = st.phase === 'live' ? 1 - clamp(Math.max(pBlow, (amNow - 8) / 15), 0, 1) : 1;
-const give = TUNE.refill * close;
+const give = TUNE.refill * close * (patG === 'rep' && !(TUNE.refillRep > 0) ? 0 : 1);
+const cond = TUNE.condMin > 0 && (st.phase === 'pre' || TUNE.condLive > 0);
+if (cond) teamK[tm] = new Float64Array(N).fill(1);
 for (let i = 0; i < N; i++) {
 let tot = 0; for (const p of ps) tot += p.mins[i];
-if (tot > 5 * left && tot > 0) { const k = (5 * left) / tot; for (const p of ps) p.mins[i] *= k; }
+if (tot > 5 * left && tot > 0) { const k = (5 * left) / tot; if (cond) teamK[tm][i] = k; else for (const p of ps) p.mins[i] *= k; }
 else if (give > 0 && tot < 5 * left) {
 // close game: minutes taken from one player are played by his teammates (those the layer did not cut)
 let room = 0;
-for (const p of ps) if (p.pat.F.min.f >= 0.97 && !(p.r.ejected || p.r.pf >= 6)) room += p.mins[i] * Math.max(left - p.mins[i], 0);
-if (room > 0) { const add = give * (5 * left - tot); for (const p of ps) if (p.pat.F.min.f >= 0.97 && !(p.r.ejected || p.r.pf >= 6)) p.mins[i] = Math.min(left, p.mins[i] + (add * p.mins[i] * Math.max(left - p.mins[i], 0)) / room); }
+for (const p of ps) { const w = refillW(p); if (w > 0) room += w * p.mins[i] * Math.max(left - p.mins[i], 0); }
+if (room > 0) { const add = give * (5 * left - tot); for (const p of ps) { const w = refillW(p); if (w > 0) { const g2 = (add * w * p.mins[i] * Math.max(left - p.mins[i], 0)) / room; const cap = st.phase === 'live' ? TUNE.refillMaxLive : TUNE.refillMax; p.mins[i] = Math.min(left, p.mins[i] + (cap > 0 ? Math.min(g2, cap * p.mins[i]) : g2)); } } }
 }
 }
 }
@@ -1987,6 +2304,8 @@ shiftT[tm] = sw > 0 ? (TUNE.shiftCenter * sz) / sw : 0;
 }
 for (const p of players) {
 for (const s2 of PAT_STATS) p.pat.F[s2] = patB[s2] ? patApply(patB[s2], p.pat.x[s2], TUNE.patCap, s2 === 'pts' ? shiftT[p.tm] : 0) : { f: 1, z: 0, parts: null };
+// (first six minutes: the learned factors are a mix of the tip-off ones and the live ones, like the minutes)
+if (wTip > 0 && tipOf.has(p)) { const qf = tipOf.get(p).pat && tipOf.get(p).pat.f; if (qf) for (const s2 of PAT_STATS) if (Number.isFinite(qf[s2])) p.pat.F[s2] = { ...p.pat.F[s2], f: wTip * qf[s2] + (1 - wTip) * p.pat.F[s2].f }; }
 }
 
 // simulate
@@ -2062,13 +2381,13 @@ const avg = {};
 for (const k of Object.keys(sims)) { let s = 0; const a = sims[k]; for (let i = 0; i < N; i++) s += a[i]; avg[k] = s / N; }
 const sd = {}; for (const k of ['pts', 'reb', 'ast', 'fg3m', 'pra']) sd[k] = +sdOf(sims[k]).toFixed(2);
 // chances on each ladder: as simulated, then calibrated to how often such chances really came in from this stage
-const calT = patOn && o.patterns.cal ? o.patterns.cal[patG] : null;
+const calT = patOn && o.patterns.cal ? o.patterns.cal[patG] || (patG === 'rep' ? o.patterns.cal.pre : null) : null;
 const cal = {};
-if (calT) for (const k of CAL_STATS) cal[k] = calT[k] ? calT[k][calLevel(k, avg[k] - r[k])] : null;
+if (calT) for (const k of CAL_STATS) cal[k] = calT[k] ? calT[k][calLevel(k, avg[k] - statOf(r, k))] : null;
 const laddersRaw = {}, ladders = {};
 for (const [k, steps] of Object.entries(LADDERS)) {
 laddersRaw[k] = steps.map((t) => ({ t, p: probAtLeast(sims[k], t) }));
-ladders[k] = cal[k] ? laddersRaw[k].map((x) => ({ t: x.t, p: x.t <= r[k] ? x.p : calP(cal[k], x.p) })) : laddersRaw[k];
+ladders[k] = cal[k] ? laddersRaw[k].map((x) => ({ t: x.t, p: x.t <= statOf(r, k) ? x.p : calP(cal[k], x.p) })) : laddersRaw[k];
 }
 // the likely range: about 8 games in 10 land between these two numbers (from the calibrated chances, so it is as wide as results really run)
 const range = {}, mid = {};
@@ -2080,6 +2399,8 @@ let lo = base, hi = base, j = 0;
 for (let t = base + 1; t <= srt[N - 1]; t++) { while (j < N && srt[j] < t) j++; const pc = cal[k] ? calP(cal[k], (N - j) / N) : (N - j) / N; if (pc >= 0.9) lo = t; if (pc >= 0.1) hi = t; else break; }
 range[k] = [lo, hi];
 }
+// minutes late in a game are two-valued (he comes back or he is done): the middle of the simulations says which is likelier
+{ const srt = Array.from(p.mins).sort((x, y) => x - y); let m = 0, c = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m += srt[q]; c++; } mid.min = r.min + (c ? m / c : minSum / N); }
 // what we show: average and middle blended by stage (LAND); the plain average stays in `mean` for the learning loop and team totals
 const shown = { ...avg };
 const landW = TUNE.landOn > 0 && st.phase !== 'final' && left > 0 ? LAND[patG] : null;
@@ -2102,7 +2423,7 @@ if (doubt[r.pid] && st.phase === 'pre') flags.push('doubt');
 
 const stints = r.stints || [];
 const lastSt = stints[stints.length - 1];
-const cx = { phase: st.phase, el, left, minProj: minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
+const cx = { phase: st.phase, el, left, minProj: minSum / N, minShown: landW && landW.min > 0 ? Math.max(mid.min - r.min, 0) : minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
 pace: seasonPace, livePace, mk, b2b: b2b[p.tm], doubt: st.phase === 'pre' ? doubt[r.pid] || null : null, lineup, inList: availIn.has(+r.pid), oppCtx: ctx[p.opp], lgP3: lgZ.three,
 b2b: b2b[p.tm], proj: shown, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
 // vs a normal night from this point: his usual remaining minutes at his usual scoring rate
@@ -2117,11 +2438,11 @@ if (cx.fade) flags.push('fade');
 if (cx.fade === null && st.phase === 'live' && p.lu && r.min >= 8 && flags.includes('hot') && p.pat.x.pts[PAT_IX.uReal] >= 1) flags.push('realhot');
 results.push({
 shift: cx.shift, fade: cx.fade,
-pid: r.pid, name: r.name, team: p.tm, opp: p.opp, on: r.on, starter: p.starter, dnpYet: !!r.dnpYet, blowProof: proof, blowHab: blowP,
+pid: r.pid, name: r.name, team: p.tm, opp: p.opp, on: r.on, starter: p.starter, dnpYet: !!r.dnpYet, fresh: !!r.fresh, deep: !!r.deep, startsTonight: p.sT, blowProof: proof, blowHab: blowP,
 stints, stintNow: r.on && lastSt ? el - lastSt[0] : 0, sitting: !r.on && lastSt ? el - lastSt[1] : null, rot: p.rotInfo, why,
 chips: ctxItems.filter((x) => x.chip).sort((a, b) => (a.effect === 'info') - (b.effect === 'info')).map((x) => ({ t: x.chip, e: x.effect })), confirmed: lineup.confirmed && availIn.has(+r.pid),
 now: { pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fgm: r.fgm, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf, min: r.min },
-proj: { ...shown, min: r.min + minSum / N }, mean: { ...avg, min: r.min + minSum / N },
+proj: { ...shown, min: landW && landW.min > 0 ? (1 - landW.min) * (r.min + minSum / N) + landW.min * mid.min : r.min + minSum / N }, mean: { ...avg, min: r.min + minSum / N }, mid,
 usage: { season: p.usgSeason, tonight: p.usgTonight, proj: usg },
 shooting: { p2: p.p2, p3: p.p3, ft: p.ft, r3: p.r3 },
 mpg: p.mpg, qavg: p.qavg, games: p.n, flags, ladders, doubt: st.phase === 'pre' ? doubt[r.pid] || null : null,
@@ -2141,11 +2462,26 @@ if (TUNE.otherPM > 0 && left > 0) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 for (let i = 0; i < N; i++) { let tot = 0; for (const p of ps) tot += p.mins[i]; if (tot < 5 * left) teamPts[tm][i] += (5 * left - tot) * TUNE.otherPM; }
 }
+// team totals: "if he plays" minutes scaled to what a team can play, then the learned team check for this stage
+// (how the points still to come really ran against our sum of players in graded games)
+const teamRaw = {};
+const tF0 = patOn && TUNE.teamCal > 0 && o.patterns.team && !(TUNE.teamCal === 2 && st.phase === 'pre') ? (o.patterns.team[patG] != null ? o.patterns.team[patG] : patG === 'rep' && o.patterns.team.pre != null ? o.patterns.team.pre : 1) : 1;
+// during games only a share of the check is applied, fading out over the fourth quarter: late totals are lopsided (overtime,
+// fouling), so the full check would lift the number past where games most often land
+const tF = TUNE.teamCal === 2 ? 1 + (tF0 - 1) * TUNE.teamCalW * clamp((42 - el) / 9, 0, 1) * (1 - wTip) : tF0;
+for (const tm of [v, h]) {
+const K = teamK[tm];
+let sRaw = 0;
+for (let i = 0; i < N; i++) { if (K) teamPts[tm][i] *= K[i]; sRaw += teamPts[tm][i]; teamPts[tm][i] *= tF; }
+teamRaw[tm] = sRaw / N;
+}
 let vWin = 0;
-for (let i = 0; i < N; i++) if (st.vs + teamPts[v][i] > st.hs + teamPts[h][i]) vWin++;
+// (a simulation that ends level means overtime: half a win each. Before, hundredths of a point of deep-bench filler decided
+// every level finish, so a tied game with seconds left could read 77% or 30%)
+for (let i = 0; i < N; i++) { const dWin = st.vs + teamPts[v][i] - (st.hs + teamPts[h][i]); vWin += Math.abs(dWin) < 0.5 ? 0.5 : dWin > 0 ? 1 : 0; }
 const projScore = { [v]: st.vs + mean(Array.from(teamPts[v])), [h]: st.hs + mean(Array.from(teamPts[h])) };
 return {
-state: st, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
+state: st, patG, teamRaw, teamFactor: tF, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
 blowout: { now: isBlowout(st), pBlow, pBig }, possLeft, pace: { season: seasonPace, live: livePace },
 context: ctx, habits, injuries: out, absent, b2b, sims: N, fillDebug, env, lineup, lgZone: lgZ, alerts,
 market: mk ? { ...mk, paceMkt, paceModel, marginModel, projTotal: projScore[v] + projScore[h], projMargin: projScore[v] - projScore[h] } : null,
@@ -2289,4 +2625,4 @@ k.tier = t.tier; k.tierWhy = t.why; k.blowProof = !!p.blowProof; k.chips = (p.ch
 return picks.sort((a, b) => (TIER_RANK[a.tier] - TIER_RANK[b.tier]) || (b.edge ?? 0) - (a.edge ?? 0) || b.prob - a.prob);
 }
 
-/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, }; });
+/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, }; });
