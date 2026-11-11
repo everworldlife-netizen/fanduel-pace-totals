@@ -476,6 +476,29 @@ team / gamer-with-team / head-to-head shrink). The best on the tuning block (hal
 (the bundled seed stops Nov 4; the server keeps 14 days at `/api/eb/graded?days=14`, and a fetch tool for the H2H
 feed still has to be written: `tools/ebfetch.js` does not exist yet).
 
+### Independent review of GG Winner 3.10 (Nov 11): found and fixed (15 checks in `gg/tests/league-live.test.js`)
+
+Accuracy on 1,469 NBA replays is unchanged by these (they only touch rare states).
+- "0.0" at the horn was not read as a clock on ESPN-style rows: the number jumped 20+ points for one update and a
+  false plus edge appeared. Now any clock with a decimal point is a clock.
+- "End of 2OT" / "End of 1st OT" were read as the end of the 2nd / 1st quarter (full game 377). Overtime text and
+  `period` past regulation now win.
+- Tied at the end of regulation: overtime is now certain in the number (it used to jump 22 at the next update); a
+  decided game adds nothing.
+- Below-the-line check now runs FIRST, so the last minute, overtime and before tip-off can no longer print our
+  number, gap or chance for a line we are not ahead of (equal to the line counts as not ahead).
+- First-seen snapshot (`priorSeen`) is only used when believable: taken before the last tenth of regulation, not
+  ahead of the game, points not above the current score, and leaving a rate within 0.6 to 1.6 times the league's
+  usual one. The app no longer saves a snapshot with a clock but a 0-0 score.
+- Quarter lists padded with empty quarters (EuroLeague `[22, 0, 0, 0]` read as the 4th quarter from the tip), a
+  finished half with no real quarter scores ("finished with null points"), lines typed with a comma: fixed.
+- GG League research panel and Matchup Lab: when our number is not ahead of the line, nothing of ours is measured
+  against that line (no "12 points behind the line", no chance sentence, no math panel). Results list shows
+  "above" / "below" instead of the server's side words.
+- Left as is, by decision: the "Our projection" panel still shows our number for the game (it is the projection,
+  not a pick). The lagging-quarter-list guard now also reads ESPN ("6:00 - 2nd") and "H1" text; whether those
+  feeds really lag was not captured.
+
 ### Wording rule fixes (both parts of GG Winner)
 
 "Plus edges only" was broken in sentences that printed our number against a line we were below ("GG expects 104,
@@ -491,7 +514,7 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 ```
 node cs/tests/engine.test.js          # engine on two real games (73 checks): sanity, plus-edges-only, lineup and load inputs, short-handed and opening-tip cases, learning sums, wording
 node cs/tests/app.test.js             # boots the real app in a simulated phone browser (9 checks): screens, wording rules, edge record, stale boxes, offline start
-node gg/tests/league-live.test.js     # real-league model: clocks, quarter breaks, first-seen lines, plus-edges-only wording
+node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/livecheck.js               # both LIVE links (after publishing)
 ```

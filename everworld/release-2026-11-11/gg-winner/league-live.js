@@ -48,7 +48,7 @@
 
   const round1 = (n) => Math.round(n * 10) / 10;
   const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
-  const num = (v) => (v == null || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  const num = (v) => { if (v == null || v === '') return null; const x = Number(typeof v === 'string' ? v.replace(',', '.') : v); return Number.isFinite(x) ? x : null; };
 
   function isWomen(game) {
     return WOMEN_RE.test(String(game.leagueName || '')) || game.leagueId === 'wnba' || game.leagueId === 'ncaaw';
@@ -96,6 +96,9 @@
     const n = Math.min(a.length, h.length);
     const out = [];
     for (let i = 0; i < n; i += 1) out.push((Number(a[i]) || 0) + (Number(h[i]) || 0));
+    // some feeds pad the list to four quarters from the tip: an empty quarter past the one in play has not started
+    const per = Number(game.period) || 0;
+    while (out.length > Math.max(per, 1) && out[out.length - 1] === 0) out.pop();
     return out;
   }
 
@@ -135,11 +138,15 @@
 
     const clockMin0 = parseClock(game.clock);
     // v3.10: "End of 1st" (quarter break) is a known spot on the clock: that period is over, zero left in it
-    const endOf = Number((String(game.statusDetail || game.periodText || '').match(/^end of (\d)/i) || [])[1]) || 0;
+    const sdTxt = String(game.statusDetail || game.periodText || '');
+    // ("End of 2OT" or "End of 1st OT" is the end of an overtime, not of the 2nd or 1st quarter: the period number rules there)
+    const endIsOt = /^end of\b.*\bo(t|vertime)\b|^end of \d?\s*ot/i.test(sdTxt) || period > cfg.periods;
+    const endOf = endIsOt ? 0 : Number((sdTxt.match(/^end of (\d)/i) || [])[1]) || 0;
     const clockMin = endOf ? 0 : clockMin0;
-    const hasClock = clockMin != null && (clockMin > 0 || endOf > 0 || /^(Q|H|OT)\d*/i.test(String(game.statusDetail || game.periodText || '')));
-    // "Q2" in the status is FanDuel naming the quarter in play; "Live" tells us nothing.
-    const textQ = Number((String(game.statusDetail || '').match(/^Q(\d+)/i) || [])[1]) || 0;
+    // a clock with a decimal point ("0.0" at the horn) is a real clock even at zero; the "0:00" placeholder has a colon
+    const hasClock = clockMin != null && (clockMin > 0 || endOf > 0 || /^(Q|H|OT)\d*/i.test(sdTxt) || String(game.clock == null ? '' : game.clock).includes('.'));
+    // the quarter in play as the feed names it: "Q2" (FanDuel), "6:00 - 2nd" (ESPN), "H1"; "Live" tells us nothing.
+    const textQ = Number((String(game.statusDetail || '').match(/^Q(\d+)/i) || sdTxt.match(/-\s*(\d)(?:st|nd|rd|th)\b/i) || sdTxt.match(/^H(\d)/i) || [])[1]) || 0;
     let current;
     let completed;
     if (endOf) { current = Math.max(endOf, 1); completed = current - 1; }
@@ -224,10 +231,8 @@
     const name = periodName(p.current, cfg);
     const len = periodLen(p.current, cfg);
     if (p.clockSource === 'clock') {
-      const left = len - p.inPeriod;
-      const m = Math.floor(left);
-      const s = Math.round((left - m) * 60);
-      return `${name} · ${m}:${String(s === 60 ? 0 : s).padStart(2, '0')} left`;
+      const secs = Math.max(0, Math.round((len - p.inPeriod) * 60));
+      return `${name} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} left`;
     }
     return `${name} · about ${Math.max(1, Math.min(Math.round(p.inPeriod), Math.floor(periodLen(p.current, p.cfg)) - 1))} min in (estimated)`;
   }
@@ -263,13 +268,17 @@
     // minutes and the odd overtime inside it. (Before v3.10 the rate was total / minutes, so the live number sat about 1%
     // under the line from the opening tip.) A line first seen DURING a game is handled the same way from that moment on:
     // the points already scored then are taken out and the rest is spread across the time that was left.
-    const seen = opts.priorSeen && num(opts.priorSeen.elapsed) != null && num(opts.priorSeen.pts) != null && opts.priorSeen.elapsed > 0.5 && opts.priorSeen.elapsed < reg - 0.5 ? opts.priorSeen : null;
+    // (a snapshot is only used when it is believable: taken before the last tenth of regulation, not ahead of where the game
+    // is now, and leaving a scoring rate for the rest of the game within 0.6 to 1.6 times the league's usual one)
+    const seen0 = opts.priorSeen && num(opts.priorSeen.elapsed) != null && num(opts.priorSeen.pts) != null && opts.priorSeen.elapsed > 0.5 && opts.priorSeen.elapsed <= 0.9 * reg && opts.priorSeen.elapsed <= p.elapsed + 1 && opts.priorSeen.pts <= pts ? opts.priorSeen : null;
+    let seen = null;
     const tipEff = effBetween(0, reg, Math.min(lateMargin(0, 0), 30) / 10) + OT_BASE * cfg.otMinutes * 1.05;
     let rate0 = T0 / tipEff;
-    if (seen && p.priorFromLine) {
-      const fS = clamp(seen.elapsed / reg, 0, 1), dS = num(seen.diff) != null ? Math.abs(seen.diff) : 0;
-      const effS = effBetween(seen.elapsed, reg, Math.min(lateMargin(fS, dS), 30) / 10) + OT_BASE * cfg.otMinutes * 1.05;
-      if (effS > 0.5 && T0 - seen.pts > 0) rate0 = (T0 - seen.pts) / effS;
+    if (seen0 && p.priorFromLine) {
+      const fS = clamp(seen0.elapsed / reg, 0, 1), dS = num(seen0.diff) != null ? Math.abs(seen0.diff) : 0;
+      const effS = effBetween(seen0.elapsed, reg, Math.min(lateMargin(fS, dS), 30) / 10) + OT_BASE * cfg.otMinutes * 1.05;
+      const rS = effS > 0.5 ? (T0 - seen0.pts) / effS : 0, usual = profileFor(game).total / reg;
+      if (rS >= 0.6 * usual && rS <= 1.6 * usual) { rate0 = rS; seen = seen0; }
     }
     const obsRate = p.elapsed >= 1 ? pts / p.elapsed : rate0;
     const w = p.state === 'live' || p.state === 'halftime' ? liveWeight(fNow, p.priorFromLine) : 0;
@@ -314,7 +323,8 @@
         else if (per.state === 'next') rest += per.value;
       }
       // overtime happens in about 3 games in 100, and in about 9 in 100 when it's within 6 late
-      const pOt = p.inOt ? 0 : fNow >= 0.8 && diff <= 6 ? 0.09 : fNow >= 0.8 && diff > 12 ? 0.005 : OT_BASE;
+      const regOver = p.state === 'live' && !p.inOt && p.remaining <= 0.01;
+      const pOt = p.inOt ? 0 : regOver ? (diff === 0 ? 1 : 0) : fNow >= 0.8 && diff <= 6 ? 0.09 : fNow >= 0.8 && diff > 12 ? 0.005 : OT_BASE;
       full = round1(pts + rest + pOt * rate * cfg.otMinutes * 1.05);
     }
 
@@ -333,10 +343,15 @@
       const pOver = 1 - phi((L - mean) / sd);
       const edgeNeed = round1(minEdge * scale * (id === 'game' ? 1 : id.startsWith('half') ? 0.67 : 0.5));
       const absGap = Math.abs(mean - L);
-      const side = mean >= L ? 'Over' : 'Under';
+      const side = mean > L ? 'Over' : 'Under';
       const chance = side === 'Over' ? pOver : 1 - pOver;
       m.chance = Math.round(chance * 100) / 100;
-      if (p.inOt) {
+      if (side === 'Under' && p.state !== 'pre') {
+        // plus edges only: our number is never set against a line it is not ahead of (checked before every other case,
+        // so overtime and the last minute cannot print it either)
+        m.text = 'Our number is not ahead of this line, so there is no plus edge here.';
+        m.pass = 'below';
+      } else if (p.inOt) {
         m.text = `We expect about ${round1(mean)}, but the game is in overtime, where anything goes. No bet.`;
         m.pass = 'ot';
       } else if (remMin < 1 && p.state === 'live') {
@@ -366,22 +381,23 @@
         m.pass = 'close';
       }
       // a line our number is not ahead of carries no number of ours at all
-      if (m.pass === 'below' || m.pass === 'early' || (m.pass === 'pre' && id !== 'game')) { m.ours = null; m.gap = null; m.chance = null; }
+      if (m.pass === 'below' || m.pass === 'early' || (m.pass === 'pre' && (id !== 'game' || side === 'Under'))) { m.ours = null; m.gap = null; m.chance = null; }
       markets.push(m);
     }
 
     const H = lines || {};
-    const doneText = (label, v) => `The ${label.toLowerCase()} has ended: it finished with ${v} points.`;
+    const realSums = (from, to) => { for (let i = from; i <= to; i += 1) if (p.sums[i - 1] == null) return false; return true; };
+    const doneText = (label, v, real = true) => (real && v != null ? `The ${label.toLowerCase()} has ended: it finished with ${v} points.` : `The ${label.toLowerCase()} has ended.`);
     price('game', 'Full game', full, H.game, p.remaining, p.state === 'final' ? `Final score total: ${pts} points.` : null);
     if (!cfg.usesHalves) {
       const h1Done = p.state !== 'pre' && p.completed >= halfCount;
-      price('half1', '1st half', h1, H.half1, remainingIn(1, halfCount), h1Done ? doneText('1st half', h1) : null, 0.5);
-      price('half2', '2nd half', h2, H.half2, remainingIn(halfCount + 1, cfg.periods), p.state === 'final' ? doneText('2nd half', h2) : null, 0.5);
+      price('half1', '1st half', h1, H.half1, remainingIn(1, halfCount), h1Done ? doneText('1st half', h1, realSums(1, halfCount)) : null, 0.5);
+      price('half2', '2nd half', h2, H.half2, remainingIn(halfCount + 1, cfg.periods), p.state === 'final' ? doneText('2nd half', h2, realSums(halfCount + 1, cfg.periods)) : null, 0.5);
     }
     const qLines = H.quarter || {};
     for (const per of regPeriods) {
       if (qLines[per.n] == null || qLines[per.n] === '') continue;
-      price(`q${per.n}`, per.name, per.value, qLines[per.n], per.remainingMin, per.state === 'done' ? doneText(per.name, per.value) : null, periodLen(per.n, cfg) / reg);
+      price(`q${per.n}`, per.name, per.value, qLines[per.n], per.remainingMin, per.state === 'done' ? doneText(per.name, per.value, p.sums[per.n - 1] != null) : null, periodLen(per.n, cfg) / reg);
     }
 
     // Plain-words reasons.
@@ -416,7 +432,7 @@
       usesHalves: cfg.usesHalves,
       markets,
       why,
-      math: { prior: T0, rate0: round1(T0), liveWeight: Math.round(w * 100) / 100, livePace: p.elapsed >= 1 ? round1((pts / p.elapsed) * reg) : null, blendedPace: round1(rate * reg), elapsed: round1(p.elapsed), remaining: round1(p.remaining) },
+      math: { prior: T0, priorFromLine: p.priorFromLine, rate0: round1(T0), liveWeight: Math.round(w * 100) / 100, livePace: p.elapsed >= 1 ? round1((pts / p.elapsed) * reg) : null, blendedPace: round1(rate * reg), elapsed: round1(p.elapsed), remaining: round1(p.remaining) },
     };
   }
 

@@ -75,4 +75,53 @@ test('numbers stay finite at every minute of a game, and the game fraction only 
     last = r.progress.elapsed;
   }
 });
+test('"0.0" at the horn is a real clock: the number does not jump and no call appears for one update', () => {
+  const q1 = (clock, sd) => row({ period: 1, clock, statusDetail: sd, home: { score: 22, qScores: [22] }, away: { score: 18, qScores: [18] } });
+  const a = LL.project(q1('4.5', '4.5 - 1st'), { lines: { game: 215.5 } }), b = LL.project(q1('0.0', '0.0 - 1st'), { lines: { game: 215.5 } }), c = LL.project(q1('0.0', 'End of 1st'), { lines: { game: 215.5 } });
+  assert.ok(Math.abs(b.full - a.full) < 3 && Math.abs(b.full - c.full) < 3, `fulls ${a.full} / ${b.full} / ${c.full}`);
+  assert.ok(!b.markets.some((m) => m.call), 'a call appeared at the horn');
+});
+test('"End of 2OT" is the end of an overtime, not of the 2nd quarter', () => {
+  const g = row({ period: 6, clock: '0.0', statusDetail: 'End of 2OT', home: { score: 130, qScores: [28, 27, 26, 25, 12, 12] }, away: { score: 130, qScores: [27, 28, 25, 26, 12, 12] } });
+  const p = LL.progress(g, { prior: 228 });
+  assert.ok(p.current >= 5, `period read as ${p.current}`);
+  const r = LL.project(g, { prior: 228, lines: { game: 280.5 } });
+  assert.ok(r.full >= 260 && r.full < 300, `full ${r.full}`);
+  assert.ok(!/quarter/i.test(r.where), r.where);
+});
+test('regulation over: a tie counts the overtime that is coming, a decided game adds nothing', () => {
+  const end = (h, a) => row({ period: 4, clock: '0.0', statusDetail: 'End of 4th', home: { score: h, qScores: [28, 27, 28, h - 83] }, away: { score: a, qScores: [27, 28, 27, a - 82] } });
+  const tie = LL.project(end(110, 110), { prior: 228 }), won = LL.project(end(113, 110), { prior: 228 });
+  assert.ok(tie.full >= 220 + 15, `tied at the end of regulation: ${tie.full}`);
+  assert.ok(Math.abs(won.full - 223) <= 0.5, `decided game: ${won.full}`);
+});
+test('a line our number is not ahead of never shows a number of ours: last minute, overtime, before tip-off', () => {
+  const late = LL.project(row({ period: 4, clock: '0:40', statusDetail: 'Q4', home: { score: 100, qScores: [25, 25, 25, 25] }, away: { score: 98, qScores: [25, 25, 24, 24] } }), { prior: 228, lines: { game: 215.5, half2: 120.5 } });
+  const ot = LL.project(row({ period: 5, clock: '2:30', statusDetail: 'OT', home: { score: 115, qScores: [28, 27, 28, 27, 5] }, away: { score: 114, qScores: [27, 28, 27, 28, 4] } }), { prior: 228, lines: { game: 250.5 } });
+  const pre = LL.project({ leagueId: 'nba', status: 'scheduled', home: { score: 0 }, away: { score: 0 } }, { prior: 228, lines: { game: 240 } });
+  const eq = LL.project(row(), { prior: 228, lines: { game: LL.project(row(), { prior: 228 }).full } });
+  for (const r of [late, ot, pre, eq]) for (const m of r.markets) {
+    if (m.pass === 'settled') continue;
+    assert.ok(m.ours == null && m.gap == null && m.chance == null, `${m.id} (${m.pass}) carries ours ${m.ours}, gap ${m.gap}, chance ${m.chance}`);
+    assert.ok(!/\d{2,3}(\.\d)?/.test(m.text.replace(/\d+ minutes/, '')), `${m.id} prints a number: ${m.text}`);
+  }
+});
+test('a first-seen snapshot that cannot be right is ignored', () => {
+  const ot = row({ period: 5, clock: '5:00', statusDetail: 'OT', home: { score: 110, qScores: [28, 27, 28, 27, 0] }, away: { score: 110, qScores: [27, 28, 27, 28, 0] } });
+  const plain = LL.project(ot, { prior: 223.5 }).full;
+  assert.ok(Math.abs(LL.project(ot, { prior: 223.5, priorSeen: { pts: 216, elapsed: 47.4, diff: 2 } }).full - plain) < 0.6, 'a line first seen in the last minute inflates overtime');
+  const q3 = row({ period: 3, clock: '6:00', statusDetail: 'Q3', home: { score: 78, qScores: [28, 27, 23] }, away: { score: 74, qScores: [27, 26, 21] } });
+  const base = LL.project(q3, { prior: 222.5 }).full;
+  for (const seen of [{ pts: 0, elapsed: 30, diff: 0 }, { pts: 200, elapsed: 40, diff: 3 }, { pts: 221, elapsed: 29, diff: 3 }]) {
+    const r = LL.project(q3, { prior: 222.5, priorSeen: seen });
+    assert.ok(Math.abs(r.full - base) < 0.6, `snapshot ${JSON.stringify(seen)} moved the number from ${base} to ${r.full}`);
+    assert.ok(!/points already scored/i.test(r.why.join(' ')), 'the first-seen sentence is shown for a snapshot that was ignored');
+  }
+});
+test('a quarter list padded with empty quarters, and a line typed with a comma', () => {
+  const euro = row({ leagueId: 'euroleague', period: 1, clock: '4:00', statusDetail: 'Q1', home: { score: 22, qScores: [22, 0, 0, 0] }, away: { score: 20, qScores: [20, 0, 0, 0] } });
+  assert.strictEqual(LL.progress(euro, { prior: 160 }).current, 1);
+  const r = LL.project(row(), { prior: 228, lines: { game: '215,5' } });
+  assert.ok(r.markets.some((m) => m.id === 'game' && m.line === 215.5), 'the typed line was dropped');
+});
 console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
