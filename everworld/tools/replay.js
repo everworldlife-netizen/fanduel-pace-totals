@@ -107,8 +107,22 @@ function availOf(it, mode = 'tip', hist = null) {
   return res;
 }
 
+/** Does the play-by-play of this game cover the whole game? In the 2023-24 and 2024-25 archives most games are missing a
+ * stretch: the player lines built from the plays then add up to fewer points and minutes than the real final (81% and 53%
+ * of games; 2025-26: 1%, 2026-27: none). A game like that teaches wrong lessons (targets too low) and cannot be replayed
+ * honestly, so it is left out of fitting and testing. LAB_DIRTY=1 keeps them (the old behaviour). */
+function boxOk(it) {
+  if (!it.log || !it.log.rows) return false;
+  const v = it.g.visitor_team.abbreviation, h = it.g.home_team.abbreviation;
+  const pts = { [v]: 0, [h]: 0 }, min = { [v]: 0, [h]: 0 };
+  for (const r of Object.values(it.log.rows)) if (r.team in pts) { pts[r.team] += r.pts || 0; min[r.team] += r.min || 0; }
+  const need = 240 + 25 * Math.max(0, (it.g.period || 4) - 4);
+  return Math.abs(it.g.visitor_team_score - pts[v]) < 2 && Math.abs(it.g.home_team_score - pts[h]) < 2 && min[v] >= need - 3 && min[h] >= need - 3;
+}
+
 /** Everything projectGame needs for one game, apart from the moment itself. */
 function contextFor(E, S, it, opts = {}) {
+  if (process.env.LAB_DIRTY !== '1' && !boxOk(it)) return { ok: false, incomplete: true };
   const g = it.g, date = g.date, season = it.season;
   const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
   const logs = recentLogs(S, date).filter((l) => l.v === v || l.h === v || l.v === h || l.h === h);
@@ -281,4 +295,4 @@ function summarize(A) {
   return out;
 }
 
-module.exports = { STATS, loadEngine, loadSeasons, recentLogs, momentAt, availOf, contextFor, sitPriorFor, sitPriorShipped, patternsFrom, emptyStage, addStage, score, summarize };
+module.exports = { STATS, loadEngine, loadSeasons, recentLogs, momentAt, availOf, contextFor, sitPriorFor, sitPriorShipped, patternsFrom, emptyStage, addStage, score, summarize, boxOk };

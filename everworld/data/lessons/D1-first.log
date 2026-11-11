@@ -1,0 +1,4 @@
+pass 1 (minutes): 687 games, 62s
+pass 2 (stats): 125s
+pass 3 (calibration): 189s
+lessons from 687 games → data/lessons/D1-first.json

@@ -266,6 +266,69 @@ sum of our player numbers (bias -2 to -5 points a game at live stages; unbiased 
 lifts numbers looks good on those seasons for that reason alone, so judge changes on the fixed-population player
 columns and on z, not on the total's bias. The live total running low is an open item.
 
+### The older seasons' play-by-play is incomplete (found Nov 11): what it means and what is done about it
+
+`tools/replay.js boxOk()`: a game is complete when the player lines built from its plays add up to the real final
+(within 2 points per team) and to the minutes a team plays. Complete games: 2023-24 98 of 1,231; 2024-25 441 of
+1,222; 2025-26 1,208 of 1,231; 2026-27 152 of 154. In the two older archives most games are missing a stretch
+(median 18 and 12 team-minutes): targets there are too low and a game in progress cannot be replayed honestly.
+Fitting and testing now skip incomplete games (`LAB_DIRTY=1` keeps them, needed for the "all games" fits below).
+BDL's own play-by-play starts in 2025, so the gaps cannot be filled from there.
+
+Do lessons from complete games only beat lessons from everything? Tested twice on unseen complete games:
+- E1: 687 complete games (Oct to Jan of 2025-26) vs 2,387 mixed games (2023-25), tested on 490 games of Feb to
+  Apr 2026. E2: 1,177 complete games (2025-26) vs 3,586 mixed, tested on 121 games of 2026-27.
+- Minutes miss, complete vs everything (E1 / E2): tip-off +1.6% (z 7.4) / +0.3%; 6 min +1.0% / +0.5%; end Q1 +0.4% /
+  +0.4%; 21 min -4.3% (z -12) / -1.8%; half -4.0% (z -10.5) / -2.3% (z -3.3); 33 min -0.9% / -1.0%; end Q3 -1.2% /
+  -0.9%; 6:00 left +2.0% / +0.3%; 3:00 left +9% / +4%. Points follow the minutes (-0.8% at 21 min in E1).
+- So: before tip-off and in the first quarter every game is needed (rare lineup situations, nothing to replay); in
+  the middle of a game clean replays matter more than volume; at the very end volume wins again.
+- SHIPPED: `tools/mklessons.js` takes stages s18, s24, s30, s36 from the complete-games fit and the rest from the
+  all-games fit. Checked on both test sets: identical where the all-games lessons are kept, the gains above in the
+  middle (`data/runs/H1-v16b.json`, `H2-v16b.json`).
+- Consequence for testing: with 2025-26 inside the mid-game lessons, the unseen sets are this season (121 games)
+  and the half-season split of 2025-26 (490 games). The 1,199-game tables above stay valid for what they compare
+  (both engines taught on the same mixed games) but the lessons that ship are the hybrid.
+- Idea: for the tip-off stages the old seasons' targets could be repaired from the official box lines
+  (`data/glog/<season>/<nba id>.json.gz`, per game `bdl_game_id`, MIN/PTS/REB/AST/FG3M): nothing is replayed there.
+
+### Engine switches that had never been measured (`tools/knobscreen.js`, Nov 11)
+
+Screen = one switch changed at a time on 595 games of a training season with the lessons fixed (so it is biased
+toward the shipped value), paired z against the shipped setting. A lead then had to hold on unseen games.
+- Tip-off and before lineups, 36 values (minDecay, usgPriorK, glUsgW, p3K, p2K, ftK, shotEff, usgRedistPow, zoneW,
+  fillPos, fillPow, dbTeamW, mktTotalW, mktSpreadW, b2bMin, sitStreakW, sitK, sitPriorW, envW, absentMinMpg):
+  NOTHING beats the shipped values beyond luck. (fillPow 0.5 is clearly worse; shotEff 0.9 and dbTeamW 0 hurt the
+  total.) The situational-scoring trust (`sitK` 400, `sitPriorW` 0.25) shows -0.2 to -0.4% on points at z 2 to 3 in
+  one stage each, not both: not taken.
+- Live stages, WINNERS (confirmed on 1,199 unseen games with lessons fixed, then on 1,177 games with the hybrid
+  lessons: minutes -1.0% at the end of Q1, -1.4% at half, -0.8% at the end of Q3, z -6 to -11; points -0.2%):
+  - `rotK` by game minute: 8 until 39 minutes in, sliding to 0.25 by 42 (`rotKEarly`, `rotKLate`, `rotKFrom`,
+    `rotKTo`). One fixed value (2) was wrong at both ends: early the coach's usual map says more than who happens
+    to be on the floor (8: minutes -0.8% at Q1), in the last six minutes who is on the floor is the closing
+    group (0.25: minutes -1.4% at 6:00 left, -5.3% at 3:00 left; 8 there is +5% WORSE).
+  - `rotTonightEarly` 0.1 for the first 18 minutes (0.25 after): minutes -0.4% at Q1.
+  - `refillSoft` 1: minutes handed back to teammates on a ramp instead of an all-or-nothing cut-off at 0.97. The
+    cut-off made a number jump about a point with nothing happening (a 12-second replay step moved one player
+    1.85 minutes). Also -0.3 to -0.8% on minutes.
+- Live stages, NOT TAKEN: `q4Pace` 1.0 (no fourth-quarter slowdown) makes the game total 2 to 4% closer from Q1 to
+  Q3 (z -3 to -7) but costs 0.2 to 0.4% on player points with the lessons fixed (z 2.4 to 3.5). Needs a full refit
+  test before it can ship: it is the best lead for the live total running low. No real effect: tonightRamp, paceK,
+  marginK, closerQ4, immuneLead, foulAfter, blowAhead, benchM50 (5 is clearly worse), minDecay.
+- `rotK` 0 divides by zero (no matching games): never use it.
+
+### BDL (balldontlie) NBA API, GOAT tier ($39.99 a month), from their docs on Nov 11
+
+- Projected lineups: five projected starters per team and game, status "expected" or "confirmed", before the game
+  (the feed stops at the scheduled start). THIS is the valuable one: ESPN only shows starters once the game tips.
+- Lineups: from 2025-26, "only available once the game begins" (no gain over ESPN).
+- Betting odds: 2025 season on, live, 13 books incl. FanDuel. Opening odds: last finished season and this one.
+- Player props: LIVE ONLY, "we do not store historical data" (points, rebounds, assists, threes, combos, first
+  quarter; FanDuel, DraftKings and others). An opening-props endpoint exists for the last finished season and this one.
+- Play-by-play: from the 2025 season only (cannot repair 2023-25).
+- A key would go in the session's secure credential form (lab) and in the Supabase function's secrets (live app,
+  through the existing relay), never in the static files or in chat.
+
 TRIED, DID NOT WIN:
 - First version of `actDeep` (deep bench at their per-appearance minutes): game totals at tip-off ran 15 points
   high. Fixed by weighting by how often they get in, and by `condMin`.

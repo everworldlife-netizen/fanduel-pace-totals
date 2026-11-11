@@ -47,6 +47,8 @@ shotEff: 0.93, // early-season makes vs last season's rates (Nov 8 backtest, 77 
 closerQ4: 0, // when the simulated game stays within 8, starters play at least this many Q4 minutes
 rot: 1, // live minutes from the coach's rotation map (stints from this season's games)
 rotK: 2, // pseudo-games of the plain map when conditioning on "on court / sitting right now"
+rotKEarly: 8, rotKLate: 0.25, rotKFrom: 39, rotKTo: 42, // rotK by game minute: rotKEarly until rotKFrom, sliding to rotKLate by rotKTo (rotKEarly 0 = the single rotK above all game)
+rotTonightEarly: 0.1, // rotTonight for the first 18 minutes (0 = same as the rest of the game)
 rotTonight: 0.25, // exponent on tonight's rotation share so far vs the map (fit on 17k live moments)
 rotTonightK: 6, // minutes of shrink on that share
 benchM50: 7, // sitting through this many of his usual on-court minutes = 50% he's done for the night
@@ -110,7 +112,7 @@ loadIn: 1, loadMid: 0.06, // team load = the usual minutes of everyone available
 favIn: 1, // expected winning margin by role (starters of a team expected to win or lose big, bench of a team expected to lose big)
 loadStats: 0, // 0 = the team load only teaches minutes (who plays), 1 = it also teaches points, rebounds, assists and threes
 ctxUntil: 33, // game minute from which the team load and expected margin sit out (by then the live score and rotation say more)
-refillSoft: 0, // refill eligibility: 0 = fixed cut-off, 1 = smooth ramp (no jumps when a factor sits at the cut-off)
+refillSoft: 1, // refill eligibility: 0 = fixed cut-off, 1 = smooth ramp (no jumps when a factor sits at the cut-off)
 };
 const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
@@ -1906,12 +1908,17 @@ const fAfter = r.pf >= 4 ? TUNE.foulAfter : 1;
 const seg = (x, a, b) => (b <= a ? 0 : restEnd > a ? fIn * onBetween(x.st, a, Math.min(b, restEnd)) + fAfter * onBetween(x.st, Math.max(a, restEnd), b) : fAfter * onBetween(x.st, a, b));
 const pre = (x) => seg(x, el, 36), post = (x) => seg(x, Math.max(el, 36), 48);
 const match = rotG.filter((x) => onAt(x.st, el) === !!r.on);
-const wm = match.length / (match.length + TUNE.rotK);
+// how far to trust "games where he was also on the floor (or sitting) at this minute" over his plain rotation map:
+// little early in the game (the coach's usual pattern says more), almost fully in the last six minutes (who is out there
+// now is the closing group). Measured on finished games: one fixed value was a compromise that was wrong at both ends.
+const rk = TUNE.rotKEarly > 0 ? (el <= TUNE.rotKFrom ? TUNE.rotKEarly : el >= TUNE.rotKTo ? TUNE.rotKLate : TUNE.rotKEarly * Math.pow(TUNE.rotKLate / TUNE.rotKEarly, (el - TUNE.rotKFrom) / (TUNE.rotKTo - TUNE.rotKFrom))) : TUNE.rotK;
+const wm = match.length / (match.length + rk);
 let rPre = wm * (match.length ? mean(match.map(pre)) : 0) + (1 - wm) * mean(rotG.map(pre));
 let rQ4 = wm * (match.length ? mean(match.map(post)) : 0) + (1 - wm) * mean(rotG.map(post));
 const expSoFar = mean(rotG.map((x) => onBetween(x.st, 0, el)));
 let tonight = 1;
-if (TUNE.rotTonight > 0 && el >= 3) tonight = Math.pow((Math.max(r.min, 0) + TUNE.rotTonightK) / (Math.max(expSoFar, 0) + TUNE.rotTonightK), TUNE.rotTonight);
+const rtE = TUNE.rotTonightEarly > 0 && el < 18 ? TUNE.rotTonightEarly : TUNE.rotTonight;
+if (rtE > 0 && el >= 3) tonight = Math.pow((Math.max(r.min, 0) + TUNE.rotTonightK) / (Math.max(expSoFar, 0) + TUNE.rotTonightK), rtE);
 // sitting through minutes he normally plays = the coach has gone away from him (or he's hurt)
 const sts = r.stints || [];
 const sitFor = r.on ? 0 : sts.length ? el - sts[sts.length - 1][1] : el;
