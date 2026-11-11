@@ -9,6 +9,8 @@ Last updated: 2026-11-11 (session 1 in this repo). Status lines marked WIP are s
 - Courtside build in `cs/build` = app version 15 (`ca-shell-v15`): lineup-aware inputs, team load, rotation timing,
   smooth refill, edge record. GG Winner in `gg/static` = 3.10.0. Release folder `release-2026-11-11/`.
   NOT PUBLISHED when this was written (no Hugging Face write access in the session): see "Publishing".
+  Akara said on Nov 11: "I only want the best versions published." So do not publish an interim build: finish the
+  round of work in progress, pass every test, then publish once (and say plainly what is in it).
 - How a Courtside lesson set is made now (three facts found on Nov 11 changed the recipe):
   1. Tip-off lists are rebuilt the way the phone sees them (ruled-out players are not on them).
   2. Most 2023-24 and 2024-25 games have incomplete play-by-play. Tests skip incomplete games. Lessons are a
