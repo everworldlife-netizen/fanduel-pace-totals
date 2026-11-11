@@ -173,10 +173,10 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
   const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
   const DAY = FX[0].g.date, TIP = Math.min(...FX.map((x) => Date.parse(x.g.datetime)));
   const CUR = Object.assign({}, ...FX.map((x) => x.base.priors.cur));
-  const copyOf = (at) => JSON.stringify({ at, tAt: at, p: Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, SNAP_F.map((f) => (c[f] == null ? null : +(+c[f]).toPrecision(4)))])), t: { teams: FX[0].base.teams.teams, league: FX[0].base.teams.league } });
+  const copyOf = (at) => JSON.stringify({ at, tAt: at, p: Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, SNAP_F.map((f) => (c[f] == null ? null : +(+c[f]).toPrecision(3)))])), t: { teams: FX[0].base.teams.teams, league: FX[0].base.teams.league } });
   // the morning after the fixture games: they are final, and today's season table is deliberately wrong (a full season of games
   // with every scoring, rebounding and assist rate tripled), so a replay that used today's table would show up as a huge miss in the phone's own table
-  const morningAfter = async (seed) => {
+  const morningAfter = async (seed, offDay) => {
     const graded = []; // the season lines each learning replay was given
     const M = await boot('final', (w) => {
       const post = w.Worker.prototype.postMessage;
@@ -187,7 +187,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       w.DB.currentSeasonPriors = async () => Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, { ...c, gp: 82, pts: c.pts * 3, reb: c.reb * 3, ast: c.ast * 3 }]));
       // yesterday's games are final; the same two teams play again tonight (the app only does its background work on a day with games)
       const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
-      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []);
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next && !offDay ? FX.map(tonight) : []);
       w.DB.livePlays = async () => [];
       w.DB.props = async () => [];
       if (seed) seed(w);
@@ -204,16 +204,16 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.ok(sn && sn.p && Object.keys(sn.p).length >= 200, 'no copy of the season lines was saved');
     assert.ok(sn.t && sn.t.teams && Object.keys(sn.t.teams).length >= 20 && sn.at > 0 && sn.tAt > 0, 'the copy has no team table');
     assert.strictEqual(sn.p[Object.keys(CUR)[0]].length, SNAP_F.length);
-    assert.ok(JSON.stringify(sn).length < 120000, `the copy takes ${JSON.stringify(sn).length} characters of the phone's storage`);
+    assert.ok(JSON.stringify(sn).length < 70000, `the copy takes ${JSON.stringify(sn).length} characters of the phone's storage`);
   });
   await test('the morning after, finished games are replayed with the copy saved before tip-off, not with today\'s table', async () => {
     const { M, rec, sum, graded } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)));
-    // every replay got the lines of the saved copy (4 digits), not today's
+    // every replay got the lines of the saved copy (3 digits), not today's
     assert.ok(graded.length >= 2, `only ${graded.length} learning replays ran`);
     for (const cur of graded) for (const k of Object.keys(CUR).slice(0, 40)) {
       assert.ok(cur && cur[k], `${k} is missing from the lines a replay was given`);
       assert.strictEqual(cur[k].gp, CUR[k].gp, `${k}: the replay was given ${cur[k].gp} games played, the copy from before the game says ${CUR[k].gp}`);
-      assert.ok(Math.abs(cur[k].pts - CUR[k].pts) <= 1e-3 * CUR[k].pts + 1e-9, `${k}: the replay was given today's scoring rate`);
+      assert.ok(Math.abs(cur[k].pts - CUR[k].pts) <= 6e-3 * CUR[k].pts + 1e-9, `${k}: the replay was given today's scoring rate`);
     }
     assert.ok(rec && rec.done.includes(DAY), `the night was not closed: ${JSON.stringify(rec)} | ${M.errors.slice(0, 4).join(' | ').slice(0, 400)}`);
     assert.ok(sum && sum.acc && sum.acc.pre && sum.acc.pre.n >= 20, 'the finished games were not learned from');
@@ -224,6 +224,16 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const v = await M.go('#/settings', 400);
     assert.ok(/saved before that game tipped/.test(v.textContent), 'the settings screen does not say how the phone grades itself');
     assert.deepStrictEqual(banned(visibleText(M.w)), []);
+    assert.deepStrictEqual(M.errors.filter((e) => !/^warn: learn/.test(e)), []);
+  });
+  await test('on a day with no games the app still learns from last night and saves its copy of the tables', async () => {
+    const { M, rec, sum } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)), true);
+    assert.ok(rec && rec.done.includes(DAY), `the night was not closed on an off day: ${JSON.stringify(rec)} | ${M.errors.slice(0, 3).join(' | ').slice(0, 300)}`);
+    assert.ok(sum && sum.acc && sum.acc.pre && sum.acc.pre.n >= 20, 'last night was not learned from on an off day');
+    const next = M.w.DB.addDays(DAY, 1);
+    assert.ok(JSON.parse(M.w.localStorage.getItem(`psnap:${next}`) || 'null'), 'no copy of the tables was saved on the off day');
+    const v = await M.go('#/games', 300);
+    assert.ok(!/Loading player profiles/.test(v.textContent), 'the empty board is stuck on a loading line');
     assert.deepStrictEqual(M.errors.filter((e) => !/^warn: learn/.test(e)), []);
   });
   await test('a night with no copy from before tip-off is left out of the phone\'s lessons and table (the edge record is still graded)', async () => {

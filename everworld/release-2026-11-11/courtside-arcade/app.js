@@ -380,7 +380,7 @@ let learning = false;
 // tables is kept from the first load of each day, and a finished game is replayed with the newest copy that was saved before
 // that day's first tip. A day with no such copy is not learned from at all.
 const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
-const SNAP_KEEP = 6, SNAP_BACK = 3; // copies kept (the learning looks back five days); how many days before a game its copy may come from
+const SNAP_KEEP = 3, SNAP_BACK = 2; // copies kept (today and the two days before: phone storage is tight, see NOTES); how many days before a game its copy may come from
 const snapKey = (d) => `psnap:${d}`;
 let snapDay = ''; // the day whose copy is known to be complete (so a refresh does not read it back every time)
 function snapSave() {
@@ -390,9 +390,9 @@ if (snapDay === today) return;
 let sn = DB.store.get(snapKey(today));
 const cur = state.priors && state.priors.cur;
 if ((!sn || !sn.p) && cur && Object.keys(cur).length >= 20) {
-const r4 = (x) => (x == null || !Number.isFinite(+x) ? null : +(+x).toPrecision(4));
+const r3 = (x) => (x == null || !Number.isFinite(+x) ? null : +(+x).toPrecision(3));
 const p = {};
-for (const [k, c] of Object.entries(cur)) p[k] = SNAP_F.map((f) => r4(c[f]));
+for (const [k, c] of Object.entries(cur)) p[k] = SNAP_F.map((f) => r3(c[f]));
 sn = { at: Date.now(), p, t: null, tAt: 0 };
 for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(SNAP_KEEP - 1))) localStorage.removeItem(k);
 DB.store.set(snapKey(today), sn);
@@ -507,7 +507,18 @@ setTimeout(() => { ledgerSweep().catch((e) => console.warn('ledger sweep', e)); 
 if (stale()) return;
 state.slate = rows; state.lastUpdate = Date.now();
 render();
-if (!state.slate.length) return;
+if (!state.slate.length) {
+// no games on this date: nothing to project, but on an off day the app still saves its copy of the tables and learns from
+// the last finished nights in the background
+if (day === DB.etDate(0)) {
+try { await ensurePriors(); await ensureTeams(); } catch (e) { console.warn('idle', e); }
+setProgress(null);
+if (stale()) return;
+snapSave();
+setTimeout(() => { learnRecent(); }, 4000);
+}
+return;
+}
 await ensurePriors();
 state.injuries = await DB.injuries(state.date);
 try { await ensureTeams(); } catch (e) { console.warn('teams', e); }

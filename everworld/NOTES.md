@@ -47,7 +47,7 @@ Akara then wrote "Nevermind just continue as you were before", so the cloud sess
 - `release-2026-11-11/` holds exactly these files (Courtside: app.js, data.js, engine.js, sw.js, worker.js; GG
   Winner: app.js, index.html, league-live.js, profiles.js, research.js, sw.js). READY TO PUBLISH, not published:
   the cloud session had no Hugging Face write access.
-- Tests: engine 80 checks, app 12, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
+- Tests: engine 80 checks, app 13, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
   (10 games on the board, `ca-shell-v16`, `gg-winner-v3.10.0`, no page errors).
 - Frozen engines for the lab (tracked): `data/engines/anch1/` (anchors as first tested), `anch3/` (lessons built
   in, before the review), `anch5/` (after the first review), `anch6/` (THE FINISHED ENGINE = `cs/build/engine.js`; same numbers as `anch5` at all 13 stages) and `base18/` (version 15, the
@@ -80,7 +80,9 @@ Against version 15 (never published; `data/runs/P2-base18.json`) on the same 121
 points -0.9% / -1.5% / -1.4% / -1.1% / -1.5% / -0.6% / -0.9%; rebounds -1.2% / -1.3% / -2.1% / -0.8% / -2.2% /
 -1.0% / -0.6%; assists between -1.2% and +0.5% (flat). Top scorer inside our top three at tip-off: 76.9% (live
 app) → 78.5%; end Q1 85.1% → 81.8% (the same dip as in the version-15 exam, still unexplained: see idea 6);
-half 88.4% → 90.9%. Stated chances stayed honest (85% said at tip-off happened 84%; 65% said happened 63%).
+half 88.4% → 90.9%. That end-of-Q1 dip is three games out of 121; on the two larger sets the rate at the end
+of Q1 is level or better against version 15 (592 games: 80.9% → 82.4%; 585 games: 82.6% → 82.7%; 121 games:
+82.6% → 82.6%), so it is noise. Stated chances stayed honest (85% said at tip-off happened 84%; 65% said happened 63%).
 
 Two switches decided on the way (both measured on the two unseen sets):
 - TEAM CHECK (`teamCal` 2, `teamCalW` 0.5; tested clean on a third unseen set afterwards, see "Third unseen set"). Projected game totals ran low at every live stage (592 games: -5.7
@@ -757,16 +759,25 @@ scripts on real games. All seven findings were real. The other three areas got a
    season-long minutes input carried part of the result, and the phone's "On this phone since ..." table came out
    about 3% too kind on points at tip-off (this part is older than version 16). The table has no date in it, so
    "does it include the game yet" cannot be read from the feed. FIX (app.js, `snapSave` / `snapFor` / `snapPriors`):
-   the phone keeps a small dated copy of the season lines (15 numbers a player, about 55 KB) and of the team table
-   from the first load of each day, six days of them, and replays a day's finished games with the newest copy that
-   was saved BEFORE that day's first tip (tip times come with the slate), looking back up to three days. A day with
+   the phone keeps a small dated copy of the season lines (15 numbers a player, about 63,000 characters) and of the
+   team table from the first load of each day (today and the two days before), and replays a day's finished games
+   with the newest copy that was saved BEFORE that day's first tip (tip times come with the slate), looking back
+   up to two days. A day with
    no such copy is not learned from and not counted (the edge record is still graded). A copy can only be older
    than what the live app had, never newer, so the phone's table can no longer be flattered. The phone's table now
    also counts a player the app had no number for as a full miss, like the built-in report (`patScore`), and says
    so on the screen. Three end-to-end tests in `cs/tests/app.test.js` feed the app a deliberately wrong "today"
    table and check which lines each replay receives (the old app fails them: "the replay was given 82 games
-   played, the copy from before the game says 10"). Known limit, by design: on a day with no games the app does no
-   background work, so the night before is learned on the next game day (inside the five-day look-back).
+   played, the copy from before the game says 10"). On a day with no games the app used to do no background work
+   at all; it now saves its copy and learns from the last finished nights on such days too (tested).
+   CHECKED IN A REAL BROWSER ON THE REAL FEEDS (`node tools/phonecheck.js`, also with `FREE=2500000` and
+   `FREE=1500000` to squeeze storage): the copy is saved (461 players, 30 teams); a night with no copy from before
+   its tips is closed with nothing learned; with a copy stamped before the tips, last night's 6 games are learned
+   and the phone's table reads 4.21 points at tip-off over 117 player-games; the settings screen explains it; no
+   page errors. PHONE STORAGE IS TIGHT AND ALWAYS WAS: one visit stores about 2.4 million characters (game logs
+   1.05 M, tracking logs 0.56 M, season lines 0.58 M, slates 0.14 M), about what an iPhone allows. The app copes by
+   dropping cached game logs when a write fails (with 1.5 M free it kept 0.55 M of logs and still learned), which is
+   why only three small copies are kept. A leaner log cache would save refetching: a lead, not a defect.
 5. AN ALERT SAID A PLAYER WHO HAD NOT CHECKED IN "is getting the extra minutes" (his "if he plays" number looked
    like a shift toward him; 33 of 47 early usage-shift alerts this season). FIX: only a player who has checked in can
    be named as the one getting the minutes.
@@ -899,9 +910,10 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 
 ```
 node cs/tests/engine.test.js          # engine on two real games (80 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
-node cs/tests/app.test.js             # boots the real app in a simulated phone browser (12 checks): screens, wording rules, edge record, stale boxes, offline start, dated copies of the season stats and the morning-after replay
+node cs/tests/app.test.js             # boots the real app in a simulated phone browser (13 checks): screens, wording rules, edge record, stale boxes, offline start, dated copies of the season stats and the morning-after replay
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
+node tools/phonecheck.js              # real browser, real feeds: the dated copies and the morning-after learning (FREE=2500000 squeezes storage like an iPhone)
 node tools/livecheck.js               # both LIVE links (after publishing)
 ```
 (After changing the engine or the fixture date: `node tools/mkfixture.js`.)
