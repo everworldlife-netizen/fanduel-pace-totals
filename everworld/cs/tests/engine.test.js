@@ -318,6 +318,21 @@ test('a player who has not checked in: no alert says he is getting the minutes, 
     }
   }
 });
+test("the phone's own accuracy sums count everyone who played 10+ minutes: a player with no number is a full miss", () => {
+  const fx = FX[0];
+  const P = run(fx, 0);
+  const a = E.patEmpty(), b = E.patEmpty();
+  E.patScore(P, fx.rows, a);
+  // the same night with one more player in the final box whom the app never had a number for
+  const extra = { name: 'Nobody Projected', team: P.state.v, min: 22, pts: 14, reb: 6, ast: 3, fg3m: 2 };
+  E.patScore(P, { ...fx.rows, 987654321: extra }, b);
+  assert.strictEqual(b.acc.pre.n, a.acc.pre.n + 1);
+  assert.ok(Math.abs(b.acc.pre.pts - a.acc.pre.pts - 14) < 1e-9 && Math.abs(b.acc.pre.reb - a.acc.pre.reb - 6) < 1e-9 && Math.abs(b.acc.pre.ast - a.acc.pre.ast - 3) < 1e-9, 'his whole line should count as the miss');
+  // a short stint does not count, and neither does a player of another game
+  const c = E.patEmpty();
+  E.patScore(P, { ...fx.rows, 987654321: { ...extra, min: 4 }, 987654322: { ...extra, team: 'ZZZ' } }, c);
+  assert.strictEqual(c.acc.pre.n, a.acc.pre.n);
+});
 test('no user-facing wording uses the words "over" or "under"', () => {
   // every note the engine can attach to a player, across the fixture moments
   const texts = [];

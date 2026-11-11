@@ -16,6 +16,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0;
 const test = async (name, fn) => { try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
 
+// (windows are never closed during the run: closing one in the middle of the app's own work makes the simulated browser
+// throw from that pending work later; the process exit at the end takes them all down)
 async function boot(phase, hook) {
   const html = read('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link rel="stylesheet"[^>]*>/g, '');
   const dom = new JSDOM(html, { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only', pretendToBeVisual: true });
@@ -128,7 +130,6 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const hard = A.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
     assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
   });
-  A.w.close();
   await test('a final box that is a few plays short of the final score is not graded; a damaged saved row does not break the edge record', async () => {
     let short = false;
     const B = await boot('pre', (w, state, fxOf) => {
@@ -155,7 +156,6 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     await sleep(3000);
     rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
     assert.ok(rows.filter((r) => r[0] !== '9:9:pts:0' && r[10] != null).length >= 3, 'edges were not graded once the full box arrived');
-    B.w.close();
   });
   await test('when the scores cannot be reached at start, the board says so instead of loading forever', async () => {
     let down = true;
@@ -168,7 +168,71 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     await sleep(2500);
     v = await C.go('#/games', 300);
     assert.ok(/[A-Z]{3}/.test(v.textContent) && !/reach the scores/i.test(v.textContent), 'the board did not recover');
-    C.w.close();
+  });
+  // ---- the phone's own learning and accuracy table: a finished game is replayed with what the app knew BEFORE it
+  const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
+  const DAY = FX[0].g.date, TIP = Math.min(...FX.map((x) => Date.parse(x.g.datetime)));
+  const CUR = Object.assign({}, ...FX.map((x) => x.base.priors.cur));
+  const copyOf = (at) => JSON.stringify({ at, tAt: at, p: Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, SNAP_F.map((f) => (c[f] == null ? null : +(+c[f]).toPrecision(4)))])), t: { teams: FX[0].base.teams.teams, league: FX[0].base.teams.league } });
+  // the morning after the fixture games: they are final, and today's season table is deliberately wrong (a full season of games
+  // with every scoring, rebounding and assist rate tripled), so a replay that used today's table would show up as a huge miss in the phone's own table
+  const morningAfter = async (seed) => {
+    const graded = []; // the season lines each learning replay was given
+    const M = await boot('final', (w) => {
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) graded.push(m.payload.priors && m.payload.priors.cur); return post.call(this, m); };
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      w.DB.currentSeasonPriors = async () => Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, { ...c, gp: 82, pts: c.pts * 3, reb: c.reb * 3, ast: c.ast * 3 }]));
+      // yesterday's games are final; the same two teams play again tonight (the app only does its background work on a day with games)
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => [];
+      w.DB.props = async () => [];
+      if (seed) seed(w);
+    });
+    const next = M.w.DB.addDays(DAY, 1);
+    for (let i = 0; i < 240; i++) { await sleep(500); const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'); if (rec && rec.checked === next) break; }
+    const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'), sum = JSON.parse(M.w.localStorage.getItem('pat:v5:sum') || 'null');
+    return { M, rec, sum, graded };
+  };
+  await test('a dated copy of the season stats and the team table is saved on the first load of the day', async () => {
+    const B = await boot('pre');
+    await sleep(2500);
+    const sn = JSON.parse(B.w.localStorage.getItem(`psnap:${DAY}`) || 'null');
+    assert.ok(sn && sn.p && Object.keys(sn.p).length >= 200, 'no copy of the season lines was saved');
+    assert.ok(sn.t && sn.t.teams && Object.keys(sn.t.teams).length >= 20 && sn.at > 0 && sn.tAt > 0, 'the copy has no team table');
+    assert.strictEqual(sn.p[Object.keys(CUR)[0]].length, SNAP_F.length);
+    assert.ok(JSON.stringify(sn).length < 120000, `the copy takes ${JSON.stringify(sn).length} characters of the phone's storage`);
+  });
+  await test('the morning after, finished games are replayed with the copy saved before tip-off, not with today\'s table', async () => {
+    const { M, rec, sum, graded } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)));
+    // every replay got the lines of the saved copy (4 digits), not today's
+    assert.ok(graded.length >= 2, `only ${graded.length} learning replays ran`);
+    for (const cur of graded) for (const k of Object.keys(CUR).slice(0, 40)) {
+      assert.ok(cur && cur[k], `${k} is missing from the lines a replay was given`);
+      assert.strictEqual(cur[k].gp, CUR[k].gp, `${k}: the replay was given ${cur[k].gp} games played, the copy from before the game says ${CUR[k].gp}`);
+      assert.ok(Math.abs(cur[k].pts - CUR[k].pts) <= 1e-3 * CUR[k].pts + 1e-9, `${k}: the replay was given today's scoring rate`);
+    }
+    assert.ok(rec && rec.done.includes(DAY), `the night was not closed: ${JSON.stringify(rec)} | ${M.errors.slice(0, 4).join(' | ').slice(0, 400)}`);
+    assert.ok(sum && sum.acc && sum.acc.pre && sum.acc.pre.n >= 20, 'the finished games were not learned from');
+    const miss = sum.acc.pre.pts / sum.acc.pre.n;
+    assert.ok(miss < 7.5, `tip-off points miss in the phone's own table is ${miss.toFixed(2)}: the replay used today's (wrong) table`);
+    assert.ok(rec.games >= 2, `only ${rec.games} games counted`);
+    // the screen says how the phone's own table is made
+    const v = await M.go('#/settings', 400);
+    assert.ok(/saved before that game tipped/.test(v.textContent), 'the settings screen does not say how the phone grades itself');
+    assert.deepStrictEqual(banned(visibleText(M.w)), []);
+    assert.deepStrictEqual(M.errors.filter((e) => !/^warn: learn/.test(e)), []);
+  });
+  await test('a night with no copy from before tip-off is left out of the phone\'s lessons and table (the edge record is still graded)', async () => {
+    for (const seed of [null, (w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP + 60000))]) {
+      const { M, rec, sum } = await morningAfter(seed);
+      assert.ok(rec && rec.done.includes(DAY), 'the night was not closed');
+      assert.ok(!sum || !sum.acc || !sum.acc.pre || !(sum.acc.pre.n > 0), `the night was learned from ${seed ? 'with a copy saved after the first tip' : 'with no copy at all'}`);
+      assert.strictEqual(rec.games || 0, 0);
+    }
   });
   console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
   process.exit(process.exitCode || 0);

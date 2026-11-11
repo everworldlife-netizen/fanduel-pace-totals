@@ -916,11 +916,21 @@ if (!(fin > 0) || proj.teamRaw[tm] == null) continue;
 T[0]++; T[1] += proj.teamRaw[tm]; T[2] += Math.max(fin - nowPts, 0);
 }
 }
+// everyone who really played 10+ minutes, on the same rule as the built-in report: a player we had no number for counts
+// as a full miss (so the phone's own table cannot look better by leaving the hard cases out)
+const seen = new Set();
 for (const p of proj.players) {
 const a = rows[p.pid] || rowByName(rows, p);
-if (!a || !(a.min >= 10)) continue;
+if (!a) continue;
+seen.add(a);
+if (!(a.min >= 10)) continue;
 A.n++;
 for (const s of PAT_STATS) A[s] += Math.abs(p.proj[s] - a[s]);
+}
+for (const a of Object.values(rows)) {
+if (seen.has(a) || !(a.min >= 10) || (a.team !== proj.state.v && a.team !== proj.state.h)) continue;
+A.n++;
+for (const s of PAT_STATS) A[s] += Math.abs(a[s] || 0);
 }
 return acc;
 }
@@ -2061,8 +2071,8 @@ lastMin: n >= 2 ? hs[n - 1].min - mpg : 0, rest3: rest3[tm], missShare: teamGame
 if (st.phase === 'pre' && sT === 0 && startShare >= 0.7 && mpg >= 20 && !forceIn.has(+r.pid)) doubt[r.pid] = doubt[r.pid] || 'usual starter, not in tonight\'s starting five';
 // long memory: his minutes over the whole season so far, with five games of last season mixed in (the recent window forgets)
 let longMin = null;
-// (not when the phone replays a finished game for its own learning: by then the season table already holds that game, so the
-// input would carry part of the answer; with it left out the phone keeps the built-in weight for this input)
+// (o.noLong leaves it out: for a replay whose season table already holds the game being replayed. The phone does not need
+// it: it replays finished games with a dated copy of the table saved before the game, see snapFor in app.js)
 if (!o.noLong) { const kN = norm(r.name), cs = cur[kN], ls = last[kN];
 if (cs && cs.gp >= 3 && cs.mpg > 0) longMin = ls && ls.gp >= 10 && ls.mpg > 0 ? (cs.mpg * cs.gp + 5 * ls.mpg) / (cs.gp + 5) : cs.mpg;
 else if (ls && ls.gp >= 10 && ls.mpg > 0) longMin = ls.mpg; }

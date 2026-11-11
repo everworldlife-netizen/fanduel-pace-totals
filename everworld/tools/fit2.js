@@ -8,6 +8,7 @@
  *
  *   node tools/fit2.js --engine cs/build/engine.js --seasons 2025,2026 [--from D --to D] --out data/lessons/x.json
  *        [--nsims 300] [--jobs 4] [--every 1] [--lam 32] [--sit auto|prev|shipped|none] [--tune k=v,...] [--passes 3]
+ *        [--xfrom 2025-10-01 --xto 2026-01-17]   leave a date window out (for a mirror fold)
  */
 'use strict';
 const path = require('path');
@@ -19,7 +20,7 @@ const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const opt = {
   engine: arg('--engine', 'cs/build/engine.js'), seasons: String(arg('--seasons', '2026')).split(',').map(Number), from: arg('--from', '0000'), to: arg('--to', '9999'),
-  nsims: +arg('--nsims', 300), jobs: +arg('--jobs', 4), every: +arg('--every', 1), out: arg('--out', 'data/lessons/fit.json'), lam: arg('--lam', null), sit: arg('--sit', 'auto'),
+  nsims: +arg('--nsims', 300), jobs: +arg('--jobs', 4), every: +arg('--every', 1), out: arg('--out', 'data/lessons/fit.json'), lam: arg('--lam', null), sit: arg('--sit', 'auto'), xfrom: arg('--xfrom', null), xto: arg('--xto', null),
   tune: arg('--tune', ''), passes: +arg('--passes', 3), post: !argv.includes('--no-playoffs'), pass: arg('--pass', null), shard: arg('--shard', null), lessonsIn: arg('--lessons-in', null), avail: arg('--avail', 'tip'),
 };
 // --stages 0,rep refits only those stages (the others are left out of the file: merge with tools/mklessons.js)
@@ -41,6 +42,7 @@ function work(shard, n, pass) {
   let used = 0, k = 0;
   for (const it of S.games) {
     if (it.g.date < opt.from || it.g.date > opt.to || (!opt.post && it.g.postseason)) continue;
+    if (opt.xfrom && it.g.date >= opt.xfrom && it.g.date <= (opt.xto || '9999')) continue; // a date window left out (mirror folds)
     if (k++ % opt.every !== 0) continue;
     if ((k - 1) / opt.every % n !== shard) continue;
     const ctx = R.contextFor(E, S, it, { avail: opt.avail });

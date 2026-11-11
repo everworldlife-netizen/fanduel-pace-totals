@@ -10,7 +10,7 @@ const pct = (p) => `${Math.round(p * 100)}%`;
 const APP_VERSION = '16 (Nov 11, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
 
 // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
-const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on this season's 121 complete games (Oct 21 to Nov 9) with lessons learned only from the 3,586 games of the three seasons before, so the app had never seen these games. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.67,"reb":1.9,"ast":1.4,"fg3m":0.88,"min":4.03,"top3":0.785,"total":14.22,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.74,"min":3.86,"top3":0.826,"total":12.67,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.55,"min":3.23,"top3":0.909,"total":10.92,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.55,"fg3m":0.3,"min":2.64,"top3":0.95,"total":7.78,"players":2253},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.15,"min":1.5,"top3":0.975,"total":6.92,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"63%"},{"said":"85% at halftime","before":"83%","now":"82%"},{"said":"65% at halftime","before":"65%","now":"65%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. On this season's 121 games minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was; points 3.5% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes into a game used to be the app's weakest moment. It is now closer than tip-off, as it should be: minutes 20% closer, points 3.6% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.3% closer.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.6% closer and rebounds 0.6 to 4% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). A second, larger test on 592 of last season's games that the lessons never saw agrees at every stage (version 16 against version 15: minutes 3 to 13% closer, points up to 1.9%, rebounds up to 2.2%, assists up to 1.4%).","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. On 592 of last season's games the total landed 2 to 5% closer from the first quarter to the end of the third; on this season's 121 games it was level. The strength of this check was set with both sets of games in view, so read it as tuned, not as a clean test. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off, and a second learning stage (boosted trees with the whole game state) could not get points, rebounds or assists closer than these numbers on unseen games. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 games across four seasons: every final through Nov 9. Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
+const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on this season's 121 complete games (Oct 21 to Nov 9) with lessons learned only from the 3,586 games of the three seasons before, so the app had never seen these games. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.67,"reb":1.9,"ast":1.4,"fg3m":0.88,"min":4.03,"top3":0.785,"total":14.22,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.74,"min":3.86,"top3":0.826,"total":12.67,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.55,"min":3.23,"top3":0.909,"total":10.92,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.55,"fg3m":0.3,"min":2.64,"top3":0.95,"total":7.78,"players":2253},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.15,"min":1.5,"top3":0.975,"total":6.92,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"63%"},{"said":"85% at halftime","before":"83%","now":"82%"},{"said":"65% at halftime","before":"65%","now":"65%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. On this season's 121 games minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was; points 3.5% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes into a game used to be the app's weakest moment. It is now closer than tip-off, as it should be: minutes 20% closer, points 3.6% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.3% closer.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.6% closer and rebounds 0.6 to 4% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). A second, larger test on 592 of last season's games that the lessons never saw agrees at every stage (version 16 against version 15: minutes 3 to 13% closer, points up to 1.9%, rebounds up to 2.2%, assists up to 1.4%).","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. Tested on 585 of last season's games that played no part in setting it up, the final score landed 0.6 to 3.5% closer at every moment from six minutes in to the end of the third quarter, and never further off. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off, and a second learning stage (boosted trees with the whole game state) could not get points, rebounds or assists closer than these numbers on unseen games. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 games across four seasons: every final through Nov 9. Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
 
 const TEAM = {
 ATL: ['#E03A3E', '#C1D32F'], BOS: ['#007A33', '#BA9653'], BKN: ['#2a2a2a', '#FFFFFF'], CHA: ['#1D1160', '#00788C'],
@@ -108,6 +108,7 @@ const s = DB.seasons(state.date);
 setProgress('Loading player profiles…', 0, 1);
 const [last, cur] = await Promise.all([DB.lastSeasonPriors(s.last), DB.currentSeasonPriors(s.cur, DB.etDate(0))]);
 state.priors = { last, cur };
+snapSave();
 }
 async function ensureLogs(teams) {
 const need = teams.filter((t) => !state.logTeams.has(t));
@@ -121,6 +122,7 @@ if (state.teamsDb && state.teamsDb.at > Date.now() - 3 * 3600000) return;
 const s = DB.seasons(state.date);
 const data = await DB.teamStats(s.cur);
 state.teamsDb = { ...data, at: Date.now() };
+snapSave();
 }
 /** DataBallr game logs (tracking stats) for every rotation player in these games, then re-project. */
 async function ensureGameLogs(games) {
@@ -371,6 +373,59 @@ const bx = E.boxFromPlays(ps, per, clock);
 return { game: { ...g, status_state: 'in', period: per, time, visitor_team_score: (bx.teams[v] || {}).pts || 0, home_team_score: (bx.teams[h] || {}).pts || 0 }, plays: ps };
 }
 let learning = false;
+// ---- what the app knew before a game
+// The season lines and the team table are refreshed every day, so by the morning after they already contain last night's
+// games. A finished game replayed with them would be graded with part of its own result inside the inputs: the phone's
+// accuracy table would look better than it is, and its lessons would learn from the answer. So a small dated copy of both
+// tables is kept from the first load of each day, and a finished game is replayed with the newest copy that was saved before
+// that day's first tip. A day with no such copy is not learned from at all.
+const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
+const SNAP_KEEP = 6, SNAP_BACK = 3; // copies kept (the learning looks back five days); how many days before a game its copy may come from
+const snapKey = (d) => `psnap:${d}`;
+let snapDay = ''; // the day whose copy is known to be complete (so a refresh does not read it back every time)
+function snapSave() {
+try {
+const today = DB.etDate(0);
+if (snapDay === today) return;
+let sn = DB.store.get(snapKey(today));
+const cur = state.priors && state.priors.cur;
+if ((!sn || !sn.p) && cur && Object.keys(cur).length >= 20) {
+const r4 = (x) => (x == null || !Number.isFinite(+x) ? null : +(+x).toPrecision(4));
+const p = {};
+for (const [k, c] of Object.entries(cur)) p[k] = SNAP_F.map((f) => r4(c[f]));
+sn = { at: Date.now(), p, t: null, tAt: 0 };
+for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(SNAP_KEEP - 1))) localStorage.removeItem(k);
+DB.store.set(snapKey(today), sn);
+}
+if (sn && sn.p && !sn.t && state.teamsDb && state.teamsDb.teams && Object.keys(state.teamsDb.teams).length >= 20) {
+sn.t = { teams: state.teamsDb.teams, league: state.teamsDb.league || null }; sn.tAt = Date.now();
+DB.store.set(snapKey(today), sn);
+}
+if (sn && sn.p && sn.t) snapDay = today;
+} catch (e) { /* storage blocked or full: that day is simply not learned from */ }
+}
+/** The newest dated copy saved before the first tip of day d (looking back up to three days), or null. */
+function snapFor(d, firstTip) {
+for (let k = 0; k <= SNAP_BACK; k++) {
+let sn = null;
+try { sn = DB.store.get(snapKey(DB.addDays(d, -k))); } catch { sn = null; }
+if (!sn || !sn.p || !sn.t) continue;
+if (Math.max(sn.at || 0, sn.tAt || 0) < firstTip) return sn;
+}
+return null;
+}
+/** The season lines as they stood in a dated copy (names, ids and positions come from today's table). */
+function snapPriors(sn) {
+const now = (state.priors && state.priors.cur) || {}, cur = {};
+for (const [k, a] of Object.entries(sn.p)) {
+if (!now[k]) continue;
+const c = { ...now[k] };
+SNAP_F.forEach((f, i) => { c[f] = a[i]; });
+cur[k] = c;
+}
+return { last: state.priors.last, cur };
+}
+
 async function learnRecent() {
 if (learning || !state.priors) return;
 const today = DB.etDate(0);
@@ -387,6 +442,10 @@ const fin = rows.filter((g) => g.status_state === 'final');
 if (!fin.length || fin.length < rows.length) continue;
 let oddsD = [];
 try { oddsD = await DB.gameLines(d); } catch { oddsD = []; }
+// the tables as the app had them before this day's first tip (tip times come with the slate; without them, noon Eastern)
+const tips = rows.map((g) => (g.datetime ? Date.parse(g.datetime) : NaN));
+const firstTip = tips.every(Number.isFinite) ? Math.min(...tips) : Date.parse(`${d}T16:00:00Z`);
+const sn = snapFor(d, firstTip);
 const jobs = [];
 let failed = 0;
 for (const g of fin) {
@@ -396,6 +455,7 @@ const plays = await DB.plays(g.id, true);
 const act = finalBox(g, plays) || finalBox(g, await DB.plays(g.id, true, true));
 if (!act) { failed++; continue; }
 try { ledgerGrade(g.id, act.rows); } catch (e) { console.warn('ledger', e); }
+if (!sn) continue; // no copy of the tables from before this game: the edge record is graded, the lessons sit this day out
 const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
 const logs = await DB.teamLogs([v, h], d);
 if (logs.filter((l) => l.v === v || l.h === v).length < 2 || logs.filter((l) => l.v === h || l.h === h).length < 2) continue;
@@ -417,7 +477,7 @@ if (jobs.length) {
 const dayAcc = E.patEmpty();
 let n = 0, jobFail = 0;
 for (const j of jobs) {
-try { const res = await runProjection({ grade: [j], priors: state.priors, teams: state.teamsDb, nsims: 300, patterns: patternsNow() }); E.patAdd(dayAcc, res.acc); n += res.games; } catch (e) { jobFail++; console.warn('learn job', e); }
+try { const res = await runProjection({ grade: [j], priors: snapPriors(sn), teams: sn.t, nsims: 300, patterns: patternsNow() }); E.patAdd(dayAcc, res.acc); n += res.games; } catch (e) { jobFail++; console.warn('learn job', e); }
 }
 if (jobFail && i <= 2) continue; // never save half a night while it can still be redone whole
 const sum = E.patAdd(patSum() || E.patEmpty(), dayAcc);
@@ -451,6 +511,7 @@ if (!state.slate.length) return;
 await ensurePriors();
 state.injuries = await DB.injuries(state.date);
 try { await ensureTeams(); } catch (e) { console.warn('teams', e); }
+snapSave(); // (also here: an app left open past midnight still gets its copy for the new day, of the tables it is using)
 state.oddsRows = await DB.gameLines(state.date);
 const teams = [...new Set(state.slate.flatMap((g) => [g.visitor_team.abbreviation, g.home_team.abbreviation]))];
 await ensureLogs(teams);
@@ -1108,7 +1169,8 @@ if (sum && sum.acc) {
 const G = { pre: 'pre', q1: 's12', half: 's24', q3: 's36', late: 's42' };
 const rows = CP2.map(([k, l]) => { const x = sum.acc[G[k]]; return x && x.g >= 1 && x.n >= 8 ? `<tr><td>${l}</td><td><b>${(x.pts / x.n).toFixed(2)}</b></td><td>${(x.reb / x.n).toFixed(2)}</td><td>${(x.ast / x.n).toFixed(2)}</td><td>${x.g ? Math.round((100 * x.top3) / x.g) + '%' : '–'}</td></tr>` : ''; }).join('');
 if (rows) mine = `<div class="small" style="font-weight:800;margin:14px 0 4px">On this phone since ${new Date(PAT_FROM + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}: ${learnedGames()} games graded</div>
-<table class="mtable acc2"><tr><th></th><th>PTS miss</th><th>REB</th><th>AST</th><th>Top scorer in our top 3</th></tr>${rows}</table>`;
+<table class="mtable acc2"><tr><th></th><th>PTS miss</th><th>REB</th><th>AST</th><th>Top scorer in our top 3</th></tr>${rows}</table>
+<div class="small muted" style="margin-top:6px">Each finished game is replayed with the season stats this phone saved before that game tipped, so the app is graded on what it knew at the time. Everyone who played 10+ minutes counts, and a player the app had no number for counts as a full miss. A night with no saved copy from before tip-off is left out.</div>`;
 }
 return `<div class="section-title">🎯 ACCURACY REPORT</div>
 <div class="card">

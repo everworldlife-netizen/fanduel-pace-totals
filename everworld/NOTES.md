@@ -47,10 +47,10 @@ Akara then wrote "Nevermind just continue as you were before", so the cloud sess
 - `release-2026-11-11/` holds exactly these files (Courtside: app.js, data.js, engine.js, sw.js, worker.js; GG
   Winner: app.js, index.html, league-live.js, profiles.js, research.js, sw.js). READY TO PUBLISH, not published:
   the cloud session had no Hugging Face write access.
-- Tests: engine 79 checks, app 9, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
+- Tests: engine 80 checks, app 12, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
   (10 games on the board, `ca-shell-v16`, `gg-winner-v3.10.0`, no page errors).
 - Frozen engines for the lab (tracked): `data/engines/anch1/` (anchors as first tested), `anch3/` (lessons built
-  in, before the review), `anch5/` (THE FINISHED ENGINE = `cs/build/engine.js`) and `base18/` (version 15, the
+  in, before the review), `anch5/` (after the first review), `anch6/` (THE FINISHED ENGINE = `cs/build/engine.js`; same numbers as `anch5` at all 13 stages) and `base18/` (version 15, the
   "before" of the lab tables). `data/engines/base` (not
   tracked) is the live app's engine = `baseline/cs/engine.js`.
 
@@ -58,7 +58,7 @@ Akara then wrote "Nevermind just continue as you were before", so the cloud sess
 
 "Before" = the live app (version 14) taught the same way (`data/runs/H2-base.json`); "after" = the finished engine
 (after the review fixes below, frozen as `data/engines/anch5`) with the hold-out lessons `P2H-anch1`
-(`data/runs/P2g-anch5.json`; `P2f-anch3.json` is the same engine before the review fixes: only the 6, 9 and 12 minute rows differ). This is what the in-app report shows. Everyone
+(`data/runs/P2h-anch6.json`, identical to `P2g-anch5.json`; `P2f-anch3.json` is the same engine before the review fixes: only the 6, 9 and 12 minute rows differ). This is what the in-app report shows. Everyone
 who really played 10+ minutes; a player with no number counts as a full miss. z is paired by game.
 
 | moment | minutes miss | points miss | rebounds miss | assists miss | game total miss |
@@ -83,7 +83,7 @@ app) → 78.5%; end Q1 85.1% → 81.8% (the same dip as in the version-15 exam, 
 half 88.4% → 90.9%. Stated chances stayed honest (85% said at tip-off happened 84%; 65% said happened 63%).
 
 Two switches decided on the way (both measured on the two unseen sets):
-- TEAM CHECK (`teamCal` 2, `teamCalW` 0.5). Projected game totals ran low at every live stage (592 games: -5.7
+- TEAM CHECK (`teamCal` 2, `teamCalW` 0.5; tested clean on a third unseen set afterwards, see "Third unseen set"). Projected game totals ran low at every live stage (592 games: -5.7
   points 6 min in, -5.3 at half, -2.8 end Q3; 121 games: -2.1, -3.4, -2.9). The learned factors on complete games
   are 1.03 to 1.05 at every live stage (`mklessons.js` now takes the team check of EVERY live stage from the
   complete games: with the older, incomplete seasons mixed in the early factors came out at 1.00). The full check
@@ -130,6 +130,11 @@ Six minutes in is now closer than tip-off, as it should be (it was worse before:
 - 17:30: in-app report rebuilt from `H2-base.json` and `P2f-anch3.json`; all tests pass; release folder rebuilt.
 - 18:35 to 19:00: independent review came back (2 of 5 reviewers finished before a usage limit); 7 findings checked
   by hand and fixed (see "Review of version 16"); engine frozen as `anch5`; report, tests and release folder rebuilt.
+- 19:00 to 19:45: Akara: "I want everything fixed before publishing. No issues." Both open items closed: the
+  phone's own table now replays with a copy of the season stats saved before tip-off (and counts players with no
+  number as full misses); the live team check passed a clean test on a third unseen set (`tools/p1r.sh`). Engine
+  frozen as `anch6`; report, tests and release folder rebuilt. Still to come: the second review pass over the
+  three areas the first reviewers did not reach (scheduled for about 20:25 UTC), then publishing.
 
 ### How to set up on a new computer
 
@@ -746,16 +751,22 @@ scripts on real games. All seven findings were real. The other three areas got a
    had (0 minutes to come; they really played 3.88 more). FIX in `gameState`: a tie at the horn counts as the start
    of overtime. The 7 overtime games of this season, 70 players on the floor: shown 3.86 more minutes, minutes miss
    3.88 → 1.17, points miss 1.70 → 1.34.
-4. THE PHONE'S OWN LEARNING SAW THE ANSWER in the season-long minutes input: the morning after, the season table
-   already holds last night's game (confirmed on the live feed on Nov 11: 134 players who played on Nov 10 show one
-   more game than the lab's count through Nov 9). FIX: that input sits out of the phone's learning replays
-   (`noLong`), so the phone keeps the built-in weight for it. STILL OPEN, older than version 16: the same leak
-   flatters the phone's own "On this phone since ..." table (points at tip-off about 3% better than true) because
-   the per-minute season rates also include the graded game. The reviewer's fix is to take the graded game's own
-   row back out of the season line in `worker.js` (games, minutes, per-minute points / rebounds / assists / threes).
-   Not done: it is only right if the table always includes the game by the time the phone grades it (a phone
-   opened right after the last game ends may still have the old table; then the correction would go the wrong
-   way). Check the table's timing on a real phone first.
+4. THE PHONE'S OWN LEARNING AND ITS OWN ACCURACY TABLE SAW THE ANSWER. The morning after, the season table already
+   holds last night's game (confirmed on the live feed on Nov 11: 134 players who played on Nov 10 show one more
+   game than the lab's count through Nov 9), and the phone replayed last night's games with that table: the
+   season-long minutes input carried part of the result, and the phone's "On this phone since ..." table came out
+   about 3% too kind on points at tip-off (this part is older than version 16). The table has no date in it, so
+   "does it include the game yet" cannot be read from the feed. FIX (app.js, `snapSave` / `snapFor` / `snapPriors`):
+   the phone keeps a small dated copy of the season lines (15 numbers a player, about 55 KB) and of the team table
+   from the first load of each day, six days of them, and replays a day's finished games with the newest copy that
+   was saved BEFORE that day's first tip (tip times come with the slate), looking back up to three days. A day with
+   no such copy is not learned from and not counted (the edge record is still graded). A copy can only be older
+   than what the live app had, never newer, so the phone's table can no longer be flattered. The phone's table now
+   also counts a player the app had no number for as a full miss, like the built-in report (`patScore`), and says
+   so on the screen. Three end-to-end tests in `cs/tests/app.test.js` feed the app a deliberately wrong "today"
+   table and check which lines each replay receives (the old app fails them: "the replay was given 82 games
+   played, the copy from before the game says 10"). Known limit, by design: on a day with no games the app does no
+   background work, so the night before is learned on the next game day (inside the five-day look-back).
 5. AN ALERT SAID A PLAYER WHO HAD NOT CHECKED IN "is getting the extra minutes" (his "if he plays" number looked
    like a shift toward him; 33 of 47 early usage-shift alerts this season). FIX: only a player who has checked in can
    be named as the one getting the minutes.
@@ -775,13 +786,31 @@ Manual pass over the three areas the reviewers did not reach:
   storage; a fresh tally starts under `pat:v5`.
 - Honesty: the exam lessons hold no 2026-27 game and the split-season lessons no game after Jan 17 (checked in the
   lesson files' own records); both exam runs used those lessons, not the built-in ones; the table columns are all
-  on the same fixed set of 2,253 player-games. ONE CLAIM IS TUNED, NOT TESTED, and the in-app report says so: the
-  strength of the live team check (0.5) was chosen with both unseen sets in view. The shown-middle weights were
-  fitted on the 592 games and checked on the 121.
+  on the same fixed set of 2,253 player-games. The strength of the live team check (0.5) had been chosen with both
+  unseen sets in view, so it was then TESTED CLEAN on a third set that played no part in it (next section). The
+  shown-middle weights were fitted on the 592 games and checked on the 121.
 - NOT REVIEWED by a second pair of eyes: the app-shell code paths of the nightly learning end to end on a real
   phone, and the service worker update on a phone that has the old version installed (covered only by the tests
   and the phone-sized browser check). Run the review workflow again when agents are available
   (`wf_777412b7-b9f` in the cloud session; the script asks five areas).
+
+### Third unseen set (mirror fold, `tools/p1r.sh`): 585 complete 2025-26 games before Jan 18
+
+Lessons from 2023-24, 2024-25 and the part of 2025-26 AFTER Jan 17 (`fit2.js --xfrom 2025-10-01 --xto 2026-01-17`
+leaves the window out; mid-game stages and the team check from complete games after Jan 17). These 585 games were
+never looked at when the team check's strength was set, so this is its clean test, and a third confirmation of the
+player numbers (`data/runs/P1r-anch5.json` against `P1r-base18.json`, version 15 taught the same way).
+
+- Team check, same engine with and without it (the run keeps both: `per[17..19]`): signed miss of the game total
+  -4.9 → -2.1 at 6 min, -3.1 → -0.8 end Q1, -4.0 → -1.9 at half, -4.4 → -2.6 at 30 min, -3.5 → -2.7 end Q3; total
+  miss -2.1% (z -2.9) at 6 min, -1.1% at 9, -0.6% end Q1, -0.9% at 18, -2.5% (z -3.2) at 21, -1.9% (z -2.6) at half,
+  -3.5% (z -5.0) at 30, -3.4% (z -5.1) at 33, -1.7% (z -4.3) end Q3. Closer at every live stage through Q3, never
+  further off; untouched before tip-off and in the last six minutes by design.
+- Version 16 against version 15, players with 10+ real minutes: minutes -6.5% at tip-off, -13.0% at 6 min, -9.9%
+  end Q1, -4.6% at half, -5.4% at 30 min, -3.7% end Q3, -4.4% at 6:00, -13.4% at 3:00 (z -8 to -32); points -0.9% /
+  -1.8% / -1.4% / -0.5% / -0.9% / -0.3% / -0.5% / 0.0%; rebounds -1.4% / -2.3% / -1.7% / -0.6% / -1.2% / -0.9% /
+  -0.3% / 0.0%; assists -0.4% / -0.8% / -0.9% / -0.6% / -0.9% / -0.3% / +0.1% / 0.0%. Before lineups: minutes
+  -3.3%, points -1.3%, rebounds -1.0%, assists -0.8%. Nothing worse at any stage.
 
 ### Traps found this session
 
@@ -869,8 +898,8 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 ## Test suites (run all before publishing)
 
 ```
-node cs/tests/engine.test.js          # engine on two real games (79 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
-node cs/tests/app.test.js             # boots the real app in a simulated phone browser (9 checks): screens, wording rules, edge record, stale boxes, offline start
+node cs/tests/engine.test.js          # engine on two real games (80 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
+node cs/tests/app.test.js             # boots the real app in a simulated phone browser (12 checks): screens, wording rules, edge record, stale boxes, offline start, dated copies of the season stats and the morning-after replay
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/livecheck.js               # both LIVE links (after publishing)
