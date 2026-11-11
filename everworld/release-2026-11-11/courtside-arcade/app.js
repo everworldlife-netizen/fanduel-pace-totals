@@ -405,7 +405,7 @@ DB.store.set(snapKey(today), sn);
 if (sn && sn.p && sn.t) { const back = DB.store.get(snapKey(today)); if (back && back.p && back.t) snapDay = today; }
 } catch (e) { /* storage blocked or full: that day is simply not learned from */ }
 }
-/** The newest dated copy saved before the first tip of day d (looking back up to three days), or null. */
+/** The newest dated copy saved before the first tip of day d (from that day or the two days before), or null. */
 function snapFor(d, firstTip) {
 for (let k = 0; k <= SNAP_BACK; k++) {
 let sn = null;
