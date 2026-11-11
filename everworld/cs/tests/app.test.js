@@ -9,7 +9,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const assert = require('assert');
 const { JSDOM } = require(path.join(__dirname, '..', '..', 'nm', 'node_modules', 'jsdom'));
-const BUILD = path.join(__dirname, '..', 'build');
+const BUILD = process.env.CS_BUILD ? path.resolve(process.env.CS_BUILD) : path.join(__dirname, '..', 'build'); // CS_BUILD=<folder> tests another build
 const FX = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', 'games.json.gz'))).toString('utf8'));
 const read = (f) => fs.readFileSync(path.join(BUILD, f), 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

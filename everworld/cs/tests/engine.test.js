@@ -6,7 +6,7 @@ const path = require('path');
 const zlib = require('zlib');
 const fs = require('fs');
 const assert = require('assert');
-const E = require(path.join(__dirname, '..', 'build', 'engine.js'));
+const E = require(process.env.CS_BUILD ? path.resolve(process.env.CS_BUILD, 'engine.js') : path.join(__dirname, '..', 'build', 'engine.js')); // CS_BUILD=<folder> tests another build
 const FX = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', 'games.json.gz'))).toString('utf8'));
 
 let pass = 0;
@@ -40,8 +40,11 @@ for (const fx of FX) {
     test(`${tag} at ${el} min: a team never plays more than five players' worth of the time left`, () => {
       for (const tm of [v, h]) {
         const rem = P.players.filter((p) => p.team === tm).reduce((a, p) => a + (p.mean.min - p.now.min), 0);
-        // regulation minutes left, plus room for the overtime share of the simulations
-        assert.ok(rem <= 5 * P.state.left + 5 * 5 * 0.6 + 0.5, `${tm} has ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
+        // regulation minutes left, plus room for the overtime share of the simulations. Before tip-off (v15) each player's
+        // minutes are an "if he plays" number, so a full active list may add up to more than a team can play: the TEAM
+        // total is what gets scaled to five players' worth there (checked in the team totals test below)
+        const cap = el === 0 && E.TUNE.condMin > 0 ? 5 * P.state.left * 1.4 : 5 * P.state.left + 5 * 5 * 0.6 + 0.5;
+        assert.ok(rem <= cap, `${tm} has ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
         // (in a lopsided game some of the time left goes to deep-bench players the engine does not track by name)
         assert.ok(rem >= 5 * P.state.left * 0.55 - 0.5, `${tm} has only ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
       }
@@ -113,8 +116,16 @@ for (const fx of FX) {
   test(`${tag}: lessons between two stages blend smoothly (no jump at the stage border)`, () => {
     if (!(E.TUNE.patInterp > 0)) return;
     const a = run(fx, 8.9), b = run(fx, 9.1); // the old border between the 6- and 12-minute lessons
+    // only players for whom nothing happened in those 12 seconds (same box line, same on/off the floor)
     const big = a.players.filter((p) => p.mean.min >= 20);
-    for (const p of big) { const q = b.players.find((x) => x.pid === p.pid); if (q) assert.ok(Math.abs(q.mean.pts - p.mean.pts) < 2.5, `${p.name} jumps ${p.mean.pts.toFixed(1)} → ${q.mean.pts.toFixed(1)} across the border`); }
+    let n = 0;
+    for (const p of big) {
+      const q = b.players.find((x) => x.pid === p.pid);
+      if (!q || q.on !== p.on || q.now.pts !== p.now.pts || q.now.fga !== p.now.fga || q.now.pf !== p.now.pf) continue;
+      n++;
+      assert.ok(Math.abs(q.mean.pts - p.mean.pts) < 1.5, `${p.name} jumps ${p.mean.pts.toFixed(1)} → ${q.mean.pts.toFixed(1)} across the border`);
+    }
+    assert.ok(n >= 4, 'too few unchanged players to compare');
   });
 }
 test('team totals: "if he plays" minutes never inflate the game score, and the learned team check is applied', () => {

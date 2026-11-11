@@ -83,7 +83,8 @@ const ggWait = async (page) => {
   let all = true;
   const local = arg('--local', null);
   if (local) {
-    const dir = path.join(L.ROOT, local === 'cs' ? 'cs/build' : 'gg/static');
+    // --dir <folder> checks another build of the same app (for example a trial build)
+    const dir = arg('--dir') ? path.resolve(arg('--dir')) : path.join(L.ROOT, local === 'cs' ? 'cs/build' : 'gg/static');
     const { srv, url } = await serve(dir);
     all = await check(`local-${local}`, url, local === 'cs' ? csWait : ggWait) && all;
     srv.close();
