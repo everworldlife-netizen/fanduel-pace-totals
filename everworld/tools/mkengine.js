@@ -19,6 +19,7 @@ const swapLine = (name, value) => {
 if (lessons) {
   swapLine('PAT_PRIOR', JSON.stringify(lessons.PAT_PRIOR));
   swapLine('CAL_PRIOR', JSON.stringify(lessons.CAL_PRIOR));
+  if (lessons.TEAM_PRIOR) swapLine('TEAM_PRIOR', JSON.stringify(lessons.TEAM_PRIOR));
 }
 if (arg('--land')) swapLine('LAND', JSON.stringify(L.readJSON(path.resolve(L.ROOT, arg('--land')))).replace(/"/g, ''));
 for (const kv of String(arg('--tune', '')).split(',').filter(Boolean)) {

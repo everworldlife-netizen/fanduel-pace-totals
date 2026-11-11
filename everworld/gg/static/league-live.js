@@ -19,6 +19,15 @@
  *    Lopsided games score a little MORE in the early 4th (benches run), not less.
  *  - Overtime: about 3 games in 100 overall, 9 in 100 when it's within 6 late. Its points are counted.
  *  - The swing around our number is tighter than we assumed (8.5% of the total, not 10%).
+ *
+ * v3.10 (Nov 11, 2026), measured on 4,088 NBA games with their closing lines (tools/ggbt.js):
+ *  - The starting rate now adds up to the line (it used to sit about 1% under it from the tip): through three
+ *    quarters the number ran 2 to 3 points low on 2,619 games from 2023-25; now within about 1.
+ *  - A line first seen DURING a game (FanDuel lists games only once they are live) is no longer treated as a
+ *    pregame line: only the points still to come are spread over the time left. Opened at the end of Q1 or at
+ *    halftime, the number lands 4 to 9% closer (the live line in that test is simulated: no history of real ones exists).
+ *  - Clocks under a minute ("45.2") and quarter breaks ("End of 1st") are read correctly.
+ *  - Plus edges only, in every sentence: our number is never set against a line it is not ahead of. No calls before tip-off.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -32,6 +41,9 @@
     ncaam: { clock: { periods: 2, periodMinutes: 20, otMinutes: 5, usesHalves: true }, total: 145, blowout: 22 },
     ncaaw: { clock: FIBA, total: 135, blowout: 22 },
   };
+  // v3.10 constants (fit on 2,619 NBA games from 2023-25 with their closing lines, checked on 1,469 newer ones)
+  const TYPICAL_LATE_MARGIN = 11; // points apart a game that is tied early is, on average, by the last quarter
+  const OT_BASE = 0.034; // share of games that go to overtime, as seen from early in the game
   const WOMEN_RE = /\bwomen|\bwomens|\bfemale|\bladies|\bwnbl\b|\bfeminin|\bdamen|\bdam(?:er)?\b|\(w\)|\bw$/i;
 
   const round1 = (n) => Math.round(n * 10) / 10;
@@ -71,7 +83,9 @@
       return Number.isFinite(m) && Number.isFinite(sec) ? m + sec / 60 : null;
     }
     const n = Number(s);
-    return Number.isFinite(n) ? n : null;
+    if (!Number.isFinite(n)) return null;
+    // v3.10: with a decimal point and no colon it is seconds left in the period ("45.2" under a minute, "0.0" at the horn)
+    return s.includes('.') ? n / 60 : n;
   }
 
   function isLive(g) { return g.status === 'in_progress' || g.status === 'halftime'; }
@@ -119,13 +133,19 @@
       return { ...base, state: 'halftime', current: half + 1, completed: half, inPeriod: 0, elapsed: reg / 2, remaining: reg / 2, currentPts: 0, clockSource: 'halftime' };
     }
 
-    const clockMin = parseClock(game.clock);
-    const hasClock = clockMin != null && (clockMin > 0 || /^(Q|H|OT)\d*/i.test(String(game.statusDetail || game.periodText || '')));
+    const clockMin0 = parseClock(game.clock);
+    // v3.10: "End of 1st" (quarter break) is a known spot on the clock: that period is over, zero left in it
+    const endOf = Number((String(game.statusDetail || game.periodText || '').match(/^end of (\d)/i) || [])[1]) || 0;
+    const clockMin = endOf ? 0 : clockMin0;
+    const hasClock = clockMin != null && (clockMin > 0 || endOf > 0 || /^(Q|H|OT)\d*/i.test(String(game.statusDetail || game.periodText || '')));
     // "Q2" in the status is FanDuel naming the quarter in play; "Live" tells us nothing.
     const textQ = Number((String(game.statusDetail || '').match(/^Q(\d+)/i) || [])[1]) || 0;
     let current;
     let completed;
-    if (n > 0 && sumQ < pts) { completed = n; current = Math.max(period, n + 1); }
+    if (endOf) { current = Math.max(endOf, 1); completed = current - 1; }
+    // quarter scores that add up to less than the score mean the list holds finished quarters only, unless the feed
+    // itself names the quarter in play and it is the last one listed (then the list is just a basket behind the score)
+    else if (n > 0 && sumQ < pts && !(textQ && textQ === n)) { completed = n; current = Math.max(period, n + 1); }
     else if (n > 0) {
       current = Math.max(period, n);
       completed = current - 1;
@@ -216,28 +236,45 @@
    * Full projection: game, halves, quarters, and plain-words calls for each line given.
    * lines: { game, half1, half2, quarter: { [n]: line } }  (numbers or strings)
    */
-  function project(game = {}, { prior, lines = {}, minEdge = 3 } = {}) {
+  function project(game = {}, opts = {}) {
+    const { prior, lines = {}, minEdge = 3 } = opts;
     const p = progress(game, { prior });
     const { cfg, reg, pts } = p;
     const prof = profileFor(game);
     const T0 = p.prior;
-    const rate0 = T0 / reg;
-    const obsRate = p.elapsed >= 1 ? pts / p.elapsed : rate0;
     const fNow = clamp(p.elapsed / reg, 0, 1);
-    const w = p.state === 'live' || p.state === 'halftime' ? liveWeight(fNow, p.priorFromLine) : 0;
-    const rate = w * obsRate + (1 - w) * rate0;
     const diff = Math.abs((Number(game.home?.score) || 0) - (Number(game.away?.score) || 0));
     const lastIdx = cfg.periods;
-    // Expected points between two game minutes (regulation), with the learned late-game shape.
-    const mLop = Math.min(diff, 30) / 10;
-    const shape = (f) => (f < 0.75 ? 1 : f < 0.875 ? 0.886 + 0.033 * mLop : f < 0.9375 ? 0.87 + 0.038 * mLop : clamp(1.139 - 0.082 * mLop, 0.9, 1.14));
+    // The late-game shape depends on how lopsided the game is LATE. Early on, today's margin says little about that:
+    // a tied game after one quarter still ends up about 10 apart on average. So the margin used for the last quarter
+    // is today's margin plus the usual drift still ahead (v3.10; before, a tie in the 1st quarter was treated as a tight finish).
+    const lateMargin = (f, d) => Math.sqrt(d * d + TYPICAL_LATE_MARGIN * TYPICAL_LATE_MARGIN * Math.max(0, 0.78 - f) / 0.78);
+    const shapeAt = (f, ml) => (f < 0.75 ? 1 : f < 0.875 ? 0.886 + 0.033 * ml : f < 0.9375 ? 0.87 + 0.038 * ml : clamp(1.139 - 0.082 * ml, 0.9, 1.14));
     const CUTS = [0.75, 0.875, 0.9375, 1];
-    const between = (m0, m1) => {
+    // "effective minutes" between two game minutes: clock minutes weighted by the late-game shape
+    const effBetween = (m0, m1, ml) => {
       let out = 0, a = m0;
-      for (const c of CUTS) { const b = Math.min(m1, c * reg); if (b > a) { out += rate * (b - a) * shape((a + b) / 2 / reg); a = b; } }
-      if (m1 > a) out += rate * (m1 - a) * shape(0.99);
+      for (const c of CUTS) { const b = Math.min(m1, c * reg); if (b > a) { out += (b - a) * shapeAt((a + b) / 2 / reg, ml); a = b; } }
+      if (m1 > a) out += (m1 - a) * shapeAt(0.99, ml);
       return out;
     };
+    const mLop = Math.min(lateMargin(fNow, diff), 30) / 10;
+    // The starting rate must add up to the line: a book's total already has the slow last quarter, the foul-filled final
+    // minutes and the odd overtime inside it. (Before v3.10 the rate was total / minutes, so the live number sat about 1%
+    // under the line from the opening tip.) A line first seen DURING a game is handled the same way from that moment on:
+    // the points already scored then are taken out and the rest is spread across the time that was left.
+    const seen = opts.priorSeen && num(opts.priorSeen.elapsed) != null && num(opts.priorSeen.pts) != null && opts.priorSeen.elapsed > 0.5 && opts.priorSeen.elapsed < reg - 0.5 ? opts.priorSeen : null;
+    const tipEff = effBetween(0, reg, Math.min(lateMargin(0, 0), 30) / 10) + OT_BASE * cfg.otMinutes * 1.05;
+    let rate0 = T0 / tipEff;
+    if (seen && p.priorFromLine) {
+      const fS = clamp(seen.elapsed / reg, 0, 1), dS = num(seen.diff) != null ? Math.abs(seen.diff) : 0;
+      const effS = effBetween(seen.elapsed, reg, Math.min(lateMargin(fS, dS), 30) / 10) + OT_BASE * cfg.otMinutes * 1.05;
+      if (effS > 0.5 && T0 - seen.pts > 0) rate0 = (T0 - seen.pts) / effS;
+    }
+    const obsRate = p.elapsed >= 1 ? pts / p.elapsed : rate0;
+    const w = p.state === 'live' || p.state === 'halftime' ? liveWeight(fNow, p.priorFromLine) : 0;
+    const rate = w * obsRate + (1 - w) * rate0;
+    const between = (m0, m1) => rate * effBetween(m0, m1, mLop);
     let startOf = 0; const starts = {};
     for (let i = 1; i <= Math.max(cfg.periods, p.current || 0); i += 1) { starts[i] = startOf; startOf += periodLen(i, cfg); }
     // points still to come in period i from minute `into` of it (overtime: a touch faster than normal)
@@ -253,7 +290,7 @@
       let value;
       let state;
       if (p.state === 'final') { value = p.sums[i - 1] ?? null; state = 'done'; }
-      else if (p.state === 'pre') { value = (T0 / reg) * len; state = 'next'; }
+      else if (p.state === 'pre') { value = rate0 * effBetween(starts[i], starts[i] + len, mLop) + (i === lastIdx ? rate0 * OT_BASE * cfg.otMinutes * 1.05 : 0); state = 'next'; }
       else if (i <= p.completed) { value = p.sums[i - 1] ?? rate * len; state = 'done'; }
       else if (i === p.current && p.state === 'live') {
         value = (p.currentPts ?? rate * p.inPeriod) + restOf(i, p.inPeriod);
@@ -277,7 +314,7 @@
         else if (per.state === 'next') rest += per.value;
       }
       // overtime happens in about 3 games in 100, and in about 9 in 100 when it's within 6 late
-      const pOt = p.inOt ? 0 : fNow >= 0.8 && diff <= 6 ? 0.09 : fNow >= 0.8 && diff > 12 ? 0.005 : 0.034;
+      const pOt = p.inOt ? 0 : fNow >= 0.8 && diff <= 6 ? 0.09 : fNow >= 0.8 && diff > 12 ? 0.005 : OT_BASE;
       full = round1(pts + rest + pOt * rate * cfg.otMinutes * 1.05);
     }
 
@@ -298,7 +335,6 @@
       const absGap = Math.abs(mean - L);
       const side = mean >= L ? 'Over' : 'Under';
       const chance = side === 'Over' ? pOver : 1 - pOver;
-      const moreLess = mean >= L ? 'more' : 'fewer';
       m.chance = Math.round(chance * 100) / 100;
       if (p.inOt) {
         m.text = `We expect about ${round1(mean)}, but the game is in overtime, where anything goes. No bet.`;
@@ -307,26 +343,30 @@
         m.text = `Less than a minute of this part of the game is left, so there’s nothing to bet on. It's heading for about ${round1(mean)}.`;
         m.pass = 'late';
       } else if (p.state === 'live' && p.elapsed < reg / 8) {
-        m.text = `We expect about ${round1(mean)} vs FanDuel's ${L}, but it's too early to trust the pace. We make calls once about ${Math.round(reg / 8)} minutes are played.`;
+        m.text = `It's too early to trust the pace. We make calls once about ${Math.round(reg / 8)} minutes are played.`;
         m.pass = 'early';
-      } else if (p.state === 'pre' && id === 'game') {
-        m.text = `Before tip-off we use FanDuel’s own line as our number. We'll make calls once the game starts.`;
+      } else if (p.state === 'pre') {
+        // v3.10: no calls on any line before tip-off (halves and quarters used to be called from an even split of the game total)
+        m.text = id === 'game' ? `Before tip-off we use ${p.priorFromLine ? 'FanDuel’s own line' : 'the usual total for this league'} as our number. We'll make calls once the game starts.` : `We'll make calls on this line once the game starts.`;
         m.pass = 'pre';
+      } else if (side === 'Under') {
+        // plus edges only: our number is never set against a line it is not ahead of
+        m.text = 'Our number is not ahead of this line, so there is no plus edge here.';
+        m.pass = 'below';
       } else if (p.state === 'live' && absGap > (estimated ? 0.12 : 0.18) * T0 * windowShare) {
         m.text = estimated
-          ? `We get about ${round1(mean)}, but FanDuel says ${L}. A gap that big with no game clock usually means our guess of the minutes played is off, so we sit this one out.`
-          : `We get about ${round1(mean)}, but FanDuel says ${L}. A gap that big usually means FanDuel knows something the score doesn't show (injury, foul trouble, a rested star), so we sit this one out.`;
+          ? `We get about ${round1(mean)}, far ahead of FanDuel's ${L}. A gap that big with no game clock usually means our guess of the minutes played is off, so we sit this one out.`
+          : `We get about ${round1(mean)}, far ahead of FanDuel's ${L}. A gap that big usually means the line carries news the score doesn't show yet, so we sit this one out.`;
         m.pass = 'toofar';
-      } else if (side === 'Under') {
-        m.text = `We expect about ${round1(mean)}, below FanDuel's line of ${L}. We only play plus edges, where our number is ahead of the line, so no play.`;
-        m.pass = 'below';
       } else if (absGap >= edgeNeed && chance >= 0.58) {
         m.call = side;
         m.text = `We expect about ${round1(mean)} points, ${round1(absGap)} ahead of FanDuel's line of ${L}. That's a plus edge: more points than FanDuel expects. Chance it beats ${L}: ${Math.round(chance * 100)}%.`;
       } else {
-        m.text = `We expect about ${round1(mean)}, only ${round1(absGap)} ${moreLess} than FanDuel's ${L}. We need a gap of ${edgeNeed} or more to make a call.`;
+        m.text = `We expect about ${round1(mean)}, only ${round1(absGap)} ahead of FanDuel's ${L}. We need a gap of ${edgeNeed} or more to make a call.`;
         m.pass = 'close';
       }
+      // a line our number is not ahead of carries no number of ours at all
+      if (m.pass === 'below' || m.pass === 'early' || (m.pass === 'pre' && id !== 'game')) { m.ours = null; m.gap = null; m.chance = null; }
       markets.push(m);
     }
 
@@ -351,16 +391,18 @@
       if (pace != null) {
         const vs = pace > T0 + 2 ? 'faster than' : pace < T0 - 2 ? 'slower than' : 'about the same as';
         const first = num(prior) != null && num(prior) !== num(game.fdTotal?.line);
-        why.push(`They've scored ${pts} points in about ${Math.round(p.elapsed)} minutes. That's a ${pace}-point pace for a full game, ${vs} FanDuel's line of ${T0}${first ? ' when we first saw this game' : ''}.`);
+        const startName = p.priorFromLine ? `FanDuel's line of ${T0}${first ? ' when we first saw this game' : ''}` : `the usual total for this league (${T0})`;
+        why.push(`They've scored ${pts} points in about ${Math.round(p.elapsed)} minutes. That's a ${pace}-point pace for a full game, ${vs} ${startName}.`);
       }
-      why.push(`We trust the live pace ${Math.round(w * 100)}% and FanDuel's starting number ${100 - Math.round(w * 100)}%. Hot and cold starts mostly fade, so the live pace only counts for more late in the game.`);
-      if (obsRate * reg - T0 >= 0.08 * T0 && fNow < 0.8) why.push(`Fade warning: this game is on pace for ${Math.round(obsRate * reg)}, well ahead of FanDuel's ${T0}. Fast starts like this give most of it back, so we expect ${Math.round(full)}.`);
-      if (estimated) why.push('FanDuel doesn’t show a game clock for this league, so we work out how far into the quarter they are from the score. Treat these numbers as a little rougher.');
+      why.push(`We trust the live pace ${Math.round(w * 100)}% and ${p.priorFromLine ? 'FanDuel\'s starting number' : 'the usual total for this league'} ${100 - Math.round(w * 100)}%. Hot and cold starts mostly fade, so the live pace only counts for more late in the game.`);
+      if (seen && p.priorFromLine) why.push(`We first saw this game with ${seen.pts} points already scored, so FanDuel's line then already had that start inside it. We only spread the points that were still to come.`);
+      if (obsRate * reg - T0 >= 0.08 * T0 && fNow < 0.8) why.push(`Fade warning: this game is on pace for ${Math.round(obsRate * reg)}, well ahead of ${p.priorFromLine ? `FanDuel's ${T0}` : `the usual ${T0}`}. Fast starts like this give most of it back, so we expect ${Math.round(full)}.`);
+      if (estimated) why.push('FanDuel doesn’t show a game clock for this league, so we work out how far into the quarter they are from the score. The chances we state are widened to match.');
       if (fNow >= 0.9375 && diff <= 6) why.push('It’s close in the final minutes, so we add points for fouls and free throws, and a small chance of overtime.');
       else if (fNow >= 0.7 && diff >= 15) why.push(`It's a ${diff}-point game. Lopsided games keep scoring with the benches in, then slow down in the final minutes.`);
       else if (fNow >= 0.7) why.push('Last quarters run slower than the rest of the game until the final 3 minutes. That is already in our number.');
     } else if (p.state === 'pre') {
-      why.push(`Not started yet. We split FanDuel's game total of ${T0} evenly across the ${cfg.usesHalves ? 'halves' : 'quarters'}.`);
+      why.push(`Not started yet. We split ${p.priorFromLine ? `FanDuel's game total of ${T0}` : `the usual total for this league (${T0})`} across the ${cfg.usesHalves ? 'halves' : 'quarters, with the last quarter a little slower'}.`);
     }
     if (!markets.length && p.state !== 'final') why.push('No FanDuel line yet. Type one in to get a plus-edge call.');
 
@@ -374,7 +416,7 @@
       usesHalves: cfg.usesHalves,
       markets,
       why,
-      math: { prior: T0, rate0: round1(rate0 * reg), liveWeight: Math.round(w * 100) / 100, livePace: p.elapsed >= 1 ? round1((pts / p.elapsed) * reg) : null, blendedPace: round1(rate * reg), elapsed: round1(p.elapsed), remaining: round1(p.remaining) },
+      math: { prior: T0, rate0: round1(T0), liveWeight: Math.round(w * 100) / 100, livePace: p.elapsed >= 1 ? round1((pts / p.elapsed) * reg) : null, blendedPace: round1(rate * reg), elapsed: round1(p.elapsed), remaining: round1(p.remaining) },
     };
   }
 

@@ -168,6 +168,7 @@ function patternsFrom(E, lessons, { minOnly = false, noCal = false } = {}) {
     }
   }
   if (!noCal && !minOnly && lessons.CAL_PRIOR) out.cal = E.calTableFrom(null, lessons.CAL_PRIOR);
+  if (!noCal && !minOnly && lessons.TEAM_PRIOR && E.teamTableFrom) out.team = E.teamTableFrom(null, lessons.TEAM_PRIOR);
   return out;
 }
 

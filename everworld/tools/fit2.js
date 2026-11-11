@@ -51,6 +51,8 @@ function work(shard, n, pass) {
       // same convention as the phone's nightly learning: with no line saved, the top-down team check sits out
       const proj = E.projectGame({ ...ctx.base, ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season), tdOff: !ctx.base.market });
       E.patGrade(proj, it.log.rows, acc, { only });
+      // pass 3 (every lesson applied): how each team's points still to come ran against the sum of our players
+      if (pass === 3) E.patScore(proj, it.log.rows, acc);
     }
     used++;
   }
@@ -114,6 +116,7 @@ if (opt.shard != null) {
   if (opt.passes >= 3) {
     r = merge(await runPass(3, tmp));
     lessons.CAL_PRIOR = r.sum.cal;
+    if (r.sum.team) lessons.TEAM_PRIOR = Object.fromEntries(Object.entries(r.sum.team).filter(([, t]) => t && t[0] > 0).map(([g, t]) => [g, [t[0], Math.round(t[1]), Math.round(t[2])]]));
     console.error(`pass 3 (calibration): ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   }
   // round the calibration sums like the shipped table

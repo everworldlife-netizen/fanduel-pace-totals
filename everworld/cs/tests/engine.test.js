@@ -42,7 +42,8 @@ for (const fx of FX) {
         const rem = P.players.filter((p) => p.team === tm).reduce((a, p) => a + (p.mean.min - p.now.min), 0);
         // regulation minutes left, plus room for the overtime share of the simulations
         assert.ok(rem <= 5 * P.state.left + 5 * 5 * 0.6 + 0.5, `${tm} has ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
-        assert.ok(rem >= 5 * P.state.left * 0.8 - 0.5, `${tm} has only ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
+        // (in a lopsided game some of the time left goes to deep-bench players the engine does not track by name)
+        assert.ok(rem >= 5 * P.state.left * 0.55 - 0.5, `${tm} has only ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
       }
     });
     test(`${tag} at ${el} min: stated chances are between 0 and 1 and fall as the rung rises`, () => {

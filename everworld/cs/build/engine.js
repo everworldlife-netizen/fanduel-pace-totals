@@ -103,6 +103,8 @@ sitPre: 0, // situational scoring: a basket counts under the score before it (0 
 patYCap: 1, // learning target: 1 = the old one-sided cap on big finishes, 0 = the plain miss
 repGroup: 0, // learn "before lineups are posted" as its own stage (1) or share the tip-off lessons (0)
 patLamLineup: 1, // pull toward "no effect" for the lineup inputs, relative to the other inputs (1 = same; lower lets rare, strong signals through)
+condMin: 0, // before tip-off, player minutes stay "if he plays" numbers and the team total is scaled to five players' worth instead
+teamCal: 0, // apply the learned team check (TEAM_PRIOR) to team totals
 };
 const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
@@ -748,6 +750,7 @@ for (const g of PAT_GROUPS) { o[g] = {}; for (const s of PAT_LEARN) o[g][s] = { 
 // running accuracy: average miss in points (players who played 10+ minutes) and how often the real top scorer was in our top 3
 o.acc = {}; for (const g of PAT_GROUPS) o.acc[g] = { n: 0, pts: 0, reb: 0, ast: 0, fg3m: 0, g: 0, top3: 0 };
 o.cal = calEmpty();
+o.team = {}; for (const g of PAT_GROUPS) o.team[g] = [0, 0, 0];
 return o;
 }
 function patAdd(acc, more, wt = 1) {
@@ -761,6 +764,7 @@ for (let i = 0; i < a.b.length; i++) a.b[i] += wt * m.b[i];
 a.n += wt * m.n; a.w += wt * m.w;
 }
 if (more && more.cal) { acc.cal = acc.cal || calEmpty(); calAdd(acc.cal, more.cal, wt); }
+if (more && more.team) { acc.team = acc.team || {}; for (const g of PAT_GROUPS) { const m = more.team[g]; if (!m) continue; const a = (acc.team[g] = acc.team[g] || [0, 0, 0]); for (let j = 0; j < 3; j++) a[j] += wt * (m[j] || 0); } }
 if (more && more.acc) { acc.acc = acc.acc || {}; for (const g of PAT_GROUPS) { const m = more.acc[g]; if (!m) continue; const a = (acc.acc[g] = acc.acc[g] || { n: 0, pts: 0, reb: 0, ast: 0, fg3m: 0, g: 0, top3: 0 }); for (const k of Object.keys(a)) a[k] += wt * (m[k] || 0); } }
 return acc;
 }
@@ -819,6 +823,16 @@ for (const r of Object.values(rows)) if (r.pts > top) top = r.pts;
 const ids = new Set(Object.entries(rows).filter(([, r]) => r.pts === top).map(([id]) => +id));
 const best = proj.players.slice().sort((x, y) => y.proj.pts - x.proj.pts).slice(0, 3);
 A.g++; if (best.some((p) => ids.has(+p.pid))) A.top3++;
+// team check: our points still to come for each team (before the check itself) against the real ones
+if (proj.teamRaw && proj.state.phase !== 'final') {
+acc.team = acc.team || {};
+const T = (acc.team[proj.patG || patGroup(proj.state)] = acc.team[proj.patG || patGroup(proj.state)] || [0, 0, 0]);
+for (const [tm, nowPts] of [[proj.state.v, proj.state.vs], [proj.state.h, proj.state.hs]]) {
+let fin = 0; for (const r of Object.values(rows)) if (r.team === tm) fin += r.pts;
+if (!(fin > 0) || proj.teamRaw[tm] == null) continue;
+T[0]++; T[1] += proj.teamRaw[tm]; T[2] += Math.max(fin - nowPts, 0);
+}
+}
 for (const p of proj.players) {
 const a = rows[p.pid] || rowByName(rows, p);
 if (!a || !(a.min >= 10)) continue;
@@ -866,6 +880,21 @@ const CAL_PRIOR = {"pre":{"pts":[[[77766,716.27,1186],[6171,871.95,1137],[3624,8
 * Coefficients from the built-in lessons plus whatever this phone has graded since (dev = patEmpty()
 * sums). With nothing new graded this is exactly the built-in set.
 */
+// How each team's points still to come really ran against the sum of our player numbers, per stage:
+// [team-games graded, sum of our points still to come, sum of the real ones]. Learned with every other lesson applied.
+const TEAM_PRIOR = {};
+/** The team check factor per stage from the built-in record plus what this phone has graded (shrunk toward 1, capped). */
+function teamTableFrom(dev, prior) {
+const out = {};
+for (const g of PAT_GROUPS) {
+const P0 = (prior && prior[g]) || [0, 0, 0], T = (dev && dev[g]) || [0, 0, 0];
+const n = P0[0] + T[0], sp = P0[1] + T[1], sa = P0[2] + T[2];
+if (n < 100 || !(sp > 0)) continue;
+const K = 60 * (sp / n);
+out[g] = +clamp((sa + K) / (sp + K), 0.85, 1.15).toFixed(4);
+}
+return out;
+}
 function patBeta(dev, lam) {
 const L = lam != null ? lam : TUNE.patLam;
 const out = { n: 0, graded: 0 };
@@ -886,6 +915,7 @@ out.graded = Math.max(out.graded, T ? T.n : 0);
 }
 }
 out.cal = calTable(dev && dev.cal);
+out.team = teamTableFrom(dev && dev.team, TEAM_PRIOR);
 return out;
 }
 /** The correction factor and each feature's share of it. */
@@ -948,7 +978,7 @@ return p;
 function calProb(player, stat, p) { const m = player && player.cal && player.cal[stat]; return m ? calP(m, p) : p; }
 /** What the phone has learned, packed small for storage (each table is symmetric: keep the upper half; skip empty stages). */
 function patPack(sum) {
-const out = { v: 2, acc: sum.acc || null, cal: sum.cal || null, g: {} };
+const out = { v: 2, acc: sum.acc || null, cal: sum.cal || null, team: sum.team || null, g: {} };
 const r5 = (x) => +(+x).toPrecision(5);
 for (const g of PAT_GROUPS) { if (!sum[g]) continue; for (const s of PAT_LEARN) { const T = sum[g][s]; if (!T || !T.n) continue; const u = []; for (let i = 0; i < PAT_D; i++) for (let j = i; j < PAT_D; j++) u.push(r5(T.A[i * PAT_D + j])); (out.g[g] = out.g[g] || {})[s] = { u, b: T.b.map(r5), n: T.n, w: r5(T.w) }; } }
 return out;
@@ -964,6 +994,7 @@ T.b = P.b.slice(); T.n = P.n; T.w = P.w;
 }
 if (pk.acc) patAdd(sum, { acc: pk.acc });
 if (pk.cal) patAdd(sum, { cal: pk.cal });
+if (pk.team) patAdd(sum, { team: pk.team });
 return sum;
 }
 /** Keep only the minutes lessons (the nightly learning grades the stats on top of corrected minutes). */
@@ -2042,14 +2073,20 @@ p.minPlain = mean(p.mins);
 if (Fm.f !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i] * Fm.f);
 }
 // a team can't play more than 5 x the time left (it can play fewer of the players we track: deep bench in garbage time)
+// Before tip-off each player's number answers "what if he plays": someone on the active list who ends up sitting is no
+// action on a pick. Those minutes can add up to more than a team has, so before tip-off they are left as they are and the
+// TEAM total is scaled to five players' worth of minutes instead (v15). Once the game is on, minutes are squeezed as before.
+const teamK = { [v]: null, [h]: null };
 if (patOn && patB.min) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 const amNow = Math.abs(st.vs - st.hs);
 const close = st.phase === 'live' ? 1 - clamp(Math.max(pBlow, (amNow - 8) / 15), 0, 1) : 1;
 const give = TUNE.refill * close;
+const cond = TUNE.condMin > 0 && st.phase === 'pre';
+if (cond) teamK[tm] = new Float64Array(N).fill(1);
 for (let i = 0; i < N; i++) {
 let tot = 0; for (const p of ps) tot += p.mins[i];
-if (tot > 5 * left && tot > 0) { const k = (5 * left) / tot; for (const p of ps) p.mins[i] *= k; }
+if (tot > 5 * left && tot > 0) { const k = (5 * left) / tot; if (cond) teamK[tm][i] = k; else for (const p of ps) p.mins[i] *= k; }
 else if (give > 0 && tot < 5 * left) {
 // close game: minutes taken from one player are played by his teammates (those the layer did not cut)
 let room = 0;
@@ -2238,11 +2275,21 @@ if (TUNE.otherPM > 0 && left > 0) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 for (let i = 0; i < N; i++) { let tot = 0; for (const p of ps) tot += p.mins[i]; if (tot < 5 * left) teamPts[tm][i] += (5 * left - tot) * TUNE.otherPM; }
 }
+// team totals: "if he plays" minutes scaled to what a team can play, then the learned team check for this stage
+// (how the points still to come really ran against our sum of players in graded games)
+const teamRaw = {};
+const tF = patOn && TUNE.teamCal > 0 && o.patterns.team ? (o.patterns.team[patG] != null ? o.patterns.team[patG] : patG === 'rep' && o.patterns.team.pre != null ? o.patterns.team.pre : 1) : 1;
+for (const tm of [v, h]) {
+const K = teamK[tm];
+let sRaw = 0;
+for (let i = 0; i < N; i++) { if (K) teamPts[tm][i] *= K[i]; sRaw += teamPts[tm][i]; teamPts[tm][i] *= tF; }
+teamRaw[tm] = sRaw / N;
+}
 let vWin = 0;
 for (let i = 0; i < N; i++) if (st.vs + teamPts[v][i] > st.hs + teamPts[h][i]) vWin++;
 const projScore = { [v]: st.vs + mean(Array.from(teamPts[v])), [h]: st.hs + mean(Array.from(teamPts[h])) };
 return {
-state: st, patG, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
+state: st, patG, teamRaw, teamFactor: tF, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
 blowout: { now: isBlowout(st), pBlow, pBig }, possLeft, pace: { season: seasonPace, live: livePace },
 context: ctx, habits, injuries: out, absent, b2b, sims: N, fillDebug, env, lineup, lgZone: lgZ, alerts,
 market: mk ? { ...mk, paceMkt, paceModel, marginModel, projTotal: projScore[v] + projScore[h], projMargin: projScore[v] - projScore[h] } : null,
@@ -2386,4 +2433,4 @@ k.tier = t.tier; k.tierWhy = t.why; k.blowProof = !!p.blowProof; k.chips = (p.ch
 return picks.sort((a, b) => (TIER_RANK[a.tier] - TIER_RANK[b.tier]) || (b.edge ?? 0) - (a.edge ?? 0) || b.prob - a.prob);
 }
 
-/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, }; });
+/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, }; });

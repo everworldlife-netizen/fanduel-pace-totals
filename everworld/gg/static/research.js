@@ -68,6 +68,9 @@
       out.headline = `FanDuel hasn’t posted a line for ${name} yet. We expect about <b>${whole(m.full)}</b> points in it.`;
     } else if (line == null) {
       out.headline = mean != null ? `FanDuel hasn’t posted a line for ${name} yet. We expect about <b>${whole(mean)}</b>.` : `FanDuel hasn’t posted a line for ${name} yet.`;
+    } else if (mean != null && line != null && mean < line) {
+      // plus edges only: our number is never set against a line it is not ahead of (checked before every other reason, v3.10)
+      out.headline = 'No play. Our number is not ahead of this line, and we only play plus edges, where our number is ahead of the line.';
     } else if (mean == null && m.full != null) {
       out.headline = `We expect about <b>${whole(m.full)}</b> points in ${name} (line ${line}). To judge it we need the score when the quarter starts, so keep this game open through the break.`;
     } else if (/suspended/i.test(r)) {
@@ -75,7 +78,7 @@
     } else if (/ratings may be off/i.test(r)) {
       out.headline = `No bet. Player history says about <b>${whole(model)}</b> but FanDuel’s line is ${line}. A gap that big usually means our numbers on this pair are off, so we sit this one out.`;
     } else if (/Below the line/i.test(r) || (mean != null && mean < line)) {
-      out.headline = `No play. We expect about <b>${whole(mean)}</b>, ${pts(line - mean)} below FanDuel’s line of ${line}. We only play plus edges, where our number is ahead of the line.`;
+      out.headline = 'No play. Our number is not ahead of this line, and we only play plus edges, where our number is ahead of the line.';
     } else if (/Gap under|Edge under/i.test(r) || (m.gap != null && Math.abs(m.gap) < edge)) {
       out.headline = `No bet. We expect about <b>${whole(mean)}</b> and FanDuel’s line is ${line}. That’s only ${pts(m.gap || 0)} apart, and we want at least ${edge} before we call it.`;
     } else if (/Price/i.test(r)) {

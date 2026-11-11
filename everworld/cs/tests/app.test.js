@@ -24,6 +24,7 @@ async function boot(phase) {
   w.addEventListener('error', (e) => errors.push(String(e.error || e.message)));
   w.console = { ...console, warn: (...a) => errors.push('warn: ' + a.map(String).join(' ')), error: (...a) => errors.push('error: ' + a.map(String).join(' ')), log: () => {} };
   w.fetch = async () => { throw new Error('network is off in tests'); };
+  w.scrollTo = () => {}; // the simulated browser has no scrolling
   w.eval(read('engine.js'));
   w.eval(read('sitprior.js').replace(/^self\./m, 'window.'));
   w.eval(read('data.js'));

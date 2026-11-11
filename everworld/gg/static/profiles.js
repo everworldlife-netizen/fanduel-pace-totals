@@ -296,8 +296,8 @@
     const reasons = [];
     for (const p of [A, B]) {
       if (p.tier === 'blazing' || p.tier === 'fast') reasons.push(`${p.name} is the #${p.rank} fastest scorer of ${p.of} (${p.ppg} points a game, ${p.speed} a minute).`);
-      if (p.hot) reasons.push(`${p.name} is hot: ${p.last10.ppg} points a game over the last ${p.last10.n}, up ${p.form} on usual.`);
-      if (p.cold) reasons.push(`${p.name} is cold: ${p.last10.ppg} points a game over the last ${p.last10.n}, down ${Math.abs(p.form)} on usual.`);
+      if (p.hot) reasons.push(`${p.name} is hot: ${p.last10.ppg} points a game across the last ${p.last10.n}, up ${p.form} on usual.`);
+      if (p.cold) reasons.push(`${p.name} is cold: ${p.last10.ppg} points a game across the last ${p.last10.n}, down ${Math.abs(p.form)} on usual.`);
       if (p.tier === 'slow') reasons.push(`${p.name} plays slow games (${p.total} total on average).`);
     }
     if (pair && pair.n >= 2) reasons.push(`They've met ${pair.n} times lately, averaging ${pair.avg} total${pair.overs ? ` (${pair.overs} went ${Math.round(L.total + 8)}+)` : ''}.`);

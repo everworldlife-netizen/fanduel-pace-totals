@@ -207,7 +207,8 @@
     const r = m.reason || '';
     if (m.line == null) return 'FanDuel hasn’t posted this line yet.';
     if (/suspended/i.test(r)) return 'FanDuel has this market paused right now — check back in a moment.';
-    if (/Below the line/i.test(r)) return `GG expects ${n1(m.fair)}, below FanDuel’s ${m.line}. We only play plus edges, where our number is ahead of the line, so no play here.`;
+    // plus edges only: our number is never set against a line it is not ahead of (v3.10)
+    if (/Below the line/i.test(r) || (isNum(m.gap) && m.gap < 0)) return 'Our number is not ahead of this line, so there is no plus edge here. We only play plus edges.';
     if (/Edge under/i.test(r)) return `Too close to call: GG ${n1(m.fair)} and FanDuel’s ${m.line} are only ${n1(Math.abs(m.gap))} points apart. We wait for a bigger gap before calling it a plus edge.`;
     if (/ratings may be off/i.test(r)) return `Huge gap with FanDuel (${n1(Math.abs(m.rawGap))} points) usually means the ratings are off for this pair, so no call.`;
     if (/Price/i.test(r)) return `There’s a ${sign(m.gap)} edge, but the price takes away the value.`;
@@ -833,7 +834,7 @@
     const line = L ? L[r.k] : null;
     if (!isNum(line) || (r.k === 'q' && L.qName && L.qName !== r.name)) return null;
     if (line <= r.over) return { cls: 'over', txt: `PLUS EDGE ${line}`, why: `GG expects ${n1(r.proj)}, ${n1(r.proj - line)} ahead of FanDuel’s ${line}. More points than FanDuel expects, so this is the one to play.` };
-    if (r.proj < line) return { cls: 'pass', txt: 'No plus edge', why: `GG expects ${n1(r.proj)}, below FanDuel’s ${line}. We only play lines our number is ahead of.` };
+    if (r.proj < line) return { cls: 'pass', txt: 'No plus edge', why: 'Our number is not ahead of this line. We only play lines our number is ahead of.' };
     return { cls: 'pass', txt: 'No play', why: `GG expects ${n1(r.proj)}, ahead of FanDuel’s ${line} but not by enough to trust. A line of ${r.over} or lower would be a plus edge.` };
   }
   function callsBox(m) {
@@ -1383,7 +1384,7 @@
     const edge = em ? em[1] : S.settings.edge;
     let why;
     if (/suspend/i.test(reason)) why = 'FanDuel has this line paused right now.';
-    else if (/Below the line/i.test(reason)) why = `We expect about ${n1(exp)}, below FanDuel's ${line}. We only play plus edges, where our number is ahead of the line.`;
+    else if (/Below the line/i.test(reason)) why = 'Our number is not ahead of this line, so there is no plus edge here. We only play plus edges.';
     else if (/ratings may be off/i.test(reason)) why = `Player history says about ${n1(exp)}, but FanDuel says ${line}. A gap that big usually means our numbers on this pair are off, so we sit this one out.`;
     else if (/Edge under|Gap under/i.test(reason)) {
       why = p.rawGap !== undefined
@@ -1536,7 +1537,15 @@
     let changed = false;
     for (const g of games) {
       const line = Number(g.fdTotal?.line);
-      if (!seen[g.id] && Number.isFinite(line) && line > 0) { seen[g.id] = { line, at: now }; changed = true; }
+      if (!seen[g.id] && Number.isFinite(line) && line > 0) {
+        // FanDuel only lists a game once it is live, so this first line usually already has the score so far inside it.
+        // Keep where the game stood at that moment: the model then spreads only the points still to come (v3.10).
+        const rec = { line, at: now };
+        try {
+          if (LL && lgLive(g)) { const p = LL.progress(g, { prior: line }); if (p && p.elapsed > 0.5) { rec.pts = p.pts; rec.el = Math.round(p.elapsed * 100) / 100; rec.diff = Math.abs((Number(g.home?.score) || 0) - (Number(g.away?.score) || 0)); } }
+        } catch (_) { /* keep the plain line */ }
+        seen[g.id] = rec; changed = true;
+      }
     }
     const keys = Object.keys(seen);
     for (const k of keys) if (now - (seen[k].at || 0) > 2 * 864e5) { delete seen[k]; changed = true; }
@@ -1546,6 +1555,8 @@
     return seen;
   }
   const lgPrior = (g) => store.get('lg-first-lines', {})[g.id]?.line;
+  // where the game stood when that first line was seen (null when it was seen before tip-off)
+  const lgSeen = (g) => { const r = store.get('lg-first-lines', {})[g.id]; return r && r.el > 0 ? { pts: r.pts, elapsed: r.el, diff: r.diff } : null; };
 
   function lgFilters() {
     const by = new Map();
@@ -1561,7 +1572,7 @@
   function lgRowCall(g) {
     if (!LL || !lgLive(g) || !g.fdTotal?.line) return null;
     try {
-      const r = LL.project(g, { prior: lgPrior(g), lines: { game: g.fdTotal.line } });
+      const r = LL.project(g, { prior: lgPrior(g), priorSeen: lgSeen(g), lines: { game: g.fdTotal.line } });
       const m = r.markets.find((x) => x.id === 'game');
       return { where: r.where, call: m?.call || null };
     } catch (_) { return null; }
@@ -1721,7 +1732,7 @@
     const lines = { game: v('game'), half1: v('half1'), half2: v('half2'), quarter: {} };
     for (const [k] of lgBoxes(D.game)) if (k.startsWith('q')) lines.quarter[Number(k.slice(1))] = v(k);
     let r;
-    try { r = LL.project(D.game, { prior: lgPrior(D.game), lines }); } catch (err) { $('lgOut').innerHTML = `<p class="muted">${esc(err.message)}</p>`; return; }
+    try { r = LL.project(D.game, { prior: lgPrior(D.game), priorSeen: lgSeen(D.game), lines }); } catch (err) { $('lgOut').innerHTML = `<p class="muted">${esc(err.message)}</p>`; return; }
     const shortName = (per) => (per.n > (r.usesHalves ? 2 : 4) ? per.name : r.usesHalves ? per.name : `${LG_ORD[per.n - 1]} qtr`);
     const calls = r.markets.filter((m) => m.call);
     const rest = r.markets.filter((m) => !m.call);
