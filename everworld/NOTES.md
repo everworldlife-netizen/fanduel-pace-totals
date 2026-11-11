@@ -2,9 +2,158 @@
 
 Memory between sessions. Read this before trying anything; add to it at the end of every session.
 
-Last updated: 2026-11-11 (session 1 in this repo). Status lines marked WIP are still being measured.
+Last updated: 2026-11-11 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
 
-## READ THIS FIRST: how things stand after Nov 11, 2026
+## HANDOFF (Nov 11, 2026): the work moves to a Claude Code session on Akara's own computer
+
+Akara asked on Nov 11 to finish this project in a Claude Code session on their own computer. The cloud session could
+not reach that computer, so this file and this branch (`claude/player-performance-apps-bjy4mx`, draft PR #5) are the
+handoff. Everything below is enough to carry on without the cloud session.
+
+### The standing brief (Akara's rules, as given at the start; Akara's own words always win)
+
+Akara is a solo founder (Everworld brand) and usually works from a phone. Goal: "the most powerful and enhanced
+possible accurate apps". On Nov 11: "I want the most accurate predictive analysis possible for pre and in game
+projections", "The app should understand the game mechanics and contextual nuance of each game to predict accurately
+in every single game scenario", "I only want the best versions published", and "Make sure its projections are on par
+with player performance or the closest possible in all your powers. No excuses." Points, rebounds and assists are
+what matters most.
+
+1. Plus edges only: never show a pick below the line, and never use the words "over" or "under" anywhere a user can see.
+2. Every factor lives inside the number (no side notes that the number ignores).
+3. Live means live. 4. Plain English. 5. Mobile first.
+6. Measured, not claimed: accuracy is only quoted from games the change never saw; the in-app accuracy report stays honest.
+7. Hosting: publish only to the two Hugging Face Spaces (`everworldlife/courtside-arcade`, `everworldlife/gg-winner`).
+   Never create a new Space or link, never touch the Gridiron Arcade Space, no Netlify or Vercel, no paid services.
+8. Bump the service-worker names on every release (`ca-shell-vNN`, `gg-winner-vX.Y.Z`) and confirm both live links
+   load tonight's games.
+9. Be polite to the feeds (cache, small request rates).
+- Method: fit on one set of games, test on another, ship only what wins on unseen games, write failures down here,
+  run every test suite, add tests. Nothing in `data/` is ever deleted.
+- Never ask Akara to paste a token or password into a chat.
+- Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
+  counts, both live links, and the steps to update the app on a phone.
+
+### Where the build stands at this commit
+
+- LIVE on the two Spaces: the old builds (`ca-shell-v14`, `gg-winner-v3.9.0`; copies in `baseline/`). NOTHING from this branch is published.
+- `release-2026-11-11/` = Courtside 15 + GG Winner 3.10.0, finished and tested (see "FINAL build of Nov 11"). It
+  is superseded for Courtside by the work below but is still a valid release if something goes wrong.
+- `cs/build/engine.js` at this commit is BETWEEN two versions: it has the 13 new inputs and switches of the
+  "anchors" build (lab name `anch1`, see "Research round of Nov 11") but its built-in lessons are still the old
+  49-input ones (`H3-final`). DO NOT PUBLISH `cs/build` until the new lessons are built in (steps below).
+- Engine tests: 76 checks pass. App tests (9) and GG tests (15) were last run on the version-15 files.
+- Frozen engines for the lab are tracked for this handoff: `data/engines/anch1/` (the new build as tested) and
+  `data/engines/base18/` (the version-15 engine, the "before").
+
+### Proof so far: split-season test (`tools/p1.sh`), 592 complete games the lessons never saw
+
+Lessons from every game before 2026-01-18, test on the games after. "Before" = the version-15 engine taught the
+same way. Players with 10+ real minutes. z is paired by game (beyond 3 is not luck).
+
+| moment | minutes miss | points miss | rebounds miss | assists miss |
+|---|---|---|---|---|
+| before lineups | 4.719 → 4.482 (-5.0%, z -10) | 4.834 → 4.747 (-1.8%, z -7.7) | 1.973 → 1.948 (-1.3%) | 1.447 → 1.429 (-1.2%) |
+| tip-off | 4.623 → 4.301 (-7.0%, z -16) | 4.778 → 4.703 (-1.6%, z -8.1) | 1.967 → 1.939 (-1.4%) | 1.439 → 1.425 (-1.0%) |
+| 6 min in | 4.885 → 4.269 (-12.6%, z -30) | 4.544 → 4.462 (-1.8%, z -8.4) | 1.870 → 1.829 (-2.2%) | 1.348 → 1.330 (-1.4%) |
+| 9 min in | 4.623 → 4.072 (-11.9%, z -27) | 4.315 → 4.232 (-1.9%, z -9.8) | 1.774 → 1.734 (-2.2%) | 1.293 → 1.275 (-1.4%) |
+| end Q1 | 4.414 → 3.985 (-9.7%, z -26) | 4.141 → 4.080 (-1.5%, z -7.6) | 1.690 → 1.664 (-1.6%) | 1.234 → 1.219 (-1.2%) |
+| 18 min in | 3.874 → 3.746 (-3.3%, z -11) | 3.782 → 3.764 (-0.5%, z -3.1) | 1.512 → 1.501 (-0.7%) | 1.114 → 1.108 (-0.6%) |
+| halftime | 3.385 → 3.247 (-4.1%, z -11) | 3.327 → 3.306 (-0.6%, z -3.8) | 1.325 → 1.315 (-0.8%) | 0.955 → 0.951 (-0.5%) |
+| 30 min in | 3.264 → 3.091 (-5.3%, z -12) | 2.908 → 2.881 (-0.9%, z -4.4) | 1.157 → 1.144 (-1.1%) | 0.785 → 0.780 (-0.6%) |
+| end Q3 | 2.885 → 2.786 (-3.5%, z -8.1) | 2.282 → 2.278 (-0.2%, z -0.6) | 0.907 → 0.899 (-0.8%) | 0.571 → 0.570 (-0.3%) |
+| 6:00 left | 1.592 → 1.546 (-2.9%, z -5.2) | 1.223 → 1.215 (-0.7%, z -2.4) | 0.484 → 0.481 (-0.6%) | 0.278 → 0.278 (-0.2%) |
+| 3:00 left | 0.681 → 0.644 (-5.5%, z -7.6) | 0.679 → 0.677 (-0.3%) | 0.260 → 0.258 (-0.4%) | 0.137 → 0.138 (+0.1%) |
+
+Better or level at every stage and every stat. Before lineups, counting every player who really played 10+
+(a player we gave no number counts as a full miss): minutes 5.364 → 4.766 (-11.2%), points 4.969 → 4.832 (-2.8%).
+The "everyone we listed or who played" view also improved at every stage (6 min: minutes 5.383 → 5.269).
+Six minutes in is now closer than tip-off, as it should be (it was worse before: 4.885 against 4.623).
+
+### What the cloud session was still running when this was written, and will push if it lives long enough
+
+1. `tools/p2.sh anch1 data/engines/anch1` then `tools/p2.sh base18 data/engines/base18 data/lessons/H2-final.json`:
+   the final exam on this season's 121 complete games. Results → `data/runs/P2-anch1.json`, `P2-base18.json`
+   (compare with `node tools/cmp.js data/runs/P2-base18.json data/runs/P2-anch1.json`).
+2. `tools/p3.sh anch1 data/engines/anch1`: the shipping lessons → `data/lessons/H4-anch1.json`.
+If those files are in the repo when you start (`git pull` first, and look at "Cloud session log" just below), do not
+redo them. If they are not, they take about 50 minutes on 4 cores once the play-by-play cache is rebuilt.
+
+Cloud session log (newest last):
+- 16:30 UTC Nov 11: handoff written; P1 table above is final; P2 and P3 running.
+
+### How to set up on a new computer
+
+```
+git clone https://github.com/everworldlife-netizen/fanduel-pace-totals && cd fanduel-pace-totals
+git checkout claude/player-performance-apps-bjy4mx && cd everworld
+node --version                      # 18 or newer (the lab ran on 22)
+(cd nm && npm install)              # jsdom + esbuild for the app tests
+node cs/tests/engine.test.js && node cs/tests/app.test.js && node gg/tests/league-live.test.js
+npx playwright install chromium     # only for tools/livecheck.js (a phone-sized browser on the real links)
+```
+
+The lab (fit2, bt2, the p1/p2/p3 scripts) also needs the play-by-play cache, which is not in git (58 MB, 4,089
+small files in `data/plays/`). The per-season game files it reads (`data/derived/games-*.json.gz`) are in git.
+Rebuild the cache once, politely, with the fetch tool (it skips what is already there; allow up to an hour):
+
+```
+node tools/fetch.js 2023-10-24 2026-11-10      # then, to add newer games: fetch.js <last date> <today>, fetchstats.js 2027 --refresh, prep.js
+```
+
+Tests, the release build and publishing do NOT need the cache.
+
+### Steps to finish Courtside 16 (the "anchors" build), in order
+
+1. Exam (P2). Ship only if this season's 121 games confirm the split-season table (same direction, no stage
+   clearly worse). Then build the in-app report from the two exam runs:
+   `node tools/mkaccuracy.js --before data/runs/P2-base18.json --after data/runs/P2-anch1.json --train <games in P2M> --findings cs/accuracy-findings.json --note "$(cat cs/accuracy-note.txt)"`
+   and rewrite `cs/accuracy-findings.json` / `cs/accuracy-note.txt` in plain words for the new numbers (no banned words).
+2. Two small switches to test on the exam and the split before deciding (each is one `bt2` run with `--tune`):
+   - `teamCal=2` (team check during games only). Projected game totals run 2 to 5 points LOW at every live stage in
+     both seasons (2026-27: -2.1 at 6 min, -3.4 at half, -2.9 end Q3; 2025-26 second half: -5.6, -4.4, -2.5). The
+     learned team factors are 1.03 to 1.05 mid-game, and the check was simply switched off (`teamCal` 0) after an
+     old test on the tip-off stage. Expect the total miss to drop about 3% mid-game. Player numbers do not change.
+   - `LAND[stage].min` (show the middle for minutes late in games): the engine now exports `mid.min`; dump rows
+     carry it as `mm`; `tools/fitland.js` fits the weight (it now knows `min`). Fit on a P1 dump made with the
+     CURRENT engine (`DUMP=1 tools/p1.sh <name> <dir>` reuses the lessons and writes the rows), check on a P2 dump.
+     The research measured -8% (2025-26) to -10% (2026-27) on the minutes number at 6:00 left.
+3. Shipping lessons: `tools/p3.sh anch1 data/engines/anch1` (or reuse `data/lessons/H4-anch1.json`), then
+   `node tools/mkengine.js --engine cs/build/engine.js --lessons data/lessons/H4-anch1.json`.
+4. In `cs/build/app.js`: `APP_VERSION = '16 (<date>)'`; `PAT_KEY = 'pat:v5:sum'` (the phone's saved learning sums
+   have 49 inputs; the new layer has 62, so the old sums must not be loaded); `PAT_FROM` = the day after the last
+   game in the lessons. In `cs/build/sw.js`: `ca-shell-v16`.
+5. `node tools/mkfixture.js`, all three test suites, `node tools/mkrelease.js --date <date>`,
+   `node tools/livecheck.js --local cs` and `--local gg`.
+6. Publish (only when Akara says so, and only the finished build): on Akara's computer run `hf auth login` in a
+   terminal (a token with Write permission, typed there, never in a chat), then `tools/publish.sh release-<date>`
+   (bash; on Windows use Git Bash, or run its three steps by hand: the tests, one `hf upload ... --repo-type space`
+   per Space, then `node tools/mkrelease.js --verify release-<date>` and `node tools/livecheck.js`).
+7. Report to Akara (plain words, exact numbers with game counts, both links, phone update steps: Courtside
+   Settings shows "Version 16 (...)"; GG Winner's footer shows "Version 3.10.0 (Nov 11, 2026)").
+
+### The next round after that (best leads, in order)
+
+1. A SECOND LEARNING STAGE (boosted trees on the live state). Probe done on Nov 11 (`tools/stage2.js`, trained on
+   only 315 unseen games of the new build, tested on the 277 later ones): minutes miss on top of the anchors build
+   -1.8% before lineups (z -4.0), about 0 at tip-off, 6 and 12 min, then -1.7% at 18 min (z -3.1), -1.9% at half
+   (z -3.4), -3.0% at 30 min (z -4.7), -4.3% end Q3 (z -6.6), -4.8% at 6:00 left (z -3.8). Real, and it should grow
+   with more training games. To do it properly: (a) out-of-fold rows for all of 2025-26 (the P1 dump covers the
+   second half; make the mirror lessons, taught without Oct 2025 to Jan 17 2026, and dump the first half: fit2 needs
+   a "leave this date window out" option for that); (b) train per stage on 2025-26, test on the P2 dump (2026-27);
+   (c) only if it wins there, put the trees into `engine.js` after the linear layer (a tree is a few numbers; 80
+   trees of depth 3 per stage is about 100 KB in all), with tests; (d) then check points, rebounds and assists
+   move with it. Output of the probe: `data/research/stage2-min-probe.txt` (not in git; rerun the command in the
+   tool's header).
+2. The two research topics that were cut off (scenario audit, per-minute rates by scenario) and the skeptics'
+   pass over the findings. The audit's partial scan found nothing new in the rates.
+3. Small late-game inputs measured but not built: a deep-bench player sitting at 6:00 of a close game is not coming
+   back (-0.5%); a starter resting at 6:00 of a close game comes back (+0.4%); a reserve who checked in late in Q3
+   opens the fourth (up to 0.8% at the end of Q3, overlaps with `aOn`); returnees before lineups (18% of the players
+   with no number).
+4. The older list under "Ideas not yet tested".
+
+## How things stood before the handoff (still true unless the handoff above says otherwise)
 
 - Courtside build in `cs/build` = app version 15 (`ca-shell-v15`): lineup-aware inputs, team load, rotation timing,
   smooth refill, edge record. GG Winner in `gg/static` = 3.10.0. Release folder `release-2026-11-11/`.
@@ -448,6 +597,87 @@ TRIED, DID NOT WIN:
   levels move between seasons. Without it: 14.96, bias -1.1. Left off. A factor tied to the books' line might work.
 - The paired `PTS` and `MIN` columns of `cmp.js` (players that were projected) look worse for v15 at tip-off
   (MIN 4.99 → 4.93 is flat; an earlier version showed +8%) only because v15 projects more hard cases. Use `real10`.
+
+### Research round of Nov 11: where the engine still missed at every stage, and the "anchors" build (app version 16)
+
+Question from Akara: points, rebounds and assists "on par with the actual player performances", before and during
+games, "in every single game scenario". `tools/floor.js` had already shown that with real minutes plugged in the
+per-minute numbers are within 0 to 3% of an oracle at every stage, so the search was aimed at minutes.
+
+How it was done. `bt2 --dump` wrote every player at 9 stages for 1,177 unseen 2025-26 games
+(`data/runs/research-2026.rows.json.gz`, 231,688 rows, fold-A lessons) and for this season's 121 games
+(`research-2027`, H2-final lessons), with the game state and the layer's own inputs on each row. Four researchers
+(before tip-off, first quarter, middle of the game, late game) each wrote their own scripts under `tools/research/`
+and reported only signals with |z| of 3.5 or more on 2025-26 that kept their sign on 2026-27. Two more researchers
+(a scenario audit and per-minute rates by scenario) and the skeptics who were meant to try to break each finding
+were cut off by a usage limit, so the proof is the lab test on unseen games below, not a second opinion. The
+audit's partial scan (`data/research/audit-scan.json`, `node tools/research/audit-03-report.js min|pm|tot`) agrees
+with the four reports and shows nothing worth building in the per-minute rates (largest gain 0.1%).
+
+What they found (all on minutes):
+
+1. THE NUMBERS ARE TOO SPREAD OUT AT EVERY STAGE. Real minutes = a + b x our number with b between 0.70 and 0.90:
+   a high number finishes lower, a low number finishes higher. The learned layer could not fix this because it only
+   multiplies the remaining minutes. Before tip-off: role constants alone were worth 4.6% of the minutes miss.
+   6 and 12 minutes in: a checked-in bench player is pulled toward 21 minutes, a starter toward 29.5
+   (bench number under 17 finished +4.7 higher, 25 or more finished -1.8 lower). 18 to 30 minutes in: remaining
+   minutes pulled toward half of the time left, 3.3%.
+2. THE LIVE NUMBER CHANGED MEANING AT TIP-OFF. Before the game a number means "minutes if he plays" (players who
+   never get in are left out of the lessons). From the first live stage the lessons counted every listed player
+   (never in = 0 minutes) and squeezed team minutes. That alone explains why 6 minutes in looked worse than
+   tip-off for players who played: waiting bench players who went on to play finished +1.44 minutes above their
+   number at 6 minutes (z 24) and +2.56 at 12. Teaching the live stages on players who played: 6 min -5.8%,
+   12 min -3.3% (and worse on everyone listed, which is not how a pick is graded: no play, no action).
+3. HALFTIME: his first-half minutes say more than our second-half number (the number moves 42% of the way to his
+   first-half minutes), 1.1%.
+4. LOPSIDED SCORES BY ROLE, smoothly: the more a player usually plays, the more a lopsided score costs him; the
+   old rule had a hard step at 24 usual minutes, so 18-to-24-minute players were treated as bench and boosted
+   while they sat like starters (-1.9 minutes at the end of Q3, leading by 16+).
+5. THE WHITE FLAG. At 6:00 left what decides almost everything is who is on the floor: if the five on the floor
+   average under 20 usual minutes and the margin is 12 or more, a regular who is sitting is done (our number 0.98
+   more minutes, real 0.24) and the bench unit plays it out (+1.6). 3.2% and 1.9% of the 6:00 minutes miss.
+6. END OF Q3: a starter who played the whole third quarter sits to start the fourth (-1.7 minutes); a deep-bench
+   player in a lopsided game plays far more than shown (+2.0).
+7. BEFORE LINEUPS: the refill handed out minutes nobody played (slope -0.9, z -22): off before lineups, 1.4%.
+   Players with no number who then played 10+: 2 of 3 were deep bench (now projected before lineups too).
+   The season-long average adds to the last eight games (1.1%), and the simulation moves players about twice too
+   far from their own average (1.1%).
+8. SMALL ENGINE SLIPS: the "benched" discount hit tonight's reserves (their usual pattern comes from games in
+   another role); a foul-trouble seat stopped counting as one exactly at halftime (`el < 24` was false at 24:00).
+9. A LEVEL, NOT A MISS: from the end of Q3 the plain averages of rebounds and assists still to come run 10 to 15%
+   low (points 3 to 6%) because late finishes are lopsided (a few big ones). Raising them makes the shown number
+   worse (-2.3%): the shown number is already the middle (LAND). Left alone.
+
+Tested and found empty (do not retry without a new idea): usual check-in time passed or not; share of recent
+games already in by this minute; passed over by a bench mate; number of bench mates in; early entry as its own
+input (explained by the role pull); starter's on/off against his usual pattern; subbed out early with no foul;
+two early fouls; a fellow starter in foul trouble; hot or cold start as a sign of minutes; the tip-off number as an
+extra live input; same-position minutes out and bodies available (real on 2025-26, no gain on 2026-27);
+fourth-quarter minutes history (0.26%); back-to-back for reserves (46 team-games).
+
+What was built from it (lab name `anch1`, `data/engines/anch1/`; every part has a switch in `TUNE`):
+
+- 13 new inputs of the learned layer, minutes only (`PAT_MINONLY`), learned with the light hold (`patLamAnchor`
+  0.1, like the lineup inputs). An "anchor" input is (anchor minutes) / (his remaining minutes), which becomes a
+  flat number of minutes once the layer multiplies it by his remaining minutes: `aAll` (half of the time left;
+  24 before tip-off), `aS` (starts tonight), `aB` (usual minutes under 18), `aOn` (on the floor now), `aPace`
+  (his minutes pace tonight; first-half minutes after the half), `aLop` (anchor x lopsided score), `aOwn` and
+  `aLong` (before the game: his own recent average and his season-long average with five games of last season
+  mixed in), `lopTier` (lopsided score x how much he usually plays), and from 30 minutes in `flagOff`, `flagOn`
+  (white flag: margin x how light the unit on the floor is), `deepLop`, `stintLong`. Switches `anchIn`, `flagIn`.
+- `condLive` 1: a player who has not checked in keeps an "if he plays" number during the game; never-in players
+  are not learned from; team totals are scaled instead of squeezing every player (as before tip-off).
+- `patCapMinLate` 0.95: from 36 minutes in the layer may cut remaining minutes by up to 95% (was 60%).
+- `refillRep` 0, `deepRep` 1 (before lineups), `benchRes` 1, `foulEdge` 1 (the two slips).
+- A middle value for minutes (`mid.min`; shown only where `LAND[stage].min` is set).
+
+Result on unseen games: the split-season table in the HANDOFF section at the top (592 games: minutes 3 to 13%
+closer at every stage, points up to 1.9%, rebounds up to 2.2%, assists up to 1.4%, nothing worse). The exam on this
+season's games (`tools/p2.sh`) decides whether it ships.
+
+One more thing seen on the way: projected GAME TOTALS run 2 to 5 points low at every live stage in both seasons,
+and the learned team check that would lift them (factors 1.03 to 1.05 mid-game) is switched off. See step 2 of the
+handoff (`teamCal=2`).
 
 ### Traps found this session
 
