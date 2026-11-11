@@ -260,7 +260,7 @@ function score(E, proj, it, A, dump) {
     }
     if (dump) dump.push({ id: g.id, d: g.date, el: proj.state.elapsed, pid: +p.pid, nm: p.name, tm: p.team, st: p.starter ? 1 : 0, now: [p.now.min, p.now.pts, p.now.reb, p.now.ast, p.now.fg3m].map((x) => +(+x).toFixed(2)),
       pr: [p.proj.min, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.fg3m].map((x) => +(+x).toFixed(2)), mn: [p.mean.min, p.mean.pts, p.mean.reb, p.mean.ast, p.mean.fg3m].map((x) => +(+x).toFixed(2)),
-      md: p.mid ? [p.mid.pts, p.mid.reb, p.mid.ast, p.mid.fg3m].map((x) => +(+x).toFixed(2)) : null, g: proj.patG || null,
+      md: p.mid ? [p.mid.pts, p.mid.reb, p.mid.ast, p.mid.fg3m].map((x) => +(+x).toFixed(2)) : null, mm: p.mid && p.mid.min != null ? +p.mid.min.toFixed(2) : null, g: proj.patG || null,
       mp: +(+p.minPlain).toFixed(2), mpg: +(+p.mpg).toFixed(2), gms: p.games, ac: act ? [act.min, act.pts, act.reb, act.ast, act.fg3m] : null,
       // extras for research: opponent, starts tonight (1/0/null), usual usage, per-minute rates the engine used, home flag
       opp: p.opp, sT: p.startsTonight == null ? null : p.startsTonight, usg: p.usgBase != null ? +(+p.usgBase).toFixed(4) : null, rpm: p.ratePM ? [p.ratePM.pts, p.ratePM.reb, p.ratePM.ast].map((x) => (x == null ? null : +(+x).toFixed(4))) : null, hm: p.team === g.home_team.abbreviation ? 1 : 0, fr: p.fresh ? 1 : 0, dp: p.deep ? 1 : 0,

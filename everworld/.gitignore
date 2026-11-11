@@ -14,3 +14,4 @@ gg/static/screens/
 # these two came down from the Space as LFS pointer stubs, not real images (they are never changed here)
 gg/static/icons/icon-512.png
 gg/static/icons/maskable-512.png
+data/lessons/*.log

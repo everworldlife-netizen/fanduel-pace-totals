@@ -104,9 +104,9 @@ patInterp: 1, // between two learning stages, blend their lessons by game minute
 sitPre: 0, // situational scoring: a basket counts under the score before it (0 = the old filing, after it)
 patYCap: 0, // learning target: 1 = the old one-sided cap on big finishes, 0 = the plain miss
 repGroup: 1, // learn "before lineups are posted" as its own stage (1) or share the tip-off lessons (0)
-patLamLineup: 0.1, // pull toward "no effect" for the lineup inputs, relative to the other inputs (1 = same; lower lets rare, strong signals through)
+patLamLineup: 0.1, patLamAnchor: 0.1, // pull toward "no effect" for the lineup inputs, relative to the other inputs (1 = same; lower lets rare, strong signals through)
 condMin: 1, // before tip-off, player minutes stay "if he plays" numbers and the team total is scaled to five players' worth instead
-teamCal: 0, // apply the learned team check (TEAM_PRIOR) to team totals
+teamCal: 0, // apply the learned team check (TEAM_PRIOR) to team totals: 0 = off, 1 = every stage, 2 = during games only (before tip-off the scoring level moves between seasons)
 // team load (also v15, lab name "v16"): how crowded tonight's rotation is, and which side is expected to win big, as learned inputs
 loadIn: 1, loadMid: 0.06, // team load = the usual minutes of everyone available tonight, added up, vs the 240 a team can play; loadMid = a typical night
 favIn: 1, // expected winning margin by role (starters of a team expected to win or lose big, bench of a team expected to lose big)
@@ -706,7 +706,9 @@ const PAT_D = PAT_F.length;
 const PAT_IX = Object.fromEntries(PAT_F.map((k, i) => [k, i]));
 // How hard each input is pulled toward "no effect" when the lessons are solved, relative to the others (1 = the usual pull).
 // The lineup inputs are rare but strong (about one reserve a game starts), so the usual pull would flatten them.
-const PAT_LAMF = PAT_F.map((k) => (TUNE.patLamLineup > 0 && (['startUp', 'startDown', 'fresh', 'deep'].includes(k) || PAT_MINONLY.includes(k)) ? TUNE.patLamLineup : 1));
+// how hard each input is held near zero while learning (1 = the usual hold; lineup and anchor inputs get a light one)
+const patLamOf = (k) => (TUNE.patLamLineup > 0 && ['startUp', 'startDown', 'fresh', 'deep'].includes(k) ? TUNE.patLamLineup : TUNE.patLamAnchor > 0 && PAT_MINONLY.includes(k) ? TUNE.patLamAnchor : 1);
+const PAT_LAMF = PAT_F.map(patLamOf);
 // stages of the game: pregame, then every 6 game minutes (the learned trust in live data changes with each)
 // 'rep' (v15) = before the lineups are posted, when only the injury report is known: the app knows less then, so it learns that moment separately
 const PAT_GROUPS = ['pre', 's6', 's12', 's18', 's24', 's30', 's36', 's42', 'rep'];
@@ -925,7 +927,7 @@ return M.map((row, i) => (Math.abs(row[i]) < 1e-12 ? 0 : row[d] / row[i]));
 /** Sufficient statistics → coefficients per checkpoint and stat: { pre: { pts: [..17], ... }, ... , n }. */
 function patSolve(acc, lam) {
 const L = lam != null ? lam : TUNE.patLam;
-PAT_F.forEach((k, i) => { PAT_LAMF[i] = TUNE.patLamLineup > 0 && ['startUp', 'startDown', 'fresh', 'deep'].includes(k) ? TUNE.patLamLineup : 1; });
+PAT_F.forEach((k, i) => { PAT_LAMF[i] = patLamOf(k); });
 const out = { n: 0 };
 for (const g of PAT_GROUPS) {
 out[g] = {};
@@ -1528,6 +1530,8 @@ out.push({ icon: '💤', key: 'script', chip: `BLOWOUT ${pct0(c.pBlow)}`, effect
 if (pre && c.b2b) out.push({ icon: '🛌', key: 'rest', chip: 'B2B', effect: p.starter && TUNE.b2bMin > 0 ? 'down' : 'info', text: 'Second night of a back-to-back.', so: p.starter && TUNE.b2bMin > 0 ? `Starters play a little less on these nights. ${cuts(minEffect(c, c.minProj * (1 - 1 / (1 - TUNE.b2bMin))))}` : 'Bench players play their normal minutes on these nights, so his number doesn\'t change.' });
 if (pre && c.doubt) out.push({ icon: '⚠️', key: 'status', chip: 'CHECK STATUS', effect: 'down', text: `Not confirmed to play: ${c.doubt}.`, so: 'His projection assumes he plays. Check his status before tip-off.' });
 else if (c.lineup && c.lineup.confirmed && c.inList) out.push({ icon: '✅', key: 'status', chip: 'CONFIRMED', effect: 'info', text: `Confirmed in tonight's lineup${c.lineup.source ? ` (${c.lineup.source})` : ''}.`, so: 'No guesswork on whether he plays.' });
+// during the game a player still waiting to check in keeps the same kind of number as before tip-off
+if (!pre && r.dnpYet && TUNE.condLive > 0) out.push({ icon: '⏳', key: 'notin', effect: 'info', text: `${lastName(r.name)} has not checked in yet.`, so: 'These numbers are what he does if he gets in tonight.' });
 return out.concat(sitItems(p, r, c), patternItems(p, r, c));
 }
 
@@ -2341,6 +2345,8 @@ let lo = base, hi = base, j = 0;
 for (let t = base + 1; t <= srt[N - 1]; t++) { while (j < N && srt[j] < t) j++; const pc = cal[k] ? calP(cal[k], (N - j) / N) : (N - j) / N; if (pc >= 0.9) lo = t; if (pc >= 0.1) hi = t; else break; }
 range[k] = [lo, hi];
 }
+// minutes late in a game are two-valued (he comes back or he is done): the middle of the simulations says which is likelier
+{ const srt = Array.from(p.mins).sort((x, y) => x - y); let m = 0, c = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m += srt[q]; c++; } mid.min = r.min + (c ? m / c : minSum / N); }
 // what we show: average and middle blended by stage (LAND); the plain average stays in `mean` for the learning loop and team totals
 const shown = { ...avg };
 const landW = TUNE.landOn > 0 && st.phase !== 'final' && left > 0 ? LAND[patG] : null;
@@ -2382,7 +2388,7 @@ pid: r.pid, name: r.name, team: p.tm, opp: p.opp, on: r.on, starter: p.starter, 
 stints, stintNow: r.on && lastSt ? el - lastSt[0] : 0, sitting: !r.on && lastSt ? el - lastSt[1] : null, rot: p.rotInfo, why,
 chips: ctxItems.filter((x) => x.chip).sort((a, b) => (a.effect === 'info') - (b.effect === 'info')).map((x) => ({ t: x.chip, e: x.effect })), confirmed: lineup.confirmed && availIn.has(+r.pid),
 now: { pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fgm: r.fgm, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf, min: r.min },
-proj: { ...shown, min: r.min + minSum / N }, mean: { ...avg, min: r.min + minSum / N }, mid,
+proj: { ...shown, min: landW && landW.min > 0 ? (1 - landW.min) * (r.min + minSum / N) + landW.min * mid.min : r.min + minSum / N }, mean: { ...avg, min: r.min + minSum / N }, mid,
 usage: { season: p.usgSeason, tonight: p.usgTonight, proj: usg },
 shooting: { p2: p.p2, p3: p.p3, ft: p.ft, r3: p.r3 },
 mpg: p.mpg, qavg: p.qavg, games: p.n, flags, ladders, doubt: st.phase === 'pre' ? doubt[r.pid] || null : null,
@@ -2405,7 +2411,7 @@ for (let i = 0; i < N; i++) { let tot = 0; for (const p of ps) tot += p.mins[i];
 // team totals: "if he plays" minutes scaled to what a team can play, then the learned team check for this stage
 // (how the points still to come really ran against our sum of players in graded games)
 const teamRaw = {};
-const tF = patOn && TUNE.teamCal > 0 && o.patterns.team ? (o.patterns.team[patG] != null ? o.patterns.team[patG] : patG === 'rep' && o.patterns.team.pre != null ? o.patterns.team.pre : 1) : 1;
+const tF = patOn && TUNE.teamCal > 0 && o.patterns.team && !(TUNE.teamCal === 2 && st.phase === 'pre') ? (o.patterns.team[patG] != null ? o.patterns.team[patG] : patG === 'rep' && o.patterns.team.pre != null ? o.patterns.team.pre : 1) : 1;
 for (const tm of [v, h]) {
 const K = teamK[tm];
 let sRaw = 0;

@@ -218,6 +218,51 @@ test('learning sums add up and solve (ridge), and the shipped lessons have one n
   const beta = E.patBeta(null);
   for (const g of E.PAT_GROUPS) for (const s of E.PAT_LEARN) if (beta[g] && beta[g][s]) assert.strictEqual(beta[g][s].length, E.PAT_F.length, `${g}/${s}`);
 });
+const IX = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
+const NEWIN = ['aAll', 'aS', 'aB', 'aOn', 'aPace', 'aLop', 'aOwn', 'aLong', 'lopTier', 'flagOff', 'flagOn', 'deepLop', 'stintLong'];
+const noLessons = () => Object.fromEntries(E.PAT_GROUPS.map((g) => [g, Object.fromEntries(E.PAT_LEARN.map((k) => [k, new Array(E.PAT_F.length).fill(0)]))]));
+test('anchor and floor-picture inputs speak only to minutes, and only where they apply', () => {
+  for (const k of NEWIN) assert.ok(k in IX, `input ${k} is missing`);
+  for (const fx of FX) for (const el of [0, 12, 36]) {
+    const P = run(fx, el);
+    let anchored = 0;
+    for (const p of P.players) {
+      for (const s of STATS) for (const k of NEWIN) assert.strictEqual(p.pat.x[s][IX[k]], 0, `${k} leaks into ${s} for ${p.name}`);
+      const x = p.pat.x.min;
+      for (const k of NEWIN) assert.ok(Number.isFinite(x[IX[k]]) && Math.abs(x[IX[k]]) <= 6, `${k} = ${x[IX[k]]} for ${p.name} at ${el} min`);
+      if (x[IX.aAll] > 0) anchored++;
+      // the white-flag picture only exists from the middle of the third quarter on
+      if (el < 30) for (const k of ['flagOff', 'flagOn', 'deepLop', 'stintLong']) assert.strictEqual(x[IX[k]], 0, `${k} is set at ${el} min`);
+      // before the game there is no floor to read; during it the pregame anchors step aside
+      for (const k of el === 0 ? ['aOn', 'aPace', 'aLop', 'lopTier'] : ['aOwn', 'aLong']) assert.strictEqual(x[IX[k]], 0, `${k} is set at ${el} min`);
+    }
+    assert.ok(anchored >= 10, `only ${anchored} players have an anchor at ${el} min`);
+  }
+});
+test('a learned anchor pulls minutes toward the middle: long numbers come down, short ones go up', () => {
+  const fx = FX[0];
+  // remaining minutes become 0.7 x remaining + 0.3 x 24
+  const b = noLessons(); b.pre.min[IX.base] = -0.3; b.pre.min[IX.aAll] = 0.3;
+  const P0 = run(fx, 0, { patterns: noLessons() }), P1 = run(fx, 0, { patterns: b });
+  let hi = 0, lo = 0;
+  for (const p of P0.players) {
+    const q = P1.players.find((x) => x.pid === p.pid);
+    if (!q) continue;
+    if (p.mean.min >= 31) { hi++; assert.ok(q.mean.min < p.mean.min - 0.5, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} should come down`); }
+    if (p.mean.min >= 8 && p.mean.min <= 16) { lo++; assert.ok(q.mean.min > p.mean.min + 0.5, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} should go up`); }
+  }
+  assert.ok(hi >= 2 && lo >= 2, `too few players to compare (${hi} long, ${lo} short)`);
+});
+test('during a game, a player who never got in teaches nothing (the live number means "if he plays")', () => {
+  const fx = FX[0];
+  const m = momentAt(fx.g, fx.plays, 12);
+  const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 200, seed: 3, patterns: null, sitPrior: fx.sitPrior });
+  const grade = (v) => { const keep = E.TUNE.condLive; E.TUNE.condLive = v; try { const acc = E.patEmpty(); E.patGrade(P, fx.rows, acc); return acc.s12.min.n; } finally { E.TUNE.condLive = keep; } };
+  const played = new Set(Object.entries(fx.rows).filter(([, r]) => r.min > 0).map(([id]) => +id));
+  const listed = P.players.length, got = P.players.filter((p) => played.has(+p.pid)).length;
+  assert.ok(grade(1) <= got, `${grade(1)} rows learned from, but only ${got} of the ${listed} listed players played`);
+  if (listed > got) assert.ok(grade(0) > grade(1), 'with the switch off, players who never got in are counted again');
+});
 test('no user-facing wording uses the words "over" or "under"', () => {
   // every note the engine can attach to a player, across the fixture moments
   const texts = [];
