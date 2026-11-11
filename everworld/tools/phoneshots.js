@@ -14,7 +14,8 @@ const OUT = path.resolve(arg('--out', path.join(L.ROOT, 'data', 'shots-pixel9a')
 const LIVE = argv.includes('--live');
 // Pixel 9a: 1080 x 2424 at 2.625 pixels per CSS pixel = 412 x 923; Chrome's bars leave about 412 x 840 for the page
 const PHONE = { viewport: { width: 412, height: 840 }, screen: { width: 412, height: 923 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
-  userAgent: 'Mozilla/5.0 (Linux; Android 16; Pixel 9a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36' };
+  userAgent: 'Mozilla/5.0 (Linux; Android 16; Pixel 9a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36',
+  serviceWorkers: 'block' }; // (always the files as they are now, never a cached copy)
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const serve = (dir) => new Promise((res) => { const srv = http.createServer((req, rsp) => { let p = decodeURIComponent(req.url.split('?')[0]); if (p.endsWith('/')) p += 'index.html'; const f = path.join(dir, p); if (!f.startsWith(dir) || !fs.existsSync(f)) { rsp.writeHead(404); rsp.end('x'); return; } rsp.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(rsp); }).listen(0, '127.0.0.1', () => res({ srv, url: `http://127.0.0.1:${srv.address().port}/` })); });
 const relay = async (route, u) => { try { const r = await fetch(u, { headers: { Accept: 'application/json', 'User-Agent': L.UA } }); await route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: await r.text() }); } catch (e) { await route.abort(); } };
