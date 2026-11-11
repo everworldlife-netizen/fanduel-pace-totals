@@ -198,6 +198,68 @@ Blending lessons between stages (`patInterp`, 400 unseen games, in-between momen
 39 min: minutes -5.0%; points unchanged from 27 min on. Blending the minutes lessons across halftime made minutes
 2% WORSE at 27 min (z 5.2), so those do not blend there (confirmed on a second slice of 252 games: 0.0%).
 
+### Correction to the test itself, and v16 (team load): supersedes the two tables above
+
+The two tables above were measured with tip-off lists rebuilt from archived ESPN boxes AS THEY WERE: they included
+the players ESPN adds after the game (ruled out: injury, rest, not with team). The phone never sees those players
+on the list (see "Facts about the feeds"). `tools/replay.js` now leaves them out (`LAB_LISTS=all` gives the old
+behaviour). Effect on 1,199 unseen games with the lessons unchanged: both engines measure about 1% closer on points
+and 4 to 5% closer on minutes at tip-off, simply because the lab now knows what the phone knows. All lessons were
+refit on the corrected lists (`A3-*`, `B3-*`, `C3-*`); lessons learned on the old lists carried a blanket "+14% if he
+plays" on minutes that partly existed to make up for listed players who were never going to play.
+
+How the missing context was found: `node tools/ctxcheck.js --dump <bt2 --dump rows>` regresses what is left of the
+miss on schedule, travel, spread and total situations (unit = one team in one game). On 1,199 unseen games:
+- NO real signal: back-to-backs by travel, 3 games in 4 nights, 4 in 6, altitude, time zones, early tips, road
+  trips, home stands, rest edge (all inside what luck gives for 230 checks, once the two items below are in).
+- The books' total looked strong (minutes +0.7 per player per 10 points of total, z 9.5) but it was standing in for
+  who is available: it vanishes (z 0.3) once the team load is in.
+- TEAM LOAD is real and large. Load = the usual minutes of everyone available tonight, added up, against 240
+  (5th to 95th percentile: 200 to 300 minutes). The simulation shares minutes out by its own rules; reality differs
+  a lot for the bench. Regular bench players (18 to 24 minutes a game): when the load was 300+ the plain engine gave
+  them 10.8 minutes and they played 17.4; when it was under 228 it gave 24.9 and they played 25.0, and the learned
+  layer then pushed that to 29.8. Load alone explained 30% of the team-to-team swing of their miss (z 28).
+- EXPECTED MARGIN by role is real but small: starters of a team favored by 10 play about a minute less than the
+  number (z -5.7), starters of a 10-point dog too (z -3.7), the dog's bench more (z 6.7).
+
+v16 inputs (PAT_F is 49 long): `loadS`, `loadB`, `loadBd`, `loadBq` (load by role, deeper bench, and a curved term)
+and `favS`, `dogS`, `dogB`. Switches: `loadIn` 1, `loadMid` 0.06, `favIn` 1, `loadStats` 0 (the load teaches
+minutes only), `ctxUntil` 33 (both sit out from 33 minutes in).
+
+Fold A on corrected lists (lessons from 2,387 games of 2023-25, tested on 1,199 games of 2025-26, every engine
+refit the same way; `real10` population):
+
+| moment | PTS miss, live engine → v16 | MIN miss | game total miss |
+|---|---|---|---|
+| before lineups | 4.963 → 4.945 (-0.4%, z -2.3) | 5.65 → 5.28 (-6.6%, z -21.8) | 15.94 → 15.22 (-4.6%, z -6.1) |
+| tip-off | 4.961 → 4.761 (-4.0%, z -15.5) | 5.64 → 4.54 (-19.4%, z -39.7) | 15.94 → 14.89 (-6.6%, z -6.1) |
+| 6 min in | 4.643 → 4.549 (-2.0%, z -12.1) | 5.29 → 4.74 (-10.4%, z -31.6) | 15.03 → 14.71 (-2.1%, z -2.0) |
+| 9 min in | 4.458 → 4.341 (-2.6%, z -13.8) | 5.21 → 4.47 (-14.3%, z -40.7) | 14.22 → 13.97 (-1.8%, z -2.2) |
+| end Q1 | 4.226 → 4.180 (-1.1%, z -7.5) | 4.71 → 4.35 (-7.7%, z -25.4) | 13.76 → 13.25 (-3.7%, z -3.8) |
+| 21 min in | 3.638 → 3.605 (-0.9%, z -5.6) | 3.95 → 3.74 (-5.3%, z -16.7) | 12.19 → 12.00 (-1.5%, z -2.5) |
+| half | 3.410 → 3.400 (-0.3%, z -2.2) | 3.66 → 3.61 (-1.2%, z -4.9) | 11.47 → 11.53 (n.s.) |
+| 33 min in | 2.674 → 2.654 (-0.8%, z -5.1) | 3.22 → 3.09 (-3.9%, z -17.9) | 9.27 → 9.23 (n.s.) |
+| end Q3 | 2.316 → 2.310 (-0.3%, z -2.8) | 2.94 → 2.92 (-0.8%, z -6.8) | 8.34 → 8.30 (n.s.) |
+| 6:00 left | 1.254 → 1.253 | 1.62 → 1.62 | 6.29 → 6.32 (+0.5%, z 2.1) |
+| 3:00 left | 0.708 → 0.708 | 0.743 → 0.747 (+0.4%, z 5.9: 0.004 of a minute) | 4.92 → 4.92 |
+
+At tip-off rebounds, assists and threes are each about 1.5% closer too (z -7). Top scorer in our top 3: 74.1% →
+74.8% at tip-off, 81.3% → 82.4% at the end of Q1. Chance gap: 0.61% → 0.64% at tip-off (same), 0.42% → 0.32% at Q1.
+
+What v16 adds on top of v15 (both refit on corrected lists): tip-off minutes -3.9% (z -17.4), points -0.5%
+(z -4.4); before lineups minutes -5.7% (z -19.2), points -0.5%, total -2.4% (z -3.4); 6 to 33 minutes in:
+minutes -0.8 to -2.5% (z -5 to -11); identical from the end of Q3 on.
+
+TRIED, DID NOT WIN (v16): the load teaching points, rebounds and assists too, and staying on all game
+(`loadStats` 1, `ctxUntil` 0): same player numbers, but the game total got worse mid-game (21 min: 12.03 → 12.30,
+z 3.5; 6:00 left z 2.8) and minutes a hair worse late. Minutes-only and off after 33 minutes keeps the gain
+without that.
+
+Season shift to remember when reading totals: in 2025-26 and 2026-27 teams score more in the time left than the
+sum of our player numbers (bias -2 to -5 points a game at live stages; unbiased on 2023-25). Anything that
+lifts numbers looks good on those seasons for that reason alone, so judge changes on the fixed-population player
+columns and on z, not on the total's bias. The live total running low is an open item.
+
 TRIED, DID NOT WIN:
 - First version of `actDeep` (deep bench at their per-appearance minutes): game totals at tip-off ran 15 points
   high. Fixed by weighting by how often they get in, and by `condMin`.
