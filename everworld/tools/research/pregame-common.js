@@ -86,6 +86,7 @@ function features(H, r) {
   f.med8 = n >= 3 ? median(mins) : null;
   f.max8 = n >= 3 ? Math.max(...mins) : null;
   f.min8 = n >= 3 ? Math.min(...mins) : null;
+  if (n >= 4) { const md = f.med8, keep = mins.map((m, i) => [m, i]).filter(([m]) => m >= 0.6 * md); let s2 = 0, ws = 0; for (const [m, i] of keep) { const ww = Math.pow(0.85, n - 1 - i); s2 += ww * m; ws += ww; } f.robust = ws ? s2 / ws : null; }
   // ---- C. last games against his usual
   f.l1 = n >= 2 ? mins[n - 1] - mpg : null;
   f.l2 = n >= 3 ? mean(mins.slice(-2)) - mpg : null;
@@ -130,6 +131,9 @@ function features(H, r) {
       const wm = (arr) => { let s = 0, ws = 0; for (const x of arr) { const ww = Math.pow(0.85, n - 1 - w.indexOf(x)); s += ww * reg(x); ws += ww; } return ws ? s / ws : 0; };
       const cl = w.filter((x) => Math.abs(x.tg.margin) < 15);
       f.nClose = cl.length; f.regAvg = wm(w); f.closeAvg = cl.length >= 2 ? wm(cl) : f.regAvg;
+      const q4 = (x) => (x.a.qmin && x.a.qmin[4]) || 0;
+      const wq = (arr) => { let s = 0, ws = 0; for (const x of arr) { const ww = Math.pow(0.85, n - 1 - w.indexOf(x)); s += ww * q4(x); ws += ww; } return ws ? s / ws : 0; };
+      f.q4w = wq(w); f.q4wClose = cl.length >= 2 ? wq(cl) : null;
       const bl = w.filter((x) => Math.abs(x.tg.margin) >= 15); f.blowAvg = bl.length ? wm(bl) : null; f.nBlow = bl.length; }
     f.startShare = mean(w.map((x) => (Array.isArray(x.a.st) && x.a.st[0] && x.a.st[0][0] < 0.05 ? 1 : 0)));
     f.started3 = mean(w.slice(-3).map((x) => (Array.isArray(x.a.st) && x.a.st[0] && x.a.st[0][0] < 0.05 ? 1 : 0)));

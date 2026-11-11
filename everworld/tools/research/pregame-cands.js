@@ -45,8 +45,8 @@ add('rotN10', (r) => nz(r.f.rotN10)); add('rotN10c', (r) => nz(r.f.rotN10c)); ad
 add('rotFives', (r) => nz(r.f.rotFives)); add('rotSd', (r) => nz(r.f.rotSd)); add('teamBlow8', (r) => nz(r.f.teamBlow8)); add('teamMargin8', (r) => nz(r.f.teamMargin8)); add('teamAbsMargin8', (r) => nz(r.f.teamAbsMargin8));
 // team quality / season
 add('teamWin', (r) => nz(r.f.teamWin)); add('teamNet', (r) => nz(r.f.teamNet)); add('oppNet', (r) => nz(r.f.oppNet));
-add('late*badTeam', (r) => (r.f.teamWin == null ? null : r.d >= `${season}-03-01` && r.f.teamWin < 0.4 ? 1 : 0)); add('late*goodTeam', (r) => (r.f.teamWin == null ? null : r.d >= `${season}-03-01` && r.f.teamWin > 0.6 ? 1 : 0));
-add('lateSeason', (r) => (r.d >= `${season}-03-15` ? 1 : 0)); add('early20', (r) => (r.f.teamG < 10 ? 1 : 0)); add('last2weeks', (r) => (r.d >= `${season}-04-01` ? 1 : 0));
+add('late*badTeam', (r) => (r.f.teamWin == null ? null : r.d.slice(5) >= '03-01' && r.d.slice(5) < '07-01' && r.f.teamWin < 0.4 ? 1 : 0)); add('late*goodTeam', (r) => (r.f.teamWin == null ? null : r.d.slice(5) >= '03-01' && r.d.slice(5) < '07-01' && r.f.teamWin > 0.6 ? 1 : 0));
+add('lateSeason', (r) => (r.d.slice(5) >= '03-15' && r.d.slice(5) < '07-01' ? 1 : 0)); add('early20', (r) => (r.f.teamG < 10 ? 1 : 0)); add('last2weeks', (r) => (r.d.slice(5) >= '04-01' && r.d.slice(5) < '07-01' ? 1 : 0));
 // G. the books
 add('fav', (r) => nz(r.f.fav)); add('absFav', (r) => (r.f.fav == null ? null : Math.abs(r.f.fav))); add('fav>4', (r) => (r.f.fav == null ? null : C.clamp((r.f.fav - 4) / 6, 0, 2))); add('dog>4', (r) => (r.f.fav == null ? null : C.clamp((-r.f.fav - 4) / 6, 0, 2)));
 add('fav>10', (r) => (r.f.fav == null ? null : hinge(r.f.fav, 10))); add('dog>10', (r) => (r.f.fav == null ? null : hinge(-r.f.fav, 10))); add('total', (r) => (r.f.total ? (r.f.total - 228) / 10 : null));
@@ -79,6 +79,24 @@ add('lastSeasonGap', (r) => (r.f.lastMpg != null ? r.f.lastMpg - r.mpg : null));
 add('availN', (r) => nz(r.f.availN)); add('availN10', (r) => nz(r.f.availN10));
 add('q4share', (r) => (r.f.q4avg != null && r.f.regAvg > 4 ? r.f.q4avg / r.f.regAvg : null));
 add('q4-quarter', (r) => (r.f.q4avg != null && r.f.regAvg != null ? r.f.q4avg - r.f.regAvg / 4 : null));
+// starting history against his usual: +1 = started the last game but rarely before (new starter), -1 = a usual starter who did not start the last one
+add('startDrift', (r) => (r.f.lastStarted != null && r.f.startShare != null ? r.f.lastStarted - r.f.startShare : null));
+add('newStarter', (r) => (r.f.lastStarted != null ? (r.f.lastStarted === 1 && r.f.startShare < 0.5 ? 1 : 0) : null));
+add('demoted', (r) => (r.f.lastStarted != null ? (r.f.lastStarted === 0 && r.f.startShare >= 0.5 ? 1 : 0) : null));
+add('lowMinStarter', (r) => (r.f.startShare != null ? (r.st !== 1 && r.f.startShare >= 0.5 && r.f.lastStarted === 1 ? 1 : 0) : null), false);
+// first game back: team games he missed right before tonight
+add('firstBack', (r) => (r.f.curAbs == null ? null : r.f.curAbs >= 1 ? 1 : 0));
+add('firstBackN', (r) => (r.f.curAbs == null ? null : Math.min(r.f.curAbs, 6)));
+add('firstBack3+', (r) => (r.f.curAbs == null ? null : r.f.curAbs >= 3 ? 1 : 0));
+add('restDays7+', (r) => (r.f.ownRest == null ? null : r.f.ownRest >= 7 ? 1 : 0));
+add('restDays>3', (r) => (r.f.ownRest == null ? null : C.clamp(r.f.ownRest - 3, 0, 10)));
+// dressed players tonight (posted list)
+add('short<=9', (r) => (r.f.activeCount == null ? null : r.f.activeCount <= 9 ? 1 : 0)); add('short<=10', (r) => (r.f.activeCount == null ? null : r.f.activeCount <= 10 ? 1 : 0));
+add('dressed-13', (r) => (r.f.activeCount == null ? null : r.f.activeCount - 13)); add('dressed<12', (r) => (r.f.activeCount == null ? null : Math.max(12 - r.f.activeCount, 0))); add('dressed>13', (r) => (r.f.activeCount == null ? null : Math.max(r.f.activeCount - 13, 0)));
+add('availShort', (r) => (r.f.availN == null ? null : Math.max(9 - r.f.availN, 0)));
+// robust usual minutes: drop his lowest recent game when it is under 60% of his median
+add('robustGap', (r) => (r.f.robust != null ? r.f.robust - r.mpg : null));
+add('lowOutlier', (r) => (r.f.min8 != null && r.f.med8 != null ? (r.f.min8 < 0.6 * r.f.med8 ? 1 : 0) : null));
 add('rest', (r) => r.rest);            // what the engine adds after its learned factor (refill of cut minutes, team scaling, overtime)
 add('rest>1', (r) => Math.max(r.rest - 1, 0));
 add('lin', (r) => r.lin);

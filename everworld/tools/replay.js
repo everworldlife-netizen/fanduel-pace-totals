@@ -247,7 +247,7 @@ function score(E, proj, it, A, dump) {
     // were the stated chances right? every ladder rung still ahead of him
     // (before tip-off a player who ends up not playing is no action on a pick, so he is left out here, the same way the
     // engine learns its chances; once the game is on, a player who never gets in is a real miss)
-    if (p.ladders && p.laddersRaw && (act || proj.state.phase !== 'pre')) {
+    if (p.ladders && p.laddersRaw && (act || (proj.state.phase !== 'pre' && !(E.TUNE.condLive > 0)))) {
       const fin = act || { pts: p.now.pts, reb: p.now.reb, ast: p.now.ast, fg3m: p.now.fg3m };
       for (const s of STATS) for (let i = 0; i < p.ladders[s].length; i++) {
         const Lc = p.ladders[s][i], Lr = p.laddersRaw[s][i];

@@ -117,6 +117,17 @@ refillMax: 0.2, refillMaxLive: 0, // most the refill can add to one player, as a
 startOn: 1, // live: a posted starter the play-by-play has not named yet has been on the floor since the tip (1), or counts as not checked in (0, old)
 thinK: 30, // minutes of bench-average rates mixed into the rebound and assist rates of a player with no season line (0 = his raw rates, old)
 patHalf: 0, // minutes lessons between halftime and 30 minutes in: 0 = nearest stage (jumps at 27:00), 1 = the 30-minute lessons once the third quarter is on
+// Nov 11 research (four researchers on 1,177 unseen games): with real minutes the per-minute numbers are within 0-3% of an
+// oracle at every stage, so what is left is minutes. The minutes numbers were too spread out everywhere (real = a + b x number
+// with b 0.70 to 0.90) and the learned layer could only multiply, not pull a number toward what a role normally plays.
+anchIn: 1, // anchor inputs for minutes: anchor / remaining minutes (a flat number of minutes once multiplied), for everyone, by role, on the floor, his pace tonight, lopsided scores, his own average, his season average
+flagIn: 1, // late game: who is on the floor in a decided game (the unit's usual minutes), deep bench in lopsided games, a starter's long stint
+condLive: 1, // a player who has not checked in yet keeps an "if he plays" number during the game too (a pick on a player who never plays is no action): never-in players are not learned from and team totals are scaled instead of squeezing every player
+patCapMinLate: 0.95, // most the layer can cut remaining minutes from 36 minutes in (a regular on the bench of a decided game is done for the night)
+refillRep: 0, // refill before the lineup is posted: 0 = off (measured: none of those handed-out minutes are played), 1 = as at tip-off
+deepRep: 1, // before the lineup is posted, deep-bench players of the recent window who are not listed out get a number too (they were 2 of 3 players with no number who went on to play 10+)
+benchRes: 1, // the 'benched' discount (sitting through minutes he usually plays) is for tonight's starters only; a reserve's usual pattern comes from other roles
+foulEdge: 1, // a foul-trouble seat still counts as one at the exact end of its rest window (halftime with 3 fouls)
 };
 const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
@@ -687,12 +698,15 @@ const PAT_F = ['base', 'starter', 'bench', 'b2b', 'pace', 'blowout', 'roleTrend'
 // tonight's lineup (v15): starting tonight vs his usual role, back from a layoff, deep bench, minutes freed at his position, last game's minutes, rest, games missed
 'startUp', 'startDown', 'fresh', 'deep', 'vacPos', 'lastMin', 'rest3', 'missShare',
 // tonight's crowd (v15, lab name "v16"): how over- or under-booked the team's minutes are (full bench vs short-handed), by role; and the expected margin by role
-'loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB'];
+'loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB',
+// anchors and late-game floor picture (Nov 11): minutes only
+'aAll', 'aS', 'aB', 'aOn', 'aPace', 'aLop', 'aOwn', 'aLong', 'lopTier', 'flagOff', 'flagOn', 'deepLop', 'stintLong'];
+const PAT_MINONLY = ['aAll', 'aS', 'aB', 'aOn', 'aPace', 'aLop', 'aOwn', 'aLong', 'lopTier', 'flagOff', 'flagOn', 'deepLop', 'stintLong'];
 const PAT_D = PAT_F.length;
 const PAT_IX = Object.fromEntries(PAT_F.map((k, i) => [k, i]));
 // How hard each input is pulled toward "no effect" when the lessons are solved, relative to the others (1 = the usual pull).
 // The lineup inputs are rare but strong (about one reserve a game starts), so the usual pull would flatten them.
-const PAT_LAMF = PAT_F.map((k) => (TUNE.patLamLineup > 0 && ['startUp', 'startDown', 'fresh', 'deep'].includes(k) ? TUNE.patLamLineup : 1));
+const PAT_LAMF = PAT_F.map((k) => (TUNE.patLamLineup > 0 && (['startUp', 'startDown', 'fresh', 'deep'].includes(k) || PAT_MINONLY.includes(k)) ? TUNE.patLamLineup : 1));
 // stages of the game: pregame, then every 6 game minutes (the learned trust in live data changes with each)
 // 'rep' (v15) = before the lineups are posted, when only the injury report is known: the app knows less then, so it learns that moment separately
 const PAT_GROUPS = ['pre', 's6', 's12', 's18', 's24', 's30', 's36', 's42', 'rep'];
@@ -731,6 +745,36 @@ b[PAT_IX.loadBq] = f.starter ? 0 : (Math.max(ld, 0) * Math.max(ld, 0)) / 2.5;
 // expected margin before tip-off (books' spread, or team ratings): past 4 points it starts to cost starters minutes
 const fv = TUNE.favIn > 0 && ctxOn ? f.favBy || 0 : 0;
 b[PAT_IX.favS] = f.starter ? clamp((fv - 4) / 6, 0, 2) : 0; b[PAT_IX.dogS] = f.starter ? clamp((-fv - 4) / 6, 0, 2) : 0; b[PAT_IX.dogB] = f.starter ? 0 : clamp((-fv - 4) / 6, 0, 2);
+// anchors: an input equal to (anchor minutes) / (his remaining minutes) becomes a flat number of minutes once the layer multiplies
+// it by his remaining minutes, so the layer can pull a number toward the anchor instead of only scaling it
+if (TUNE.anchIn > 0 && f.rem >= 0.25) {
+const L = live ? 0.5 * Math.max(f.left || 0, 0) : 24; // half of the time left (24 before tip-off)
+const a = clamp(L / f.rem, 0, 6);
+const startsT = f.sT != null ? f.sT === 1 : !!f.starter;
+b[PAT_IX.aAll] = a; b[PAT_IX.aS] = startsT ? a : 0; b[PAT_IX.aB] = f.mpg < 18 ? a : 0;
+if (live) {
+b[PAT_IX.aOn] = f.on ? a : 0;
+// his minutes pace tonight (first-half minutes once the half is over) carried over the time left
+const first = f.el <= 24 ? f.min : f.minH1;
+b[PAT_IX.aPace] = f.el >= 12 && first != null ? clamp((first * (f.left || 0)) / Math.min(f.el, 24) / f.rem, 0, 6) : 0;
+const lop = clamp((Math.abs(f.mg || 0) - 8) / 10, 0, 2.5);
+b[PAT_IX.aLop] = clamp(lop * (a - 1), -2.5, 6);
+b[PAT_IX.lopTier] = f.el >= 18 ? lop * clamp((f.mpg - 24) / 8, -2, 1.5) : 0;
+} else {
+// before the game: how far the simulation moved him from his own recent average, and his season-long average against the recent one
+b[PAT_IX.aOwn] = clamp(f.mpg / f.rem - 1, -0.6, 1.5);
+b[PAT_IX.aLong] = f.longMin != null ? clamp((f.longMin - f.mpg) / f.rem, -1.5, 1.5) : 0;
+}
+}
+// late game: the floor picture. A bench unit on the floor of a decided game means the regulars are done (white flag)
+if (TUNE.flagIn > 0 && live && f.el >= 30) {
+const am2 = Math.abs(f.mg || 0);
+const flag = f.unitMin != null ? clamp((am2 - 10) / 10, 0, 1) * clamp((24 - f.unitMin) / 8, 0, 1.5) : 0;
+b[PAT_IX.flagOff] = !f.on && f.min > 0 && f.mpg >= 14 ? flag : 0;
+b[PAT_IX.flagOn] = f.on && f.mpg < 24 ? flag : 0;
+b[PAT_IX.deepLop] = f.mpg < 14 && f.min > 0 ? clamp((am2 - 10) / 10, 0, 2) : 0;
+b[PAT_IX.stintLong] = f.starter && f.on && f.stint != null ? clamp((f.stint - 4) / 8, -0.5, 1) : 0;
+}
 if (live) {
 const mg = f.mg || 0, am = Math.abs(mg);
 b[12] = f.foulTrouble ? 1 : 0;
@@ -759,7 +803,7 @@ b[PAT_IX.tdLive] = f.tdLive || 0;
 for (const s of PAT_LEARN) {
 const x = b.slice();
 if (s === 'min') { x[PAT_IX.tdMkt] = 0; x[PAT_IX.tdLive] = 0; } // a team's scoring level says nothing about who plays
-else if (!(TUNE.loadStats > 0)) { x[PAT_IX.loadS] = 0; x[PAT_IX.loadB] = 0; x[PAT_IX.loadBd] = 0; x[PAT_IX.loadBq] = 0; } // and how crowded the rotation is only says who plays
+else { if (!(TUNE.loadStats > 0)) { x[PAT_IX.loadS] = 0; x[PAT_IX.loadB] = 0; x[PAT_IX.loadBd] = 0; x[PAT_IX.loadBq] = 0; } for (const k of PAT_MINONLY) x[PAT_IX[k]] = 0; } // how crowded the rotation is, and the anchors, only say who plays
 if (live) {
 const k = s === 'min' ? 'pts' : s;
 const exp = f.ratePM[k] * f.min;
@@ -812,7 +856,7 @@ for (const p of proj.players) {
 let a = rows[p.pid] || rowByName(rows, p);
 if (!p.pat) continue;
 // live: a rotation player who never got in is a real miss (he finished with what he had); pregame we assume lineups are known
-if (!a || !(a.min > 0)) { if (!live) continue; a = { min: p.now.min, pts: p.now.pts, reb: p.now.reb, ast: p.now.ast, fg3m: p.now.fg3m }; }
+if (!a || !(a.min > 0)) { if (!live || TUNE.condLive > 0) continue; a = { min: p.now.min, pts: p.now.pts, reb: p.now.reb, ast: p.now.ast, fg3m: p.now.fg3m }; }
 const S = acc[p.pat.g];
 if (!S) continue;
 for (const s of PAT_LEARN) {
@@ -1378,6 +1422,10 @@ lastMin: ['players who played more than usual last game', 'players who played le
 loadS: ['starters on a team with a full bench tonight', 'starters on a short-handed team'], loadB: ['bench players on a team with a full bench tonight', 'bench players on a short-handed team'],
 loadBd: ['deep-bench players on a team with a full bench tonight', 'deep-bench players on a short-handed team'], loadBq: ['bench players in a crowded rotation', ''],
 favS: ['starters on a team expected to win big', ''], dogS: ['starters on a team expected to lose big', ''], dogB: ['bench players on a team expected to lose big', ''],
+aAll: ['players overall', 'players overall'], aS: ["tonight's starters", ''], aB: ['light-minute players', ''], aOn: ['players on the floor right now', ''], aPace: ['players getting more minutes than usual tonight', ''],
+aLop: ['players in a lopsided game', ''], aOwn: ['players the lineup news moved away from their usual minutes', 'players the lineup news moved away from their usual minutes'], aLong: ['players whose season-long minutes are higher than their recent ones', 'players whose season-long minutes are lower than their recent ones'],
+lopTier: ['heavy-minute players in a lopsided game', 'light-minute players in a lopsided game'], flagOff: ['regulars on the bench with the reserves finishing a decided game', ''], flagOn: ['reserves finishing a decided game', ''],
+deepLop: ['deep-bench players in a lopsided game', ''], stintLong: ['starters who have been on the floor a long stretch', 'starters who just checked back in'],
 mpgC: ['heavy-minute players', 'light-minute players'], fadeHist: ['players whose starts usually carry', 'players whose starts usually reverse'], leadProof: ['blowout-proof starters in a lopsided game', ''],
 };
 /** Lessons from graded games (learned patterns) and, live, how he's tracking vs his normal pace. */
@@ -1689,7 +1737,7 @@ const recent = hs.slice(-3);
 const tm = hs[hs.length - 1].team;
 if (tm !== v && tm !== h) continue;
 // deep bench: skipped unless tonight's posted active list has him (short-handed nights are when he plays)
-const deepIn = TUNE.actDeep > 0 && lineup.confirmed && availIn.has(+pid) && (st.phase === 'pre' || el <= 12.5);
+const deepIn = TUNE.actDeep > 0 && ((lineup.confirmed && availIn.has(+pid) && (st.phase === 'pre' || el <= 12.5)) || (TUNE.deepRep > 0 && st.phase === 'pre' && !lineup.confirmed));
 if (recent.reduce((a, r) => a + r.min, 0) / 3 < 6 && !deepIn) continue;
 // a game in progress: starters who haven't checked in early, and anyone by halftime, are out
 if (st.phase === 'live') {
@@ -1919,7 +1967,7 @@ const pfT = r.pfAt || [];
 const FR = { 2: [12, 18], 3: [24, 24], 4: [36, 39], 5: [42, 42] }; // foul # → [picked up before, rests until]
 let restEnd = 0, lvl = 0;
 for (const k of [5, 4, 3, 2]) {
-if (r.pf >= k && pfT.length >= k && pfT[k - 1] < FR[k][0] && el < FR[k][1]) { restEnd = FR[k][1]; lvl = k; break; }
+if (r.pf >= k && pfT.length >= k && pfT[k - 1] < FR[k][0] && (TUNE.foulEdge > 0 ? el <= FR[k][1] : el < FR[k][1])) { restEnd = FR[k][1]; lvl = k; break; }
 }
 const fr = TUNE.foulRest[lvl] || [1, 1];
 const fIn = restEnd > el ? (r.on ? fr[0] : fr[1]) : 1;
@@ -1945,9 +1993,11 @@ const sts = r.stints || [];
 const sitFor = r.on ? 0 : sts.length ? el - sts[sts.length - 1][1] : el;
 // a foul-trouble seat is the coach's normal foul rest, not a benching
 const pfAt = r.pfAt || [];
-const foulSit = restEnd > el && !r.on && sts.length && pfAt.length && sts[sts.length - 1][1] >= pfAt[pfAt.length - 1] - 0.1;
+const foulSit = (TUNE.foulEdge > 0 ? restEnd >= el && restEnd > 0 : restEnd > el) && !r.on && sts.length && pfAt.length && sts[sts.length - 1][1] >= pfAt[pfAt.length - 1] - 0.1;
 const missed = r.on || foulSit ? 0 : mean(rotG.map((x) => onBetween(x.st, el - sitFor, el)));
-const benched = TUNE.benchM50 > 0 ? 1 / (1 + Math.exp((missed - TUNE.benchM50) / TUNE.benchS)) : 1;
+// (tonight's reserves are exempt: their usual pattern often comes from games in another role, and measured they come back)
+const reserveTonight = TUNE.benchRes > 0 && startKnown && !startT.has(+r.pid);
+const benched = TUNE.benchM50 > 0 && !reserveTonight ? 1 / (1 + Math.exp((missed - TUNE.benchM50) / TUNE.benchS)) : 1;
 rPre *= tonight * benched; rQ4 *= tonight * benched;
 remCur = rPre; remMid = 0; q4 = rQ4;
 const stintLens = rotG.flatMap((x) => x.st.filter(([a, b]) => b <= 48).map(([a, b]) => b - a));
@@ -1995,7 +2045,12 @@ const sT = startKnown ? (startT.has(+r.pid) ? 1 : 0) : null;
 const lineupF = { startUp: sT === 1 ? (1 - startShare) * clamp((30 - mpg) / Math.max(mpg, 6), 0, 2.5) : 0, startDown: sT === 0 ? startShare : 0, fresh: !!r.fresh, deep: !!r.deep,
 lastMin: n >= 2 ? hs[n - 1].min - mpg : 0, rest3: rest3[tm], missShare: teamGames[tm] > 0 ? clamp(1 - n / teamGames[tm], 0, 1) : 0 };
 if (st.phase === 'pre' && sT === 0 && startShare >= 0.7 && mpg >= 20 && !forceIn.has(+r.pid)) doubt[r.pid] = doubt[r.pid] || 'usual starter, not in tonight\'s starting five';
-players.push({ lineupF, sT, startShare, sit, qRem, ratePM, usgBase: usg, p2fA: p2f, r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, mpgFlat, qavg, starter, n, rotInfo, lp, gl, zone, recent3: n ? mean(hs.slice(-3).map((x) => x.min)) : null });
+// long memory: his minutes over the whole season so far, with five games of last season mixed in (the recent window forgets)
+let longMin = null;
+{ const kN = norm(r.name), cs = cur[kN], ls = last[kN];
+if (cs && cs.gp >= 3 && cs.mpg > 0) longMin = ls && ls.gp >= 10 && ls.mpg > 0 ? (cs.mpg * cs.gp + 5 * ls.mpg) / (cs.gp + 5) : cs.mpg;
+else if (ls && ls.gp >= 10 && ls.mpg > 0) longMin = ls.mpg; }
+players.push({ longMin, lineupF, sT, startShare, sit, qRem, ratePM, usgBase: usg, p2fA: p2f, r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, mpgFlat, qavg, starter, n, rotInfo, lp, gl, zone, recent3: n ? mean(hs.slice(-3).map((x) => x.min)) : null });
 }
 
 // position groups of the missing players: their minutes go first to the same group (guards for guards)
@@ -2093,6 +2148,9 @@ if (st.phase === 'live' && el >= 3 && full > 0) tdF[tm].live = clamp(Math.log(Ma
 // both directions) is learned from finished games.
 const loadT = {};
 for (const tm of [v, h]) { let s = 0; for (const p of players) if (p.tm === tm) s += +p.mpg || 0; loadT[tm] = s / 240 - 1; }
+// the five on the floor right now, as their usual minutes (a bench unit out there late in a decided game = white flag)
+const unitT = {};
+for (const tm of [v, h]) { let s2 = 0, n2 = 0; for (const p of players) if (p.tm === tm && p.r.on) { s2 += +p.mpg || 0; n2++; } unitT[tm] = st.phase === 'live' && n2 >= 4 ? s2 / n2 : null; }
 // learned layer, pass 1: each player's features and his learned minutes factor
 const patOn = !!(o.patterns && TUNE.patW > 0);
 const patG = patGroup(st, lineup.confirmed);
@@ -2127,8 +2185,10 @@ foulTrouble: st.phase !== 'pre' && r.pf >= Math.min(st.period + 1, 5) && !(r.eje
 minTrack: p.rotInfo ? (r.min + 6) / (p.rotInfo.expSoFar + 6) : 1, fga: r.fga, fgm: r.fgm,
 startUp: p.lineupF.startUp, startDown: p.lineupF.startDown, fresh: p.lineupF.fresh, deep: p.lineupF.deep, lastMin: p.lineupF.lastMin, rest3: p.lineupF.rest3, missShare: p.lineupF.missShare,
 vacPos: posNeed[p.tm] && p.grp ? (posNeed[p.tm].min * (posNeed[p.tm][p.grp] || 0)) / 48 : 0,
-usgS: p.usgBase, lu, mg: (p.tm === v ? 1 : -1) * (st.vs - st.hs), on: !!r.on, dnp: !!r.dnpYet, sitting: !r.on && lastS0 ? el - lastS0[1] : 0, el, fade: p.sit ? p.sit.fade : null, d1, tdMkt: tdF[p.tm].mkt, tdLive: tdF[p.tm].live, load: loadT[p.tm], favBy: (p.tm === v ? 1 : -1) * expV48 });
-const Fm = patB.min && !(r.ejected || r.pf >= 6) ? patApply(patB.min, patX.min, TUNE.patCapMin, 0, TUNE.patCapMinUp > 0 ? TUNE.patCapMinUp : null) : { f: 1, z: 0, parts: null };
+usgS: p.usgBase, lu, mg: (p.tm === v ? 1 : -1) * (st.vs - st.hs), on: !!r.on, dnp: !!r.dnpYet, sitting: !r.on && lastS0 ? el - lastS0[1] : 0, el, fade: p.sit ? p.sit.fade : null, d1, tdMkt: tdF[p.tm].mkt, tdLive: tdF[p.tm].live, load: loadT[p.tm], favBy: (p.tm === v ? 1 : -1) * expV48,
+rem: mean(p.mins), left, sT: p.sT, longMin: p.longMin, unitMin: unitT[p.tm], minH1: r.qmin ? (r.qmin[1] || 0) + (r.qmin[2] || 0) : null,
+stint: r.on && lastS0 ? el - lastS0[0] : null });
+const Fm = patB.min && !(r.ejected || r.pf >= 6) ? patApply(patB.min, patX.min, st.phase === 'live' && el >= 36 && TUNE.patCapMinLate > 0 ? TUNE.patCapMinLate : TUNE.patCapMin, 0, TUNE.patCapMinUp > 0 ? TUNE.patCapMinUp : null) : { f: 1, z: 0, parts: null };
 p.lu = lu; p.pat = { g: patG, x: patX, F: { min: Fm } };
 p.minPlain = mean(p.mins);
 if (Fm.f !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i] * Fm.f);
@@ -2148,8 +2208,8 @@ if (patOn && patB.min) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 const amNow = Math.abs(st.vs - st.hs);
 const close = st.phase === 'live' ? 1 - clamp(Math.max(pBlow, (amNow - 8) / 15), 0, 1) : 1;
-const give = TUNE.refill * close;
-const cond = TUNE.condMin > 0 && st.phase === 'pre';
+const give = TUNE.refill * close * (patG === 'rep' && !(TUNE.refillRep > 0) ? 0 : 1);
+const cond = TUNE.condMin > 0 && (st.phase === 'pre' || TUNE.condLive > 0);
 if (cond) teamK[tm] = new Float64Array(N).fill(1);
 for (let i = 0; i < N; i++) {
 let tot = 0; for (const p of ps) tot += p.mins[i];
