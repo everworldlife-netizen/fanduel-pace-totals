@@ -54,6 +54,15 @@ Facts about the feeds worth knowing:
   18 and 3 minutes before the scheduled tip; real tips run about 10 minutes late). Players ruled out are left off the
   list. So before tip the app only has the injury report; from tip on it knows the active list and the starters.
 - New players have very large play-by-play ids (above 1,000,000,000). Never use an id range as a marker.
+- ESPN ADDS RULED-OUT PLAYERS TO A GAME'S BOX AFTER THE GAME (injury text, "NOT WITH TEAM", rest, suspension as the
+  did-not-play reason). While a game is on they are not in the box: checked live on Nov 10, 2026, 23 of 23 players
+  listed Out on the injury report were missing from 10 live or just-finished team boxes. Archived boxes of past
+  seasons carry 0.33 to 0.52 of them per team. So a "posted lineup" rebuilt from an archived box must leave them
+  out (`ruledOut` in `tools/replay.js`; the phone's `espnLists` in data.js does the same for the nightly learning).
+  Players who sat by coach's decision were dressed and stay on the list.
+- ESPN's live "did not play" flag only means "has not checked in yet": recorded on Nov 10 (`tools/espnwatch.js`,
+  `data/espn/livecheck/20261110.jsonl`), flagged players checked in later in the same game (three cases in three
+  games). It is NOT a sign that a player is out. Nothing to use there.
 
 ## Courtside tools
 

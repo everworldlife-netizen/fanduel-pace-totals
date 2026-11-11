@@ -95,6 +95,30 @@ for (const fx of FX) {
     }
     assert.ok(up + down > 0, 'no player has a role change flag in either game moment');
   });
+  test(`${tag}: tonight's team load and the expected margin (v16) reach the learned layer, by role`, () => {
+    const P = run(fx, 0);
+    const ix = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
+    for (const k of ['loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB']) assert.ok(ix[k] > 0, `missing input ${k}`);
+    const m = fx.base.market, home = fx.g.home_team.abbreviation;
+    for (const tm of [fx.g.visitor_team.abbreviation, home]) {
+      const ps = P.players.filter((p) => p.team === tm);
+      // one load per team: every starter carries it as loadS, everyone else as loadB
+      const loads = new Set(ps.map((p) => (p.starter ? p.pat.x.min[ix.loadS] : p.pat.x.min[ix.loadB]).toFixed(4)));
+      assert.strictEqual(loads.size, 1, `${tm}: players of one team carry different loads (${[...loads].join(', ')})`);
+      for (const p of ps) {
+        const x = p.pat.x.min;
+        if (p.starter) { assert.strictEqual(x[ix.loadB], 0); assert.strictEqual(x[ix.loadBd], 0); assert.strictEqual(x[ix.dogB], 0); }
+        else { assert.strictEqual(x[ix.loadS], 0); assert.strictEqual(x[ix.favS], 0); assert.strictEqual(x[ix.dogS], 0); }
+        assert.ok(!(x[ix.favS] > 0 && x[ix.dogS] > 0), `${p.name} is flagged on both sides of the spread`);
+      }
+      // with a spread past 4 points the favored side's starters carry favS and the other side's carry dogS
+      if (m && m.spreadHome != null && Math.abs(m.spreadHome) >= 6) {
+        const favored = (tm === home) === (m.spreadHome < 0);
+        const st = ps.filter((p) => p.starter);
+        assert.ok(st.every((p) => (favored ? p.pat.x.min[ix.favS] > 0 : p.pat.x.min[ix.dogS] > 0)), `${tm}: starters do not carry the ${favored ? 'favored' : 'trailing'} side of a ${m.spreadHome} spread`);
+      }
+    }
+  });
   test(`${tag}: before lineups are posted nobody carries a starter flag, and that moment is its own learning stage when switched on`, () => {
     const P = run(fx, 0, { avail: fx.availReport });
     const ix = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));

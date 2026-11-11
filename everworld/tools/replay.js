@@ -78,8 +78,15 @@ function momentAt(E, g, plays, el) {
 }
 
 /** ESPN's game box lists in the shape DB.availability() hands the engine once lineups are posted (tip-off). */
+/** ESPN adds players who were ruled out (injury, rest, suspension, not with team) to a game's box AFTER the game, with
+ * the reason. While a game is on they are not in the box at all (checked live on Nov 10, 2026: 23 of 23 players listed
+ * Out on the injury report were missing from the live boxes), so the phone never sees them on the posted list.
+ * Players who sat by coach's decision were dressed and are kept. Set LAB_LISTS=all for the old behaviour (everyone). */
+const ruledOut = (x) => process.env.LAB_LISTS !== 'all' && x.dnp && x.reason && !/COACH/i.test(x.reason);
 function availOf(it, mode = 'tip', hist = null) {
-  const v = it.g.visitor_team.abbreviation, h = it.g.home_team.abbreviation, lists = it.lists;
+  const v = it.g.visitor_team.abbreviation, h = it.g.home_team.abbreviation;
+  if (!it.lists) return null;
+  const lists = Object.fromEntries(Object.entries(it.lists).map(([tm, a]) => [tm, a.filter((x) => !ruledOut(x))]));
   if (!lists || ![v, h].every((tm) => lists[tm] && lists[tm].filter((x) => x.starter).length >= 5)) return null;
   if (mode === 'none') return null;
   if (mode === 'report') {

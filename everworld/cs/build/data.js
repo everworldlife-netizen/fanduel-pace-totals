@@ -286,13 +286,17 @@ if (teams.some((t) => t.abbr === v) && teams.some((t) => t.abbr === h)) return {
 return null;
 }
 /** Tonight's active lists from ESPN's game box (posted at tip-off): { ABBR: [{ name, starter, dnp }] }. */
+// After a game ESPN adds the players who were ruled out (injury, rest, suspension, not with team) to the box, with the
+// reason. They were never on the list while the game was on, so they are left off here too: the nightly learning then
+// replays a finished game with the same list the live app had. Players who sat by coach's decision were dressed and stay.
+const ruledOut = (x) => !!(x.dnp && x.reason && !/COACH/i.test(x.reason));
 async function espnLists(ev, ttl) {
 const j = await espnJSON(`${ESPN}/summary?event=${ev.id}`, ttl);
 const out = {};
 for (const t of (j && j.boxscore && j.boxscore.players) || []) {
 const tm = espnAbbr(t.team && t.team.abbreviation);
 const ath = (t.statistics && t.statistics[0] && t.statistics[0].athletes) || [];
-if (tm && ath.length) out[tm] = ath.map((x) => ({ name: (x.athlete && x.athlete.displayName) || '', starter: !!x.starter, dnp: !!x.didNotPlay })).filter((x) => x.name);
+if (tm && ath.length) out[tm] = ath.map((x) => ({ name: (x.athlete && x.athlete.displayName) || '', starter: !!x.starter, dnp: !!x.didNotPlay, reason: x.didNotPlay ? x.reason || '' : '' })).filter((x) => x.name && !ruledOut(x));
 }
 return out;
 }

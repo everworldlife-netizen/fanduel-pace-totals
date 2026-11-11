@@ -105,6 +105,11 @@ repGroup: 1, // learn "before lineups are posted" as its own stage (1) or share 
 patLamLineup: 0.1, // pull toward "no effect" for the lineup inputs, relative to the other inputs (1 = same; lower lets rare, strong signals through)
 condMin: 1, // before tip-off, player minutes stay "if he plays" numbers and the team total is scaled to five players' worth instead
 teamCal: 0, // apply the learned team check (TEAM_PRIOR) to team totals
+// v16: how crowded tonight's rotation is, and which side is expected to win big, as learned inputs
+loadIn: 1, loadMid: 0.06, // team load = the usual minutes of everyone available tonight, added up, vs the 240 a team can play; loadMid = a typical night
+favIn: 1, // expected winning margin by role (starters of a team expected to win or lose big, bench of a team expected to lose big)
+loadStats: 0, // 0 = the team load only teaches minutes (who plays), 1 = it also teaches points, rebounds, assists and threes
+ctxUntil: 33, // game minute from which the team load and expected margin sit out (by then the live score and rotation say more)
 };
 const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
@@ -673,7 +678,9 @@ const PAT_F = ['base', 'starter', 'bench', 'b2b', 'pace', 'blowout', 'roleTrend'
 // top-down team check: the books' line (or team ratings) and tonight's score so far vs what our player numbers add up to
 'tdMkt', 'tdLive',
 // tonight's lineup (v15): starting tonight vs his usual role, back from a layoff, deep bench, minutes freed at his position, last game's minutes, rest, games missed
-'startUp', 'startDown', 'fresh', 'deep', 'vacPos', 'lastMin', 'rest3', 'missShare'];
+'startUp', 'startDown', 'fresh', 'deep', 'vacPos', 'lastMin', 'rest3', 'missShare',
+// tonight's crowd (v16): how over- or under-booked the team's minutes are (full bench vs short-handed), by role; and the expected margin by role
+'loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB'];
 const PAT_D = PAT_F.length;
 const PAT_IX = Object.fromEntries(PAT_F.map((k, i) => [k, i]));
 // How hard each input is pulled toward "no effect" when the lessons are solved, relative to the others (1 = the usual pull).
@@ -706,6 +713,15 @@ b[PAT_IX.startUp] = clamp(f.startUp || 0, 0, 2.5); b[PAT_IX.startDown] = clamp(f
 b[PAT_IX.fresh] = f.fresh ? 1 : 0; b[PAT_IX.deep] = f.deep ? 1 : 0;
 b[PAT_IX.vacPos] = clamp(f.vacPos || 0, 0, 2); b[PAT_IX.lastMin] = clamp((f.lastMin || 0) / 10, -2, 2);
 b[PAT_IX.rest3] = f.rest3 ? 1 : 0; b[PAT_IX.missShare] = clamp(f.missShare || 0, 0, 1);
+// team load: 0 = a typical night, +1 = the usual minutes of tonight's available players add up to 24 more than usual
+// (everyone is back: a crowded rotation), -1 = 24 fewer (short-handed)
+const ctxOn = !live || !(TUNE.ctxUntil > 0) || f.el < TUNE.ctxUntil;
+const ld = TUNE.loadIn > 0 && ctxOn && f.load != null ? clamp((f.load - TUNE.loadMid) / 0.1, -2.5, 2.5) : 0;
+b[PAT_IX.loadS] = f.starter ? ld : 0; b[PAT_IX.loadB] = f.starter ? 0 : ld; b[PAT_IX.loadBd] = f.starter ? 0 : ld * clamp((18 - f.mpg) / 8, 0, 1.5);
+b[PAT_IX.loadBq] = f.starter ? 0 : (Math.max(ld, 0) * Math.max(ld, 0)) / 2.5;
+// expected margin before tip-off (books' spread, or team ratings): past 4 points it starts to cost starters minutes
+const fv = TUNE.favIn > 0 && ctxOn ? f.favBy || 0 : 0;
+b[PAT_IX.favS] = f.starter ? clamp((fv - 4) / 6, 0, 2) : 0; b[PAT_IX.dogS] = f.starter ? clamp((-fv - 4) / 6, 0, 2) : 0; b[PAT_IX.dogB] = f.starter ? 0 : clamp((-fv - 4) / 6, 0, 2);
 if (live) {
 const mg = f.mg || 0, am = Math.abs(mg);
 b[12] = f.foulTrouble ? 1 : 0;
@@ -734,6 +750,7 @@ b[PAT_IX.tdLive] = f.tdLive || 0;
 for (const s of PAT_LEARN) {
 const x = b.slice();
 if (s === 'min') { x[PAT_IX.tdMkt] = 0; x[PAT_IX.tdLive] = 0; } // a team's scoring level says nothing about who plays
+else if (!(TUNE.loadStats > 0)) { x[PAT_IX.loadS] = 0; x[PAT_IX.loadB] = 0; x[PAT_IX.loadBd] = 0; x[PAT_IX.loadBq] = 0; } // and how crowded the rotation is only says who plays
 if (live) {
 const k = s === 'min' ? 'pts' : s;
 const exp = f.ratePM[k] * f.min;
@@ -1348,6 +1365,9 @@ pfX: ['players with more fouls than usual by now', 'players with fewer fouls tha
 startUp: ['players who start tonight after coming off the bench', ''], startDown: ['usual starters left out of tonight\'s starting five', ''],
 fresh: ['players back from a layoff', ''], deep: ['deep-bench players on a short-handed night', ''], vacPos: ['players whose position is short-handed tonight', ''],
 lastMin: ['players who played more than usual last game', 'players who played less than usual last game'], rest3: ['teams coming off three or more days of rest', ''], missShare: ['players who have missed recent games', ''],
+loadS: ['starters on a team with a full bench tonight', 'starters on a short-handed team'], loadB: ['bench players on a team with a full bench tonight', 'bench players on a short-handed team'],
+loadBd: ['deep-bench players on a team with a full bench tonight', 'deep-bench players on a short-handed team'], loadBq: ['bench players in a crowded rotation', ''],
+favS: ['starters on a team expected to win big', ''], dogS: ['starters on a team expected to lose big', ''], dogB: ['bench players on a team expected to lose big', ''],
 mpgC: ['heavy-minute players', 'light-minute players'], fadeHist: ['players whose starts usually carry', 'players whose starts usually reverse'], leadProof: ['blowout-proof starters in a lopsided game', ''],
 };
 /** Lessons from graded games (learned patterns) and, live, how he's tracking vs his normal pace. */
@@ -1740,9 +1760,10 @@ const mQ3 = new Float64Array(N);
 // team strength drift (visitor perspective): net-rating gap minus home court, over the minutes to Q3
 const marginModel = ((ctx[v].net - ctx[h].net) / 100) * seasonPace - TUNE.homeAdv; // visitor, per 48
 const marginMkt = mk && mk.spreadHome != null ? mk.spreadHome : null; // home +7.5 → visitor by 7.5
-const drift = (marginMkt != null && TUNE.mktSpreadW > 0
+const expV48 = marginMkt != null && TUNE.mktSpreadW > 0
 ? (1 - TUNE.mktSpreadW) * TUNE.drift * marginModel + TUNE.mktSpreadW * marginMkt
-: TUNE.drift * marginModel) * (toQ3 / 48);
+: TUNE.drift * marginModel; // visitor's expected winning margin over a full game, as seen before tip-off
+const drift = expV48 * (toQ3 / 48);
 for (let i = 0; i < N; i++) mQ3[i] = marginNow + drift + R.normal(0, st.phase === 'pre' ? TUNE.preQ3Sd : TUNE.marginK * Math.sqrt(Math.max(toQ3, 0.01)));
 let pBlow = 0, pBig = 0;
 for (let i = 0; i < N; i++) { const a = Math.abs(mQ3[i]); if (a >= 20) pBlow++; if (a >= 15) pBig++; }
@@ -2037,6 +2058,12 @@ const ptsNow = tm === v ? st.vs : st.hs;
 if (st.phase === 'live' && el >= 3 && full > 0) tdF[tm].live = clamp(Math.log(Math.max(ptsNow, 1) / ((full * el) / 48)) * 5 * (el / (el + 12)), -2, 2);
 }
 }
+// team load: the usual minutes of everyone available tonight, added up, against the 240 a team can play. When players
+// are out it falls short of 240, when everyone is back it runs well past it. The simulation shares the difference out
+// by its own rules; who really absorbs it (measured on 1,199 unseen games: the regular bench far less than assumed, in
+// both directions) is learned from finished games.
+const loadT = {};
+for (const tm of [v, h]) { let s = 0; for (const p of players) if (p.tm === tm) s += p.mpg || 0; loadT[tm] = s / 240 - 1; }
 // learned layer, pass 1: each player's features and his learned minutes factor
 const patOn = !!(o.patterns && TUNE.patW > 0);
 const patG = patGroup(st, lineup.confirmed);
@@ -2071,7 +2098,7 @@ foulTrouble: st.phase !== 'pre' && r.pf >= Math.min(st.period + 1, 5) && !(r.eje
 minTrack: p.rotInfo ? (r.min + 6) / (p.rotInfo.expSoFar + 6) : 1, fga: r.fga, fgm: r.fgm,
 startUp: p.lineupF.startUp, startDown: p.lineupF.startDown, fresh: p.lineupF.fresh, deep: p.lineupF.deep, lastMin: p.lineupF.lastMin, rest3: p.lineupF.rest3, missShare: p.lineupF.missShare,
 vacPos: posNeed[p.tm] && p.grp ? (posNeed[p.tm].min * (posNeed[p.tm][p.grp] || 0)) / 48 : 0,
-usgS: p.usgBase, lu, mg: (p.tm === v ? 1 : -1) * (st.vs - st.hs), on: !!r.on, dnp: !!r.dnpYet, sitting: !r.on && lastS0 ? el - lastS0[1] : 0, el, fade: p.sit ? p.sit.fade : null, d1, tdMkt: tdF[p.tm].mkt, tdLive: tdF[p.tm].live });
+usgS: p.usgBase, lu, mg: (p.tm === v ? 1 : -1) * (st.vs - st.hs), on: !!r.on, dnp: !!r.dnpYet, sitting: !r.on && lastS0 ? el - lastS0[1] : 0, el, fade: p.sit ? p.sit.fade : null, d1, tdMkt: tdF[p.tm].mkt, tdLive: tdF[p.tm].live, load: loadT[p.tm], favBy: (p.tm === v ? 1 : -1) * expV48 });
 const Fm = patB.min && !(r.ejected || r.pf >= 6) ? patApply(patB.min, patX.min, TUNE.patCapMin, 0, TUNE.patCapMinUp > 0 ? TUNE.patCapMinUp : null) : { f: 1, z: 0, parts: null };
 p.lu = lu; p.pat = { g: patG, x: patX, F: { min: Fm } };
 p.minPlain = mean(p.mins);
