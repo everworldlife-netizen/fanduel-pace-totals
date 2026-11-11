@@ -210,10 +210,15 @@ plays" on minutes that partly existed to make up for listed players who were nev
 
 How the missing context was found: `node tools/ctxcheck.js --dump <bt2 --dump rows>` regresses what is left of the
 miss on schedule, travel, spread and total situations (unit = one team in one game). On 1,199 unseen games:
-- NO real signal: back-to-backs by travel, 3 games in 4 nights, 4 in 6, altitude, time zones, early tips, road
-  trips, home stands, rest edge (all inside what luck gives for 230 checks, once the two items below are in).
-- The books' total looked strong (minutes +0.7 per player per 10 points of total, z 9.5) but it was standing in for
-  who is available: it vanishes (z 0.3) once the team load is in.
+- NO real signal (never beyond about ±3 on 230 checks, where luck alone gives one): altitude, time zones, early
+  tips, road trips, home stands, rest edge over the other team, 3 games in 4 nights, 4 in 6.
+- Still there AFTER v16, on the unseen season (`data/runs/ctx-v16b.rows.json.gz`): players of a team that is a
+  10+ point dog play 0.75 minutes less than the number (z -5.2; starters -0.9). The lesson for it learned on 2023-25
+  was near zero, so it is a 2025-26 thing so far: watch it, the nightly learning will pick it up if it lasts. Games
+  with a total of 238+: +0.5 minutes (z 4.4). Bench players on a back-to-back: -0.6 minutes (z -3.4). Very crowded
+  rotations (load past 300): the regular bench still plays 2 minutes more than the number (101 team-games).
+- The books' total looked strong (minutes +0.7 per player per 10 points of total, z 9.5) but it was mostly standing
+  in for who is available: in a joint fit with the load its weight falls to z 0.3 (the smaller leftover is above).
 - TEAM LOAD is real and large. Load = the usual minutes of everyone available tonight, added up, against 240
   (5th to 95th percentile: 200 to 300 minutes). The simulation shares minutes out by its own rules; reality differs
   a lot for the bench. Regular bench players (18 to 24 minutes a game): when the load was 300+ the plain engine gave
@@ -222,6 +227,7 @@ miss on schedule, travel, spread and total situations (unit = one team in one ga
 - EXPECTED MARGIN by role is real but small: starters of a team favored by 10 play about a minute less than the
   number (z -5.7), starters of a 10-point dog too (z -3.7), the dog's bench more (z 6.7).
 
+"v16" is only the lab's name for this step: it ships inside app version 15 (nothing was published in between).
 v16 inputs (PAT_F is 49 long): `loadS`, `loadB`, `loadBd`, `loadBq` (load by role, deeper bench, and a curved term)
 and `favS`, `dogS`, `dogB`. Switches: `loadIn` 1, `loadMid` 0.06, `favIn` 1, `loadStats` 0 (the load teaches
 minutes only), `ctxUntil` 33 (both sit out from 33 minutes in).

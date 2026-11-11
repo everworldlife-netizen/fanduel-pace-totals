@@ -95,7 +95,7 @@ for (const fx of FX) {
     }
     assert.ok(up + down > 0, 'no player has a role change flag in either game moment');
   });
-  test(`${tag}: tonight's team load and the expected margin (v16) reach the learned layer, by role`, () => {
+  test(`${tag}: tonight's team load and the expected margin reach the learned layer, by role`, () => {
     const P = run(fx, 0);
     const ix = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
     for (const k of ['loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB']) assert.ok(ix[k] > 0, `missing input ${k}`);
@@ -142,7 +142,10 @@ for (const fx of FX) {
     // the old border between the 6- and 12-minute lessons. The game itself moves in those 12 seconds (the pace
     // estimate drifts, the simulation re-rolls), so the lessons' share of the change is what is checked: the change
     // with lessons minus the change without them. With a hard switch at the border that share was about 2 minutes.
-    const a = run(fx, 8.9), b = run(fx, 9.1), a0 = run(fx, 8.9, { patterns: null }), b0 = run(fx, 9.1, { patterns: null });
+    // (the refill rule hands minutes to teammates above a fixed cut-off, a jump of its own: switched off here so only the blend is measured)
+    const refill0 = E.TUNE.refill; E.TUNE.refill = 0;
+    let a, b, a0, b0;
+    try { a = run(fx, 8.9); b = run(fx, 9.1); a0 = run(fx, 8.9, { patterns: null }); b0 = run(fx, 9.1, { patterns: null }); } finally { E.TUNE.refill = refill0; }
     const big = a.players.filter((p) => p.mean.min >= 20);
     let n = 0;
     for (const p of big) {

@@ -1,0 +1,4 @@
+pass 1 (minutes): 3709 games, 307s
+pass 2 (stats): 628s
+pass 3 (calibration): 949s
+lessons from 3709 games → data/lessons/C3-v16b.json

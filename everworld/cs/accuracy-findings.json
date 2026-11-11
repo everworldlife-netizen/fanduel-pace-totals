@@ -1,10 +1,11 @@
 [
- "Tonight's starting five is now inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged. On 1,199 of last season's games that the lessons never saw, minutes at tip-off landed 10% closer and points 2.8% closer.",
- "The first quarter was the app's blind spot: 6 to 9 minutes in, it projected minutes worse than at tip-off. Minutes now land 7 to 11% closer there, points about 2% closer, and the final score 4 to 5% closer at 6 minutes in and at the end of Q1 (same 1,199 games).",
- "Between checkpoints the app now blends the lessons of the two nearest stages instead of jumping from one to the next. At 15 minutes in, minutes landed 8% closer and points 1% closer (400 unseen games).",
+ "Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged. On 1,199 of last season's games that the lessons never saw, minutes at tip-off landed 19% closer and points 4% closer than the app as it was.",
+ "New context: how crowded tonight's rotation is. When several players are out, or everyone is back, minutes are not shared out evenly: the regular bench keeps most of its minutes on a crowded night and picks up less than an even split on a short-handed one. Learned from finished games, this alone brought minutes 4% closer at tip-off and 6% closer before lineups post (same 1,199 games).",
+ "The first quarter was the app's blind spot. Six to nine minutes in, minutes now land 10 to 14% closer and points 2 to 3% closer (same 1,199 games).",
+ "Between checkpoints the app blends the lessons of the two nearest stages instead of jumping from one to the next. At 15 minutes in, minutes landed 8% closer and points 1% closer (400 unseen games).",
  "About one player a game who went on to play 10+ minutes had no number at tip-off: deep-bench players on short-handed nights and players back from a layoff. They now get one as soon as lineups post.",
- "Before tip-off each player's number answers 'what if he plays', because a pick on a player who sits is no action. The game score is scaled to the minutes a team can really play, so a long active list no longer inflates it.",
- "Stated chances got truer where the test is big enough to tell: on those 1,199 games, a chance stated as 65% at tip-off came in 64% of the time and one stated as 85% came in 85% (before: 68% and 88%). On this season's 123 games the table above shows them within 2 to 3 points.",
- "From halftime on the gain is small (about 0.3% on points). Before lineups are posted nothing moved: the app only has the injury report then, and that number is still at the limit luck allows.",
- "The lessons built into the app now come from 3,709 games across four seasons: every final through Nov 9 (1,314 before). Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."
+ "Before tip-off each player's number answers 'what if he plays', because a pick on a player who sits is no action. The game score is scaled to the minutes a team can really play. Final score at tip-off: 6.6% closer on those 1,199 games.",
+ "The test got stricter too: each past game is replayed with exactly the list the phone sees at tip-off (players already ruled out are not on it), for the old app and the new one alike.",
+ "From halftime on the gain is small (0.3% on points at halftime), and in the last six minutes nothing moved: by then the game itself tells most of the story.",
+ "The lessons built into the app come from 3,709 games across four seasons: every final through Nov 9 (1,314 before). Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."
 ]
