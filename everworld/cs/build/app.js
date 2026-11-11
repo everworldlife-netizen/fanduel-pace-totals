@@ -388,6 +388,7 @@ const stale = () => gen !== refreshGen || day !== state.date;
 state.busy = true; setSpinning(true);
 try {
 const rows = await DB.slate(day, 2500);
+state.booted = true; // the first slate has answered: from here an empty board really means no games
 if (stale()) return;
 state.slate = rows; state.lastUpdate = Date.now();
 render();
@@ -619,7 +620,7 @@ let html = `<div class="datebar">
 <div class="label">${dayLabel()}</div>
 <button class="icon-btn" data-act="day" data-d="1" aria-label="Next day">${ICON.next}</button></div>`;
 html += progressHTML();
-if (!state.slate.length) return html + (state.busy ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div><div class="skeleton"></div></div>' : emptyHTML('No games on the board', 'Try another day with the arrows above.'));
+if (!state.slate.length) return html + (state.busy || !state.booted ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div><div class="skeleton"></div></div>' : emptyHTML('No games on the board', 'Try another day with the arrows above.'));
 const sec = (title, arr) => (arr.length ? `<div class="section-title">${title}<span class="count">${arr.length}</span></div><div class="stack">${arr.map(gameCard).join('')}</div>` : '');
 html += sec('🔴 LIVE NOW', groups.live) + sec('⏰ UP NEXT', groups.pre) + sec('🏁 FINAL', groups.final);
 html += `<div class="updated">Updated ${new Date(state.lastUpdate || Date.now()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })} · live games update on every new play</div>`;

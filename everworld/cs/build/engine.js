@@ -110,6 +110,7 @@ loadIn: 1, loadMid: 0.06, // team load = the usual minutes of everyone available
 favIn: 1, // expected winning margin by role (starters of a team expected to win or lose big, bench of a team expected to lose big)
 loadStats: 0, // 0 = the team load only teaches minutes (who plays), 1 = it also teaches points, rebounds, assists and threes
 ctxUntil: 33, // game minute from which the team load and expected margin sit out (by then the live score and rotation say more)
+refillSoft: 0, // refill eligibility: 0 = fixed cut-off, 1 = smooth ramp (no jumps when a factor sits at the cut-off)
 };
 const addDaysStr = (s, n) => { const d = new Date(String(s).slice(0, 10) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const BENCH_RATE = { pts: 0.4, reb: 0.17, ast: 0.09, fg3m: 0.04 };
@@ -2109,6 +2110,10 @@ if (Fm.f !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i]
 // action on a pick. Those minutes can add up to more than a team has, so before tip-off they are left as they are and the
 // TEAM total is scaled to five players' worth of minutes instead (v15). Once the game is on, minutes are squeezed as before.
 const teamK = { [v]: null, [h]: null };
+// who takes the refill: teammates the layer did not cut. refillSoft 0 = the old fixed cut-off (a factor of 0.97 or more, all
+// or nothing: a player sitting right at it flipped in and out, and his number jumped about a point with nothing happening);
+// 1 = a ramp from 0.90 to 1.00
+const refillW = (p) => (p.r.ejected || p.r.pf >= 6 ? 0 : TUNE.refillSoft > 0 ? clamp((p.pat.F.min.f - 0.9) / 0.1, 0, 1) : p.pat.F.min.f >= 0.97 ? 1 : 0);
 if (patOn && patB.min) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 const amNow = Math.abs(st.vs - st.hs);
@@ -2122,8 +2127,8 @@ if (tot > 5 * left && tot > 0) { const k = (5 * left) / tot; if (cond) teamK[tm]
 else if (give > 0 && tot < 5 * left) {
 // close game: minutes taken from one player are played by his teammates (those the layer did not cut)
 let room = 0;
-for (const p of ps) if (p.pat.F.min.f >= 0.97 && !(p.r.ejected || p.r.pf >= 6)) room += p.mins[i] * Math.max(left - p.mins[i], 0);
-if (room > 0) { const add = give * (5 * left - tot); for (const p of ps) if (p.pat.F.min.f >= 0.97 && !(p.r.ejected || p.r.pf >= 6)) p.mins[i] = Math.min(left, p.mins[i] + (add * p.mins[i] * Math.max(left - p.mins[i], 0)) / room); }
+for (const p of ps) { const w = refillW(p); if (w > 0) room += w * p.mins[i] * Math.max(left - p.mins[i], 0); }
+if (room > 0) { const add = give * (5 * left - tot); for (const p of ps) { const w = refillW(p); if (w > 0) p.mins[i] = Math.min(left, p.mins[i] + (add * w * p.mins[i] * Math.max(left - p.mins[i], 0)) / room); } }
 }
 }
 }

@@ -59,6 +59,8 @@ async function check(name, url, waitFor) {
 const csWait = async (page) => {
   // the games tab lists tonight's games (team badges) once the slate has loaded
   await page.goto(page.url().split('#')[0] + '#/games');
+  // team badges mean the slate is up. "No games" only counts once it has stayed for 15 seconds (just after midnight ET the app first checks last night's late games)
+  await page.waitForFunction(() => document.querySelectorAll('#view .badge').length >= 2, null, { timeout: 15000 }).catch(() => {});
   await page.waitForFunction(() => document.querySelectorAll('#view .badge').length >= 2 || /No games/i.test(document.getElementById('view').innerText), null, { timeout: 90000 });
   const n = await page.evaluate(() => document.querySelectorAll('#view .badge').length / 2);
   const sw = await page.evaluate(() => fetch('sw.js').then((r) => r.text()).then((t) => (t.match(/ca-shell-v\d+/) || [''])[0]).catch(() => ''));
