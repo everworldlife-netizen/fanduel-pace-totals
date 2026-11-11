@@ -1,0 +1,11 @@
+'use strict';
+const L = require('../lib');
+const rows = L.readJSON(L.ROOT + '/data/runs/research-2026.rows.json.gz');
+console.log(rows.length);
+const byG = {};
+for (const r of rows) byG[r.g || (r.un ? 'un' : 'null')] = (byG[r.g || (r.un ? 'un' : 'null')] || 0) + 1;
+console.log(byG);
+const one = rows.filter((r) => r.id === rows[0].id && r.pid === rows[0].pid);
+for (const r of one) console.log(JSON.stringify(r));
+const t = rows.filter((r) => r.id === rows[0].id && r.g === 's6' && r.tm === rows[0].tm);
+for (const r of t) console.log(r.nm, r.st, r.sT, r.mpg, r.now[0], r.mn[0], r.pr[0], r.mp, r.on, r.dnp, r.pf, r.ac && r.ac[0]);

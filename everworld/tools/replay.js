@@ -261,7 +261,13 @@ function score(E, proj, it, A, dump) {
     if (dump) dump.push({ id: g.id, d: g.date, el: proj.state.elapsed, pid: +p.pid, nm: p.name, tm: p.team, st: p.starter ? 1 : 0, now: [p.now.min, p.now.pts, p.now.reb, p.now.ast, p.now.fg3m].map((x) => +(+x).toFixed(2)),
       pr: [p.proj.min, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.fg3m].map((x) => +(+x).toFixed(2)), mn: [p.mean.min, p.mean.pts, p.mean.reb, p.mean.ast, p.mean.fg3m].map((x) => +(+x).toFixed(2)),
       md: p.mid ? [p.mid.pts, p.mid.reb, p.mid.ast, p.mid.fg3m].map((x) => +(+x).toFixed(2)) : null, g: proj.patG || null,
-      mp: +(+p.minPlain).toFixed(2), mpg: +(+p.mpg).toFixed(2), gms: p.games, ac: act ? [act.min, act.pts, act.reb, act.ast, act.fg3m] : null });
+      mp: +(+p.minPlain).toFixed(2), mpg: +(+p.mpg).toFixed(2), gms: p.games, ac: act ? [act.min, act.pts, act.reb, act.ast, act.fg3m] : null,
+      // extras for research: opponent, starts tonight (1/0/null), usual usage, per-minute rates the engine used, home flag
+      opp: p.opp, sT: p.startsTonight == null ? null : p.startsTonight, usg: p.usgBase != null ? +(+p.usgBase).toFixed(4) : null, rpm: p.ratePM ? [p.ratePM.pts, p.ratePM.reb, p.ratePM.ast].map((x) => (x == null ? null : +(+x).toFixed(4))) : null, hm: p.team === g.home_team.abbreviation ? 1 : 0, fr: p.fresh ? 1 : 0, dp: p.deep ? 1 : 0,
+      // state of the game at this moment: his fouls, on the floor, not checked in, his team's lead, period, the engine's blowout chance
+      pf: p.now.pf || 0, on: p.on ? 1 : 0, dnp: p.dnpYet ? 1 : 0, mg: (p.team === proj.state.v ? 1 : -1) * ((proj.state.vs || 0) - (proj.state.hs || 0)), per: proj.state.period || 0, pB: proj.blowout ? +(+proj.blowout.pBlow).toFixed(3) : null,
+      // the learned layer's inputs for minutes at this moment (names: E.PAT_F), and its minutes factor
+      x: p.pat && p.pat.x && p.pat.x.min ? p.pat.x.min.map((v) => +(+v).toFixed(2)) : null, fm: p.pat && p.pat.F && p.pat.F.min ? +(+p.pat.F.min.f).toFixed(3) : null });
   }
   for (const [pid, a] of Object.entries(rows)) {
     if (seen.has(+pid) || !(a.min >= 10)) continue;
