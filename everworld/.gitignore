@@ -1,0 +1,16 @@
+# test-time libraries: run `npm install` in nm/
+nm/node_modules/
+# the data cache is rebuilt with the fetch tools (see NOTES.md); only the compact game files and learned lessons are kept
+data/*
+!data/derived/
+!data/lessons/
+data/derived/sitprior-*.json.gz
+data/lessons/*.tmp.json
+data/lessons/*.gz
+# images are not needed for comparisons
+baseline/**/icons/
+baseline/**/screens/
+gg/static/screens/
+# these two came down from the Space as LFS pointer stubs, not real images (they are never changed here)
+gg/static/icons/icon-512.png
+gg/static/icons/maskable-512.png

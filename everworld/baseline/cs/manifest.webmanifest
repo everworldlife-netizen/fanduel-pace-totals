@@ -1,0 +1,22 @@
+{
+  "name": "Courtside Arcade",
+  "short_name": "Courtside",
+  "description": "Live NBA player projections and plus-edge picks from DataBallr data.",
+  "id": "./",
+  "start_url": "./#/edges",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0e0820",
+  "theme_color": "#0e0820",
+  "categories": ["sports"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Best plus edges", "url": "./#/edges" },
+    { "name": "Combo tickets", "url": "./#/combos" }
+  ]
+}

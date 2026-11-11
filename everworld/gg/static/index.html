@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#061019" />
+  <meta name="description" content="GG Winner — live FanDuel eBasketball (H2H GG League) projections: game, 1st half, quarter and team totals vs the live line, in plain English." />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="GG Winner" />
+  <title>GG Winner</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand-wrap">
+        <div class="gg-mark" aria-hidden="true"><span>G<b>G</b></span></div>
+        <div class="brand-text">
+          <div class="brand">GG <span>WINNER</span></div>
+          <div class="subbrand">Live Totals · H2H GG</div>
+        </div>
+      </div>
+      <div class="status-cluster">
+        <span id="feedBadge" class="live-pill off"><i></i><b>—</b></span>
+        <button id="installBtn" class="icon-button install-btn hidden" type="button" title="Install app" aria-label="Install GG Winner">⇩</button>
+        <button id="helpBtn" class="icon-button" type="button" title="How it works" aria-label="How it works">?</button>
+        <button id="settingsBtn" class="icon-button" type="button" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Views">
+      <button type="button" data-view="board" class="active">Board</button>
+      <button type="button" data-view="players">Players</button>
+      <button type="button" data-view="game">Game</button>
+      <button type="button" data-view="lab">Lab</button>
+      <button type="button" data-view="results">Results</button>
+      <button type="button" data-view="leagues">Leagues</button>
+      <span class="tab-ink" id="tabInk"></span>
+    </nav>
+
+    <main class="views" id="views">
+      <!-- BOARD -->
+      <section class="view" id="view-board" data-view="board">
+        <div id="installCard" class="install-card hidden">
+          <div class="gg-mark"><span>G<b>G</b></span></div>
+          <div class="ic-text"><b>Install GG Winner on your phone</b><span>Full-screen, one tap from your home screen, live numbers every few seconds.</span></div>
+          <div class="ic-actions"><button type="button" class="ghost-btn" id="installLater">Later</button><button type="button" class="cta" id="installGo">Install</button></div>
+        </div>
+        <div id="alertWrap" class="alert-wrap"></div>
+        <div class="hud-head">
+          <div>
+            <p class="eyebrow"><span class="dot-live"></span>FOCUS NOW</p>
+            <h2>Best spots on the board</h2>
+          </div>
+          <button class="ghost-btn" id="refreshBtn" type="button" aria-label="Refresh">↻ <span id="updatedAgo">now</span></button>
+        </div>
+        <div id="picks" class="picks-rail"></div>
+
+        <div class="legend">
+          <span><i class="sw over"></i>Plus edge: our number is ahead of FanDuel’s line</span>
+          <span><b>EDGE</b> = how many points GG is ahead of the line</span>
+        </div>
+
+        <div class="hud-head">
+          <div>
+            <p class="eyebrow">LIVE BOARD</p>
+            <h2>In-play eBasketball <span class="count" id="liveCount">0</span></h2>
+          </div>
+          <div class="seg" id="boardFilter">
+            <button type="button" data-f="all" class="active">All</button>
+            <button type="button" data-f="calls">Calls</button>
+            <button type="button" data-f="live">Live</button>
+          </div>
+        </div>
+        <div id="liveList" class="match-grid">
+          <div class="skeleton tall"></div><div class="skeleton tall"></div>
+        </div>
+
+        <div class="hud-head">
+          <div>
+            <p class="eyebrow">COMING UP · 75 MIN</p>
+            <h2>Pre-game check <span class="count" id="upCount">0</span> <span class="hi-count hidden" id="upHiCount"></span></h2>
+          </div>
+        </div>
+        <div id="upList" class="up-list"></div>
+        <p class="footnote" id="modelNote"></p>
+      </section>
+
+      <!-- PLAYERS -->
+      <section class="view hidden" id="view-players" data-view="players">
+        <div class="hud-head">
+          <div>
+            <p class="eyebrow">PLAYER PROFILES</p>
+            <h2>Who scores fastest</h2>
+          </div>
+        </div>
+        <div class="seg seg-wide" id="pfSort">
+          <button type="button" data-sort="fast" class="active">Fastest</button>
+          <button type="button" data-sort="hot">Hot now</button>
+          <button type="button" data-sort="total">High totals</button>
+          <button type="button" data-sort="n">Most games</button>
+        </div>
+        <label class="search"><span>⌕</span><input id="pfSearch" type="search" placeholder="Search a gamer" /></label>
+        <div id="pfList" class="pf-list"><div class="skeleton tall"></div></div>
+        <p class="footnote" id="pfNote"></p>
+      </section>
+
+      <!-- GAME -->
+      <section class="view hidden" id="view-game" data-view="game">
+        <div id="gameEmpty" class="empty-state">
+          <div class="empty-orb"><div class="gg-mark big"><span>G<b>G</b></span></div></div>
+          <h2>Pick a game from the board</h2>
+          <p>Tap any live match to see our projection for the game, 1st half, current quarter and team totals against FanDuel’s live lines.</p>
+          <button class="cta" type="button" data-view-go="board">Open the board</button>
+        </div>
+        <div id="gameDetail" class="hidden">
+          <div id="scoreHero" class="score-hero"></div>
+          <div id="callHero"></div>
+          <div class="seg seg-wide" id="marketTabs"></div>
+          <div id="marketPanel"></div>
+          <div class="detail-grid">
+            <article class="card pad" id="whyCard"></article>
+            <article class="card pad" id="h2hCard"></article>
+          </div>
+          <div class="detail-grid" id="gamerCards"></div>
+        </div>
+      </section>
+
+      <!-- LAB -->
+      <section class="view hidden" id="view-lab" data-view="lab">
+        <article class="card pad lab-card">
+          <div class="hud-head tight">
+            <div>
+              <p class="eyebrow">MATCHUP LAB</p>
+              <h2>Your 60-second pre-game check</h2>
+              <p class="lab-sub">Pick two gamers, add FanDuel’s lines, and we’ll tell you if there’s a plus edge.</p>
+            </div>
+          </div>
+          <form id="labForm" autocomplete="off">
+            <div class="vs-picker">
+              <label class="slot"><span>Gamer A</span><input id="labA" list="playerList" placeholder="GENERAL" required /></label>
+              <div class="vs-badge">VS</div>
+              <label class="slot"><span>Gamer B</span><input id="labB" list="playerList" placeholder="SILVER" required /></label>
+            </div>
+            <div class="lab-lines">
+              <label><span>FanDuel game total</span><input id="labLine" inputmode="decimal" placeholder="Type the line" /></label>
+              <label><span>FanDuel 1st half</span><input id="labHalf" inputmode="decimal" placeholder="Type the line" /></label>
+            </div>
+            <button class="cta full" type="submit">Run the numbers</button>
+          </form>
+          <datalist id="playerList"></datalist>
+          <div id="labOut"></div>
+        </article>
+        <article class="card pad">
+          <div class="hud-head tight">
+            <div>
+              <p class="eyebrow">ROSTER</p>
+              <h2>Gamer scoring profiles</h2>
+            </div>
+          </div>
+          <div class="seg seg-wide" id="playerSort">
+            <button type="button" data-sort="n" class="active">Most games</button>
+            <button type="button" data-sort="vsAvgTotal">High scoring</button>
+            <button type="button" data-sort="low">Low scoring</button>
+            <button type="button" data-sort="last10Half">Fast 1st half</button>
+          </div>
+          <label class="search"><span>⌕</span><input id="playerSearch" type="search" placeholder="Search a gamer" /></label>
+          <div id="playerTable" class="roster"></div>
+        </article>
+      </section>
+
+      <!-- RESULTS -->
+      <section class="view hidden" id="view-results" data-view="results">
+        <div class="hud-head">
+          <div>
+            <p class="eyebrow">TRACK RECORD</p>
+            <h2>How the calls are hitting</h2>
+          </div>
+          <div class="seg" id="daysSeg">
+            <button type="button" data-days="1">24H</button>
+            <button type="button" data-days="7" class="active">7D</button>
+            <button type="button" data-days="30">30D</button>
+          </div>
+        </div>
+        <div id="perfOut"><div class="skeleton tall"></div></div>
+      </section>
+
+      <!-- LEAGUES -->
+      <section class="view hidden" id="view-leagues" data-view="leagues">
+        <div class="hud-head">
+          <div>
+            <p class="eyebrow">REAL LEAGUES</p>
+            <h2>Every league FanDuel has live</h2>
+          </div>
+        </div>
+        <div class="seg seg-wide" id="leagueFilters"></div>
+        <div class="leagues-layout">
+          <div id="leagueList" class="league-list"><div class="skeleton"></div></div>
+          <article class="card pad" id="leagueDetail">
+            <p class="muted">Pick a game to see our plus-edge calls for the full game, each half and each quarter. FanDuel’s live game total fills in by itself. Type in half or quarter lines to check those too.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footnote center">
+      Live scores &amp; lines: FanDuel public feed · History: official H2H GG League stats · Projections are estimates, not guarantees — play responsibly.
+    </footer>
+  </div>
+
+  <nav class="bottom-nav" id="bottomNav" aria-label="Views">
+    <button type="button" data-view="board" class="active"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/></svg>Board</button>
+    <button type="button" data-view="players"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><path d="M16 4.5l-1.6 3.4h2.4L15.2 11"/><path d="M15.5 14.2c2.4.3 4.2 2 4.9 4.8"/></svg>Players</button>
+    <button type="button" data-view="game"><svg viewBox="0 0 24 24"><path d="M4 14l4-4 3 3 6-7 3 3"/><path d="M4 20h16"/></svg>Game</button>
+    <button type="button" data-view="lab"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg>Lab</button>
+    <button type="button" data-view="results"><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Results</button>
+    <button type="button" data-view="leagues"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c3 3 3 14 0 17M12 3.5c-3 3-3 14 0 17"/></svg>Leagues</button>
+    <span class="nav-ink" id="navInk"></span>
+  </nav>
+
+  <dialog id="pfSheet" class="sheet pf-sheet">
+    <div class="sheet-body">
+      <div class="sheet-grab"></div>
+      <div id="pfBody"></div>
+      <div class="sheet-actions"><button type="button" class="ghost-btn" id="pfClose">Close</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="settings" class="sheet">
+    <form method="dialog" class="sheet-body">
+      <div class="sheet-grab"></div>
+      <h3>Settings</h3>
+      <label><span>Minimum edge to make a call</span>
+        <div class="range-row"><input id="setEdge" type="range" min="1" max="6" step="0.5" /><b id="setEdgeVal">2</b><em>pts</em></div>
+      </label>
+      <label><span>Minimum expected value</span>
+        <div class="range-row"><input id="setEv" type="range" min="0" max="15" step="0.5" /><b id="setEvVal">3</b><em>%</em></div>
+      </label>
+      <label><span>Refresh every</span>
+        <div class="range-row"><input id="setPoll" type="range" min="4" max="30" step="1" /><b id="setPollVal">8</b><em>sec</em></div>
+      </label>
+      <p class="muted small">Default: call it when the GG projection is 2+ points off FanDuel’s line (about 4–5 points on our raw player-history number) and the price still leaves value.</p>
+      <div class="sheet-links"><button type="button" class="ghost-btn" id="settingsHelp">How GG Winner works</button><button type="button" class="ghost-btn" id="settingsInstall">Install on my phone</button></div>
+      <div class="sheet-actions">
+        <button value="cancel" class="ghost-btn">Close</button>
+        <button value="save" id="saveSettings" class="cta">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="onboard" class="sheet onboard">
+    <div class="sheet-body">
+      <div class="sheet-grab"></div>
+      <div class="ob-slides" id="obSlides">
+        <section class="ob active">
+          <div class="ob-art"><span class="ob-num">122.9</span><span class="ob-vs">vs</span><span class="ob-num dim">113.5</span></div>
+          <h3>Welcome to GG Winner</h3>
+          <p>We build our own number from 3 weeks of official H2H results — each gamer’s scoring, their team, head-to-head history — then update it live as points go up.</p>
+        </section>
+        <section class="ob">
+          <div class="ob-art"><span class="pill-big over">EDGE +3.2</span></div>
+          <h3>The edge is the call</h3>
+          <p><b>Edge = GG projection − FanDuel’s line.</b> A plus edge means our number is ahead of FanDuel’s, so we expect more points than FanDuel does. We call it when we’re 2+ points ahead and the price still pays, and sit out the final minutes. Below the line is never a call.</p>
+        </section>
+        <section class="ob">
+          <div class="ob-art"><span class="meter-demo"><i></i><i></i><i></i><i></i><i class="off"></i></span></div>
+          <h3>Let volume work for you</h3>
+          <p>Games run all day. <b>Focus Now</b> shows only the 2–3 best spots — skip the rest. Results tracks every call automatically so you can see what’s working.</p>
+        </section>
+      </div>
+      <div class="ob-dots" id="obDots"><i class="on"></i><i></i><i></i></div>
+      <div class="sheet-actions">
+        <button type="button" class="ghost-btn" id="obSkip">Skip</button>
+        <button type="button" class="cta" id="obNext">Next</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="installSheet" class="sheet">
+    <div class="sheet-body">
+      <div class="sheet-grab"></div>
+      <div class="install-head"><div class="gg-mark"><span>G<b>G</b></span></div><h3 id="installTitle">Install GG Winner</h3></div>
+      <div id="installBody" class="install-body"></div>
+      <div class="sheet-actions"><button type="button" class="ghost-btn" id="installClose">Got it</button></div>
+    </div>
+  </dialog>
+
+  <div id="ptr" class="ptr" aria-hidden="true">↻</div>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/research.js" defer></script><script src="/league-live.js" defer></script><script src="/profiles.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>
