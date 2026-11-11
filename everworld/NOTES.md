@@ -4,6 +4,27 @@ Memory between sessions. Read this before trying anything; add to it at the end 
 
 Last updated: 2026-11-11 (session 1 in this repo). Status lines marked WIP are still being measured.
 
+## READ THIS FIRST: how things stand after Nov 11, 2026
+
+- Courtside build in `cs/build` = app version 15 (`ca-shell-v15`): lineup-aware inputs, team load, rotation timing,
+  smooth refill, edge record. GG Winner in `gg/static` = 3.10.0. Release folder `release-2026-11-11/`.
+  NOT PUBLISHED when this was written (no Hugging Face write access in the session): see "Publishing".
+- How a Courtside lesson set is made now (three facts found on Nov 11 changed the recipe):
+  1. Tip-off lists are rebuilt the way the phone sees them (ruled-out players are not on them).
+  2. Most 2023-24 and 2024-25 games have incomplete play-by-play. Tests skip incomplete games. Lessons are a
+     HYBRID (`tools/mklessons.js`): stages s18 to s36 from complete games only (2025-26 on), the other stages from
+     every game (`LAB_DIRTY=1` on the fit).
+  3. The before-tip-off stages (`pre`, `rep`) can be refit alone with `fit2.js --stages 0,rep`.
+- Unseen test sets now: this season's complete games (121 through Nov 9; grows daily: refresh the data first) and
+  the half-season split of 2025-26 (fit through Jan 31, test Feb to Apr: 490 games). The old 1,199-game fold
+  (fit 2023-25, test 2025-26) still works for comparing two engines taught the same way on all games.
+- Lessons that ship: `data/lessons/H3-v17c.json` (= all four seasons for pre/rep/s6/s12/s42, complete 2025-26 +
+  2026-27 games for s18-s36). Hold-out twin without this season: `H2-v17c.json`. In-app report = `H2-*` runs.
+- Best open leads, in order: (1) starters before tip-off (BDL GOAT projected lineups, or any feed that has them);
+  (2) `q4Pace` 1.0 with a refit, for the live game total that runs 2 to 4 points low; (3) repair the old seasons'
+  targets from the official box lines for the tip-off stages; (4) the edge record on the phone, once it has a few
+  hundred graded edges; (5) teammate-out usage tables.
+
 ## Where everything is
 
 This folder (`everworld/` in the `fanduel-pace-totals` repo) is the lab. On a machine set up like the brief,
@@ -316,6 +337,14 @@ toward the shipped value), paired z against the shipped setting. A lead then had
   test before it can ship: it is the best lead for the live total running low. No real effect: tonightRamp, paceK,
   marginK, closerQ4, immuneLead, foulAfter, blowAhead, benchM50 (5 is clearly worse), minDecay.
 - `rotK` 0 divides by zero (no matching games): never use it.
+
+### The number shown (LAND), refit on 1,208 complete games (Nov 11): no change
+
+`node tools/fitland.js --fit data/runs/land-2026.rows.json.gz --check data/runs/land-2027.rows.json.gz`. The best
+weights on the big set are the shipped ones or a step away, and where they differ the miss differs by less than
+0.1% (e.g. points at 30 minutes: 2.9162 with the shipped 0.75, 2.9148 at best). Before the half the plain average
+is still best for points, rebounds and assists; threes want the middle at every stage; from the end of Q3 everything
+wants the middle. Nothing to gain: LAND stays as shipped.
 
 ### BDL (balldontlie) NBA API, GOAT tier ($39.99 a month), from their docs on Nov 11
 

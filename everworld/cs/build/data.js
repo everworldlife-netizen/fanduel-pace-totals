@@ -67,8 +67,9 @@ if (date < today && rows.length && rows.every((g) => g.status_state === 'final')
 return rows;
 }
 
-async function plays(gameId, final = false) {
-const j = await getJSON(`/v1/nba/games/${gameId}/plays`, final ? 3600000 : 3000);
+async function plays(gameId, final = false, fresh = false) {
+// fresh: never reuse a copy (the last read of a live game can be a play or two short of the final)
+const j = await getJSON(`/v1/nba/games/${gameId}/plays`, fresh ? 0 : final ? 3600000 : 3000);
 return j.data || [];
 }
 const feed = {}; // gameId -> 'databallr' | 'espn' (which play-by-play feed the last read came from)
@@ -76,16 +77,16 @@ const feed = {}; // gameId -> 'databallr' | 'espn' (which play-by-play feed the 
 * Play-by-play that doesn't go dark: DataBallr first; if it fails, comes back empty mid-game, or has fallen
 * behind the scoreboard, ESPN's copy of the same play-by-play is used instead.
 */
-async function livePlays(game, { final = false, nameToPid = null, scoreNow = null } = {}) {
+async function livePlays(game, { final = false, nameToPid = null, scoreNow = null, fresh = false } = {}) {
 let rows = null, err = null;
-try { rows = await plays(game.id, final); } catch (e) { err = e; }
+try { rows = await plays(game.id, final, fresh); } catch (e) { err = e; }
 const last = rows && rows.length ? rows[rows.length - 1] : null;
 const behind = !!(scoreNow != null && last && last.away_score != null && scoreNow - ((last.away_score || 0) + (last.home_score || 0)) >= 6);
 if (rows && rows.length && !behind) { feed[game.id] = 'databallr'; return rows; }
 try {
 const ev = await espnEvent(game);
 if (ev) {
-const sum = await espnJSON(`${ESPN}/summary?event=${ev.id}`, final ? 3600000 : 3000);
+const sum = await espnJSON(`${ESPN}/summary?event=${ev.id}`, fresh ? 0 : final ? 3600000 : 3000);
 const alt = window.Engine.playsFromEspn(sum, nameToPid);
 if (alt.length && (!rows || alt.length > rows.length)) { feed[game.id] = 'espn'; return alt; }
 }
@@ -253,6 +254,8 @@ const r = await fetch(url, { headers: { Accept: 'application/json' } });
 if (!r.ok) throw new Error(`ESPN ${r.status}`);
 const v = await r.json();
 emem.set(url, { t: Date.now(), v });
+// a game summary is about 430 KB: keep only the newest few in memory
+while (emem.size > 12) emem.delete(emem.keys().next().value);
 return v;
 }
 /** League injury report → { ABBR: [{ name, status, out, doubt, why, ret }] }. */
@@ -396,7 +399,7 @@ return out;
 }
 
 function clearCache() {
-mem.clear();
+mem.clear(); emem.clear();
 raw.players.clear(); raw.teams.clear(); raw.logs.clear();
 try { Object.keys(localStorage).filter((k) => /^(log|slate|priors|teams|glog|glines):/.test(k)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 }

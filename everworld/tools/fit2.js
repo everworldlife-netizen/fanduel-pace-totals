@@ -22,7 +22,8 @@ const opt = {
   nsims: +arg('--nsims', 300), jobs: +arg('--jobs', 4), every: +arg('--every', 1), out: arg('--out', 'data/lessons/fit.json'), lam: arg('--lam', null), sit: arg('--sit', 'auto'),
   tune: arg('--tune', ''), passes: +arg('--passes', 3), post: !argv.includes('--no-playoffs'), pass: arg('--pass', null), shard: arg('--shard', null), lessonsIn: arg('--lessons-in', null), avail: arg('--avail', 'tip'),
 };
-const STAGES = [0, 6, 12, 18, 24, 30, 36, 42, 'rep'];
+// --stages 0,rep refits only those stages (the others are left out of the file: merge with tools/mklessons.js)
+const STAGES = arg('--stages', null) ? String(arg('--stages')).split(',').map((x) => (x === 'rep' ? 'rep' : +x)) : [0, 6, 12, 18, 24, 30, 36, 42, 'rep'];
 function applyTune(E, s) { for (const kv of String(s || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); E.TUNE[k] = v === 'true' ? true : v === 'false' ? false : +v; } }
 
 /** One pass over a shard of the games: grade with the given lessons applied, return the sums. */

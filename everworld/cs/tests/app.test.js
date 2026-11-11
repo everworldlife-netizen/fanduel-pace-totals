@@ -16,7 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0;
 const test = async (name, fn) => { try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
 
-async function boot(phase) {
+async function boot(phase, hook) {
   const html = read('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link rel="stylesheet"[^>]*>/g, '');
   const dom = new JSDOM(html, { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
@@ -67,6 +67,7 @@ async function boot(phase) {
     constructor() { const self = { postMessage: (m) => setTimeout(() => this.onmessage && this.onmessage({ data: m }), 0) }; this.self = self; new w.Function('self', 'importScripts', 'Engine', workerSrc)(self, () => {}, E); if (w.SIT_PRIOR_TXT) self.SIT_PRIOR_TXT = w.SIT_PRIOR_TXT; }
     postMessage(m) { setTimeout(() => this.self.onmessage({ data: m }), 0); }
   };
+  if (hook) hook(w, state, fxOf); // a test can swap feeds or saved data before the app starts
   w.eval(read('app.js'));
   return { w, dom, errors, state, go: async (hash, ms = 250) => { w.location.hash = hash; w.dispatchEvent(new w.HashChangeEvent('hashchange')); await sleep(ms); return w.document.getElementById('view'); } };
 }
@@ -128,6 +129,47 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
   });
   A.w.close();
+  await test('a final box that is a few plays short of the final score is not graded; a damaged saved row does not break the edge record', async () => {
+    let short = false;
+    const B = await boot('pre', (w, state, fxOf) => {
+      w.localStorage.setItem('ledger:v1', JSON.stringify([[null], 'junk', ['9:9:pts:0', '2026-01-01', 'Old Row', 'AAA', 'pts', 10.5, 0.7, 0.6, 0, Date.now() - 8 * 86400000, null, null]]));
+      const cut = (fx) => { let i = fx.plays.length - 1, made = 0; while (i > 0 && made < 2) { if (fx.plays[i].home_score !== fx.plays[i - 1].home_score || fx.plays[i].away_score !== fx.plays[i - 1].away_score) made++; i--; } return fx.plays.slice(0, i + 1); };
+      w.DB.livePlays = async (g) => { const fx = fxOf(g.id); return state.phase === 'final' ? (short ? cut(fx) : fx.plays) : fx.plays.filter((p) => p.period <= 2); };
+      w.DB.plays = async (id) => (short ? cut(fxOf(id)) : fxOf(id).plays);
+    });
+    await sleep(2500);
+    let v = await B.go('#/settings', 300);
+    assert.ok(/EDGE RECORD/.test(v.textContent), 'settings did not render with a damaged saved row');
+    let rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
+    assert.ok(rows.length >= 3 && rows.every((r) => Array.isArray(r) && r.length >= 12), 'damaged rows were kept');
+    const old = rows.find((r) => r[0] === '9:9:pts:0');
+    assert.ok(old && old[10] === -1, 'a row waiting for more than 6 days was not closed as no action');
+    short = true; B.state.phase = 'final';
+    B.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
+    const fresh = rows.filter((r) => r[0] !== '9:9:pts:0');
+    assert.ok(fresh.length >= 3 && fresh.every((r) => r[10] == null), `graded ${fresh.filter((r) => r[10] != null).length} edges from a box that does not add up`);
+    short = false;
+    B.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
+    assert.ok(rows.filter((r) => r[0] !== '9:9:pts:0' && r[10] != null).length >= 3, 'edges were not graded once the full box arrived');
+    B.w.close();
+  });
+  await test('when the scores cannot be reached at start, the board says so instead of loading forever', async () => {
+    let down = true;
+    const C = await boot('pre', (w) => { const real = w.DB.slate; w.DB.slate = async (...a) => { if (down) throw new Error('DataBallr 503'); return real(...a); }; });
+    await sleep(1500);
+    let v = await C.go('#/games', 300);
+    assert.ok(/reach the scores/i.test(v.textContent), `board shows: ${v.textContent.trim().slice(0, 80)}`);
+    down = false;
+    C.w.document.getElementById('refreshBtn').click();
+    await sleep(2500);
+    v = await C.go('#/games', 300);
+    assert.ok(/[A-Z]{3}/.test(v.textContent) && !/reach the scores/i.test(v.textContent), 'the board did not recover');
+    C.w.close();
+  });
   console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
   process.exit(process.exitCode || 0);
 })();

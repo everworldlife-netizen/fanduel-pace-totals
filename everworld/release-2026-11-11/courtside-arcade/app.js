@@ -10,7 +10,7 @@ const pct = (p) => `${Math.round(p * 100)}%`;
 const APP_VERSION = '15 (Nov 11, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
 
 // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
-const ACCURACY = /*ACCURACY*/{"games":123,"trainGames":3586,"note":"Tested on this season's 123 games (Oct 21 to Nov 9) with lessons learned only from the 3,586 games of the three seasons before, so the app had never seen these games. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same three seasons. After this test the app went on to learn from these 123 games as well, as it does from every finished game.","before":{"pre":{"pts":4.83,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.12,"top3":0.772,"total":14.56,"players":2287},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.44,"top3":0.854,"total":13.81,"players":2287},"half":{"pts":3.26,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.56,"top3":0.87,"total":10.99,"players":2287},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.87,"top3":0.943,"total":7.87,"players":2287},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.14,"min":1.61,"top3":0.976,"total":6.79,"players":2287}},"after":{"pre":{"pts":4.69,"reb":1.92,"ast":1.41,"fg3m":0.88,"min":4.35,"top3":0.805,"total":14.01,"players":2287},"q1":{"pts":4.12,"reb":1.69,"ast":1.21,"fg3m":0.74,"min":4.26,"top3":0.837,"total":12.8,"players":2287},"half":{"pts":3.25,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.47,"top3":0.886,"total":11.01,"players":2287},"q3":{"pts":2.18,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.83,"top3":0.935,"total":7.95,"players":2287},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.14,"min":1.61,"top3":0.976,"total":6.79,"players":2287}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"64%"},{"said":"85% at halftime","before":"85%","now":"84%"},{"said":"65% at halftime","before":"66%","now":"65%"},{"said":"65% after Q3","before":"65%","now":"65%"}],"findings":["Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged. On 1,199 of last season's games that the lessons never saw, minutes at tip-off landed 19% closer and points 4% closer than the app as it was.","New context: how crowded tonight's rotation is. When several players are out, or everyone is back, minutes are not shared out evenly: the regular bench keeps most of its minutes on a crowded night and picks up less than an even split on a short-handed one. Learned from finished games, this alone brought minutes 4% closer at tip-off and 6% closer before lineups post (same 1,199 games).","The first quarter was the app's blind spot. Six to nine minutes in, minutes now land 10 to 14% closer and points 2 to 3% closer (same 1,199 games).","Between checkpoints the app blends the lessons of the two nearest stages instead of jumping from one to the next. At 15 minutes in, minutes landed 8% closer and points 1% closer (400 unseen games).","About one player a game who went on to play 10+ minutes had no number at tip-off: deep-bench players on short-handed nights and players back from a layoff. They now get one as soon as lineups post.","Before tip-off each player's number answers 'what if he plays', because a pick on a player who sits is no action. The game score is scaled to the minutes a team can really play. Final score at tip-off: 6.6% closer on those 1,199 games.","The test got stricter too: each past game is replayed with exactly the list the phone sees at tip-off (players already ruled out are not on it), for the old app and the new one alike.","From halftime on the gain is small (0.3% on points at halftime), and in the last six minutes nothing moved: by then the game itself tells most of the story.","The lessons built into the app come from 3,709 games across four seasons: every final through Nov 9 (1,314 before). Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
+const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on this season's 121 complete games (Oct 21 to Nov 9) with lessons learned only from the 3,586 games of the three seasons before, so the app had never seen these games. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.7,"reb":1.92,"ast":1.41,"fg3m":0.88,"min":4.34,"top3":0.802,"total":14.03,"players":2253},"q1":{"pts":4.13,"reb":1.69,"ast":1.2,"fg3m":0.74,"min":4.22,"top3":0.826,"total":12.76,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.93,"fg3m":0.55,"min":3.37,"top3":0.884,"total":10.75,"players":2253},"q3":{"pts":2.19,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.81,"top3":0.95,"total":7.79,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.59,"top3":0.975,"total":6.88,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"64%"},{"said":"85% at halftime","before":"83%","now":"85%"},{"said":"65% at halftime","before":"65%","now":"66%"},{"said":"65% after Q3","before":"62%","now":"67%"}],"findings":["Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged. On 1,199 of last season's games that the lessons never saw, minutes at tip-off landed 19% closer and points 4% closer than the app as it was.","New context: how crowded tonight's rotation is. When several players are out, or everyone is back, minutes are not shared out evenly: the regular bench keeps most of its minutes on a crowded night and picks up less than an even split on a short-handed one. Learned from finished games, this alone brought minutes 4% closer at tip-off and 6% closer before lineups post (same 1,199 games).","The first quarter was the app's blind spot. Six to nine minutes in, minutes now land 10 to 14% closer and points 2 to 3% closer (same 1,199 games).","New: rotation timing. Early in a game the app leans on the coach's usual substitution pattern; in the last six minutes it trusts who is on the floor. Minutes land about 1% closer from the first quarter through the third (1,199 unseen games), and a number no longer jumps when nothing has happened.","New: cleaner mid-game lessons. The play-by-play of the two older seasons turned out to be missing a stretch of most games. Lessons for the middle of a game now come only from complete games: minutes at halftime landed 2 to 4% closer on two sets of unseen games (490 and 121 games).","Between checkpoints the app blends the lessons of the two nearest stages instead of jumping from one to the next. At 15 minutes in, minutes landed 8% closer and points 1% closer (400 unseen games).","About one player a game who went on to play 10+ minutes had no number at tip-off: deep-bench players on short-handed nights and players back from a layoff. They now get one as soon as lineups post.","Before tip-off each player's number answers 'what if he plays', because a pick on a player who sits is no action. The game score is scaled to the minutes a team can really play. Final score at tip-off: 6.6% closer on those 1,199 games.","The test got stricter too: each past game is replayed with exactly the list the phone sees at tip-off (players already ruled out are not on it), and only games with complete play-by-play count, for the old app and the new one alike.","From halftime on the gain is small, and in the last six minutes nothing moved: by then the game itself tells most of the story.","The lessons built into the app come from 3,709 games across four seasons: every final through Nov 9 (1,314 before). Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
 
 const TEAM = {
 ATL: ['#E03A3E', '#C1D32F'], BOS: ['#007A33', '#BA9653'], BKN: ['#2a2a2a', '#FFFFFF'], CHA: ['#1D1160', '#00788C'],
@@ -71,7 +71,7 @@ DB.store.set(ovKey(), o);
 
 const state = {
 dayOffset: 0, date: DB.etDate(0), slate: [], priors: null, injuries: [], avail: {},
-logs: new Map(), logTeams: new Set(), proj: new Map(), busy: false, progress: null,
+logs: new Map(), logTeams: new Set(), proj: new Map(), busy: false, progress: null, gradeTries: new Map(), booted: false, bootFail: false,
 team: {}, pickFilter: 'all', sheetPid: null, sheetGame: null, installEvt: null, lastErr: null, lastUpdate: 0,
 teamsDb: null, oddsRows: [], glogs: {}, glogTried: new Set(), openDetails: new Set(), sheetAll: null,
 moves: new Map(), sig: new Map(), lastFull: 0, lastGame: new Map(),
@@ -153,7 +153,15 @@ const s = st(g);
 const logs = [...state.logs.values()].filter((l) => [l.v, l.h].some((t) => t === s.v || t === s.h));
 const nameToPid = {};
 for (const l of logs) for (const [pid, r] of Object.entries(l.rows)) nameToPid[E.norm(r.name)] = +pid;
-const plays = s.phase === 'pre' ? [] : await DB.livePlays(g, { final: s.phase === 'final', nameToPid, scoreNow: s.phase === 'live' ? s.vs + s.hs : null });
+let plays = s.phase === 'pre' ? [] : await DB.livePlays(g, { final: s.phase === 'final', nameToPid, scoreNow: s.phase === 'live' ? s.vs + s.hs : null });
+// a finished game: the box must add up to the final score before anything is graded from it (the last live read can be a
+// play or two short). If it does not, read the plays again, fresh.
+let box = null;
+if (s.phase === 'final') {
+box = finalBox(g, plays);
+if (!box) { try { const p2 = await DB.livePlays(g, { final: true, nameToPid, fresh: true }); const b2 = finalBox(g, p2); if (b2 || (p2 && p2.length > plays.length)) { plays = p2; box = b2; } } catch { /* keep the first read */ } }
+if (!box) state.gradeTries.set(g.id, (state.gradeTries.get(g.id) || 0) + 1);
+}
 const before = state.proj.get(g.id);
 const props = s.phase === 'final' ? [] : await DB.props(g.id);
 let avail = null;
@@ -173,7 +181,7 @@ if (s.phase === 'live' && before && before.proj) noteMoves(g, before.proj, res.p
 state.proj.set(g.id, { ...res, at: Date.now(), playKey, feed: DB.feed[g.id] || 'databallr' });
 rememberTip(g, s, res.proj);
 try {
-if (s.phase === 'final') ledgerGrade(g.id, Object.fromEntries(res.proj.players.map((p) => [p.pid, p.now])));
+if (s.phase === 'final') { if (box) ledgerGrade(g.id, box.rows); }
 else {
 // the same edges the Edges screen shows: no shaky status, no skipped blowouts
 const ov = getOverrides();
@@ -225,12 +233,50 @@ if (changed) { try { DB.store.set(tipKey(), m); } catch { /* storage full or blo
 // Kept on this phone only. Row: [id, date, name, team, stat, line, our chance, book's chance, 0 pregame / 1 live, saved at, result (1 came in, 0 missed, -1 no action), final number].
 const LEDGER_KEY = 'ledger:v1', LEDGER_MAX = 900;
 let ledgerCache = null;
-function ledger() { if (!ledgerCache) { try { ledgerCache = DB.store.get(LEDGER_KEY) || []; } catch { ledgerCache = []; } if (!Array.isArray(ledgerCache)) ledgerCache = []; } return ledgerCache; }
+const ledgerRowOk = (r) => Array.isArray(r) && r.length >= 12 && typeof r[0] === 'string';
+function ledger() { if (!ledgerCache) { try { ledgerCache = DB.store.get(LEDGER_KEY) || []; } catch { ledgerCache = []; } if (!Array.isArray(ledgerCache)) ledgerCache = []; ledgerCache = ledgerCache.filter(ledgerRowOk); } return ledgerCache; }
 function ledgerSave() {
 const L = ledger();
-// keep the newest rows; ungraded rows older than 4 days can no longer be graded (the game left the feed window)
+// another open copy of the app may have saved rows or grades since this one loaded: fold them in instead of wiping them
+try { const disk = DB.store.get(LEDGER_KEY); if (Array.isArray(disk)) { const mine = new Map(L.map((r) => [r[0], r])); let added = false; for (const r of disk) { if (!ledgerRowOk(r)) continue; const m = mine.get(r[0]); if (!m) { L.push(r); mine.set(r[0], r); added = true; } else if (m[10] == null && r[10] != null) { m[10] = r[10]; m[11] = r[11]; } } if (added) L.sort((a, b) => a[9] - b[9]); } } catch { /* nothing saved yet */ }
+// a row still waiting after 6 days can no longer be graded (its game has left the window the app looks back on): no action
+const tooOld = Date.now() - 6 * 86400000;
+for (const r of L) if (r[10] == null && r[9] < tooOld) { r[10] = -1; r[11] = null; }
 if (L.length > LEDGER_MAX) L.splice(0, L.length - LEDGER_MAX);
 try { DB.store.set(LEDGER_KEY, L); } catch { /* storage full or blocked */ }
+}
+/** Does this game still have saved edges waiting for a grade? */
+const ledgerOpen = (gameId) => ledger().some((r) => r[10] == null && +String(r[0]).split(':')[0] === +gameId);
+/** The final box of a finished game from its plays, or null while the plays do not add up to the final score (a stale or partial read). */
+function finalBox(g, plays) {
+if (!plays || !plays.length) return null;
+let act;
+try { act = E.logEntry(g, plays); } catch { return null; }
+const s = st(g), sum = { [s.v]: 0, [s.h]: 0 };
+for (const r of Object.values(act.rows)) if (r.team in sum) sum[r.team] += r.pts || 0;
+return sum[s.v] === s.vs && sum[s.h] === s.hs ? act : null;
+}
+/** Grade whatever is still waiting from the last few nights (needs no player profiles, so it also runs on a day with no games). */
+let sweeping = false, lastSweep = 0;
+async function ledgerSweep() {
+if (sweeping || Date.now() - lastSweep < 30 * 60000) return;
+lastSweep = Date.now();
+const open = ledger().filter((r) => r[10] == null);
+if (!open.length) return;
+sweeping = true;
+try {
+const today = DB.etDate(0);
+const days = [...new Set(open.map((r) => r[1]))].filter((d) => d < today && d >= DB.addDays(today, -6));
+for (const d of days) {
+let rows = [];
+try { rows = await DB.slate(d, 3600000); } catch { continue; }
+for (const g of rows) {
+if (g.status_state !== 'final' || !ledgerOpen(g.id)) continue;
+try { let b = finalBox(g, await DB.plays(g.id, true)); if (!b) b = finalBox(g, await DB.plays(g.id, true, true)); if (b) ledgerGrade(g.id, b.rows); } catch (e) { console.warn('ledger sweep', g.id, e); }
+}
+}
+ledgerSave();
+} finally { sweeping = false; }
 }
 function ledgerNote(g, s, picks, skip) {
 if (!picks || !picks.length || (s.phase !== 'pre' && s.phase !== 'live')) return;
@@ -263,7 +309,7 @@ if (changed) ledgerSave();
 /** The record so far, in bands of the chance we gave. */
 function ledgerStats() {
 const done = ledger().filter((r) => r[10] === 1 || r[10] === 0);
-const bands = [[0.6, 0.7, '60 to 69%'], [0.7, 0.8, '70 to 79%'], [0.8, 1.01, '80% and up']].map(([lo, hi, label]) => {
+const bands = [[0, 0.6, '55 to 59%'], [0.6, 0.7, '60 to 69%'], [0.7, 0.8, '70 to 79%'], [0.8, 1.01, '80% and up']].map(([lo, hi, label]) => {
 const xs = done.filter((r) => r[6] >= lo && r[6] < hi);
 return { label, n: xs.length, hit: xs.filter((r) => r[10] === 1).length, said: xs.length ? xs.reduce((a, r) => a + r[6], 0) / xs.length : 0 };
 });
@@ -276,7 +322,7 @@ return { n, hit, said, book, bands, trust, waiting: ledger().filter((r) => r[10]
 }
 function ledgerHTML() {
 const S = ledgerStats();
-if (!S.n && !S.waiting) return `<div class="section-title">📒 EDGE RECORD</div><div class="card"><p class="small" style="font-weight:700;margin:0">Every plus edge shown against a book line is saved here with the line, our chance and the book's chance, then graded when the game ends. Your record starts with tonight's edges.</p></div>`;
+if (!S.n && !S.waiting && !S.noAction) return `<div class="section-title">📒 EDGE RECORD</div><div class="card"><p class="small" style="font-weight:700;margin:0">Every plus edge shown against a book line is saved here with the line, our chance and the book's chance, then graded when the game ends. Your record starts with tonight's edges.</p></div>`;
 const row = (b) => `<tr><td>${b.label}</td><td>${b.n}</td><td><b>${b.n ? Math.round((100 * b.hit) / b.n) + '%' : '–'}</b></td></tr>`;
 return `<div class="section-title">📒 EDGE RECORD</div>
 <div class="card">
@@ -296,7 +342,7 @@ ${S.n ? `<table class="mtable acc2" style="margin-top:10px"><tr><th>Chance we ga
 // misses to what it has learned.
 const PAT_KEY = 'pat:v4:sum', PAT_DATES = 'pat:v4:dates', PAT_FROM = window.__PAT_FROM || '2026-11-10'; // v15: eight more learned inputs (tonight's lineup), so the phone's own lessons start a fresh tally (the built-in ones cover every game through Nov 9)
 try { ['pat:v1:sum', 'pat:v1:dates', 'pat:v3:sum', 'pat:v3:dates'].forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
-function patSum() { let pk = null; try { pk = DB.store.get(PAT_KEY); } catch { pk = null; } return pk && pk.v === 2 ? E.patUnpack(pk) : null; }
+function patSum() { let pk = null; try { pk = DB.store.get(PAT_KEY); } catch { pk = null; } try { return pk && pk.v === 2 ? E.patUnpack(pk) : null; } catch { return null; } }
 let patCache = null;
 function patternsNow() {
 if (patCache) return patCache;
@@ -342,11 +388,13 @@ if (!fin.length || fin.length < rows.length) continue;
 let oddsD = [];
 try { oddsD = await DB.gameLines(d); } catch { oddsD = []; }
 const jobs = [];
+let failed = 0;
 for (const g of fin) {
 try {
 const plays = await DB.plays(g.id, true);
-if (!plays || !plays.length) continue;
-const act = E.logEntry(g, plays);
+// only a box that adds up to the final score is graded and learned from
+const act = finalBox(g, plays) || finalBox(g, await DB.plays(g.id, true, true));
+if (!act) { failed++; continue; }
 try { ledgerGrade(g.id, act.rows); } catch (e) { console.warn('ledger', e); }
 const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
 const logs = await DB.teamLogs([v, h], d);
@@ -356,16 +404,22 @@ try { mkt = DB.linesFor(g, 'final', oddsD); } catch { mkt = null; }
 // the lineup posted that night (active list, starters): the learning sees what the live app saw
 let av = null;
 try { av = await DB.lineupFor(g); } catch { av = null; }
+// without the posted lineup the replay would be filed under the wrong stage: leave the game for another day
+if (!av) { failed++; continue; }
 jobs.push({ rows: act.rows, logs, market: mkt && mkt.total ? mkt : null, avail: av, cps: CPS.map((k) => gameAt(g, plays, k)) });
-} catch (e) { console.warn('learn', g.id, e); }
+} catch (e) { failed++; console.warn('learn', g.id, e); }
 }
+// a game that could not be read (feed down, plays short of the final, no lineup) is tried again on the next two days;
+// after that the night is closed with the games that could be read
+if (failed && i <= 2) continue;
 if (jobs.length) {
 // one game per worker job, so live projections never wait long behind the learning
 const dayAcc = E.patEmpty();
-let n = 0;
+let n = 0, jobFail = 0;
 for (const j of jobs) {
-try { const res = await runProjection({ grade: [j], priors: state.priors, teams: state.teamsDb, nsims: 300, patterns: patternsNow() }); E.patAdd(dayAcc, res.acc); n += res.games; } catch (e) { console.warn('learn job', e); }
+try { const res = await runProjection({ grade: [j], priors: state.priors, teams: state.teamsDb, nsims: 300, patterns: patternsNow() }); E.patAdd(dayAcc, res.acc); n += res.games; } catch (e) { jobFail++; console.warn('learn job', e); }
 }
+if (jobFail && i <= 2) continue; // never save half a night while it can still be redone whole
 const sum = E.patAdd(patSum() || E.patEmpty(), dayAcc);
 DB.store.set(PAT_KEY, E.patPack(sum));
 rec.games += n;
@@ -388,6 +442,8 @@ const stale = () => gen !== refreshGen || day !== state.date;
 state.busy = true; setSpinning(true);
 try {
 const rows = await DB.slate(day, 2500);
+state.booted = true; state.bootFail = false; // the first slate has answered: from here an empty board really means no games
+setTimeout(() => { ledgerSweep().catch((e) => console.warn('ledger sweep', e)); }, 6000); // grade what is still waiting from earlier nights
 if (stale()) return;
 state.slate = rows; state.lastUpdate = Date.now();
 render();
@@ -404,7 +460,8 @@ for (const g of list) {
 if (stale()) return;
 const s = st(g);
 const old = state.proj.get(g.id);
-if (s.phase === 'final' && old && old.proj.state.phase === 'final') continue;
+const regrade = s.phase === 'final' && ledgerOpen(g.id) && (state.gradeTries.get(g.id) || 0) < 6;
+if (s.phase === 'final' && old && old.proj.state.phase === 'final' && !regrade) continue;
 if (s.phase === 'pre' && old && Date.now() - old.at < 5 * 60000) continue;
 try { await projectGame(g); } catch (e) { console.warn('project', g.id, e); }
 render(true);
@@ -417,6 +474,7 @@ state.lastErr = null;
 } catch (e) {
 if (stale()) return;
 console.error(e);
+if (!state.booted) state.bootFail = true;
 state.lastErr = e.message;
 toast(navigator.onLine ? 'DataBallr is slow to answer — retrying soon' : 'You’re offline');
 } finally {
@@ -619,7 +677,7 @@ let html = `<div class="datebar">
 <div class="label">${dayLabel()}</div>
 <button class="icon-btn" data-act="day" data-d="1" aria-label="Next day">${ICON.next}</button></div>`;
 html += progressHTML();
-if (!state.slate.length) return html + (state.busy ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div><div class="skeleton"></div></div>' : emptyHTML('No games on the board', 'Try another day with the arrows above.'));
+if (!state.slate.length) return html + (state.busy || (!state.booted && !state.bootFail) ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div><div class="skeleton"></div></div>' : !state.booted ? emptyHTML('Can’t reach the scores right now', 'Trying again shortly. Check your connection.') : emptyHTML('No games on the board', 'Try another day with the arrows above.'));
 const sec = (title, arr) => (arr.length ? `<div class="section-title">${title}<span class="count">${arr.length}</span></div><div class="stack">${arr.map(gameCard).join('')}</div>` : '');
 html += sec('🔴 LIVE NOW', groups.live) + sec('⏰ UP NEXT', groups.pre) + sec('🏁 FINAL', groups.final);
 html += `<div class="updated">Updated ${new Date(state.lastUpdate || Date.now()).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })} · live games update on every new play</div>`;
@@ -1159,7 +1217,7 @@ else if (waited >= 60000) changed.push(g); // quiet stretch (timeouts, reviews):
 if (due) {
 state.lastFull = Date.now();
 const live = rows.filter((g) => st(g).phase === 'live');
-const list = r.name === 'game' ? rows.filter((g) => g.id === +r.id) : rows.filter((g) => st(g).phase !== 'final' || !state.proj.has(g.id)).sort((a) => (live.includes(a) ? -1 : 1));
+const list = r.name === 'game' ? rows.filter((g) => g.id === +r.id) : rows.filter((g) => st(g).phase !== 'final' || !state.proj.has(g.id) || (ledgerOpen(g.id) && (state.gradeTries.get(g.id) || 0) < 6)).sort((a) => (live.includes(a) ? -1 : 1));
 for (const g of list) state.lastGame.set(g.id, Date.now());
 return refreshAll({ games: list });
 }

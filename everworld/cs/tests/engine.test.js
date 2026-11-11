@@ -137,6 +137,34 @@ for (const fx of FX) {
     if (E.TUNE.actNew > 0) { assert.ok(back, `${cand.name} missing although he is on tonight's list`); assert.ok(back.pid < 0 && back.mean.min > 5, `${cand.name} projected ${back && back.mean.min} minutes`); }
     else assert.ok(!back, 'layoff players are switched off but one appeared');
   });
+  test(`${tag}: before lineups are posted nobody is handed a whole game (short-handed teams)`, () => {
+    const P = run(fx, 0, { avail: fx.availReport });
+    for (const p of P.players) {
+      assert.ok(p.mean.min <= 44.5, `${p.name} is projected ${p.mean.min.toFixed(1)} minutes before lineups post`);
+      assert.ok(p.mean.min <= Math.max(1.3 * p.mpg, p.mpg + 8), `${p.name}: ${p.mean.min.toFixed(1)} minutes against a usual ${(+p.mpg).toFixed(1)}`);
+    }
+  });
+  test(`${tag}: at the opening tip a posted starter the play-by-play has not named yet is on the floor, not "not checked in"`, () => {
+    const P0 = run(fx, 0), P = run(fx, 0.25);
+    const starters = new Set(fx.base.avail.in.filter((x) => x.starter).map((x) => E.norm(x.name)));
+    let n = 0;
+    for (const p of P.players) {
+      if (!starters.has(E.norm(p.name))) continue;
+      const q = P0.players.find((x) => E.norm(x.name) === E.norm(p.name));
+      if (!q) continue;
+      n++;
+      assert.ok(!p.dnpYet, `${p.name} starts but counts as not checked in 15 seconds into the game`);
+      assert.ok(p.mean.min >= 0.75 * q.mean.min, `${p.name} dropped from ${q.mean.min.toFixed(1)} to ${p.mean.min.toFixed(1)} minutes at the opening tip`);
+    }
+    assert.ok(n >= 8, 'too few posted starters found');
+  });
+  test(`${tag}: with no posted lineup, a real starter is never labelled as not starting while the play-by-play is still finding the starters`, () => {
+    const starters = new Set(fx.base.avail.in.filter((x) => x.starter).map((x) => E.norm(x.name)));
+    for (const el of [3, 4, 6]) {
+      const P = run(fx, el, { avail: null });
+      for (const p of P.players) if (starters.has(E.norm(p.name))) assert.notStrictEqual(p.startsTonight, 0, `${p.name} started but is flagged not starting ${el} minutes in`);
+    }
+  });
   test(`${tag}: lessons between two stages blend smoothly (no jump at the stage border)`, () => {
     if (!(E.TUNE.patInterp > 0)) return;
     // the old border between the 6- and 12-minute lessons. The game itself moves in those 12 seconds (the pace
