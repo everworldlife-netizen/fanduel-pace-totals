@@ -7,7 +7,7 @@ Only these files changed. Upload each Space's files to that Space and nowhere el
 Upload page: https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main
 Live link: https://everworldlife-courtside-arcade.static.hf.space/
 
-- `app.js` (98261 bytes)
+- `app.js` (98287 bytes)
 - `data.js` (20093 bytes)
 - `engine.js` (219899 bytes)
 - `sw.js` (1441 bytes)
