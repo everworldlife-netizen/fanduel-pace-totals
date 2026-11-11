@@ -10,7 +10,7 @@ const pct = (p) => `${Math.round(p * 100)}%`;
 const APP_VERSION = '16 (Nov 11, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
 
 // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
-const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on this season's 121 complete games (Oct 21 to Nov 9) with lessons learned only from the 3,586 games of the three seasons before, so the app had never seen these games. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.67,"reb":1.9,"ast":1.4,"fg3m":0.88,"min":4.03,"top3":0.785,"total":14.22,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.74,"min":3.86,"top3":0.826,"total":12.67,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.55,"min":3.23,"top3":0.909,"total":10.92,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.55,"fg3m":0.3,"min":2.64,"top3":0.95,"total":7.78,"players":2253},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.15,"min":1.5,"top3":0.975,"total":6.92,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"63%"},{"said":"85% at halftime","before":"83%","now":"82%"},{"said":"65% at halftime","before":"65%","now":"65%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. On this season's 121 games minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was; points 3.5% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes into a game used to be the app's weakest moment. It is now closer than tip-off, as it should be: minutes 20% closer, points 3.6% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.3% closer.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.6% closer and rebounds 0.6 to 4% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). A second, larger test on 592 of last season's games that the lessons never saw agrees at every stage (version 16 against version 15: minutes 3 to 13% closer, points up to 1.9%, rebounds up to 2.2%, assists up to 1.4%).","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. Tested on 585 of last season's games that played no part in setting it up, the final score landed 0.6 to 3.5% closer at every moment from six minutes in to the end of the third quarter, and never further off. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off, and a second learning stage (boosted trees with the whole game state) could not get points, rebounds or assists closer than these numbers on unseen games. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 games across four seasons: every final through Nov 9. Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
+const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on 121 of this season's games (Oct 24 to Nov 9; a team's first two games of the season are left out) with lessons learned only from the 3,586 games of the three seasons before, so the lessons had never seen these games. What to build in this version was chosen by studying last season's games and checked against these 121, so read the gains as a careful estimate, not a blind test. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.67,"reb":1.9,"ast":1.4,"fg3m":0.88,"min":4.03,"top3":0.785,"total":14.22,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.74,"min":3.86,"top3":0.826,"total":12.67,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.55,"min":3.23,"top3":0.909,"total":10.92,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.55,"fg3m":0.3,"min":2.64,"top3":0.95,"total":7.78,"players":2253},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.15,"min":1.5,"top3":0.975,"total":6.92,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"63%"},{"said":"85% at halftime","before":"83%","now":"82%"},{"said":"65% at halftime","before":"65%","now":"65%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. With every change in this list together, minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was on this season's 121 games; points 3.5% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes in, minutes land 20% closer and points 3.6% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.3% closer. That was measured with every absence known in advance; before lineups post the phone only has the injury report, so the gain there can be smaller.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.6% closer and rebounds 0.6 to 4% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). The 592 games of last season's second half, which the lessons never saw (the new inputs were picked with those games in view), show the same at every stage from tip-off on: version 16 against version 15, minutes 3 to 12% closer, points up to 2%, rebounds up to 2.2%, assists up to 1.4%.","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. Tested on 585 of last season's games that were not used to set its strength, the final score landed 0.6 to 3.5% closer at every moment from six minutes in to the end of the third quarter, and never further off. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off. A second learning stage that looks at the whole game state got points, rebounds and assists no closer before and early in games, and at most about 1% closer at a few later moments. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 regular-season games across four seasons, through Nov 9. Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
 
 const TEAM = {
 ATL: ['#E03A3E', '#C1D32F'], BOS: ['#007A33', '#BA9653'], BKN: ['#2a2a2a', '#FFFFFF'], CHA: ['#1D1160', '#00788C'],
@@ -98,6 +98,8 @@ worker.postMessage({ id, payload });
 
 // ------------------------------------------------------------------ data flow
 const st = (g) => E.gameState(g);
+// the period as a fan says it: Q1 to Q4, then OT, 2OT, 3OT
+const perLbl = (s) => (s.period > 4 ? (s.period > 5 ? `${s.period - 4}OT` : 'OT') : `Q${s.period}`);
 async function loadSlate() {
 state.slate = await DB.slate(state.date);
 state.lastUpdate = Date.now();
@@ -380,32 +382,46 @@ let learning = false;
 // tables is kept from the first load of each day, and a finished game is replayed with the newest copy that was saved before
 // that day's first tip. A day with no such copy is not learned from at all.
 const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
-const SNAP_KEEP = 3, SNAP_BACK = 2; // copies kept (today and the two days before: phone storage is tight, see NOTES); how many days before a game its copy may come from
+const SNAP_KEEP = 4, SNAP_BACK = 1; // copies kept (today and the three days before: phone storage is tight, see NOTES); a night's copy may come from that day or the day before
 const snapKey = (d) => `psnap:${d}`;
 let snapDay = ''; // the day whose copy is known to be complete (so a refresh does not read it back every time)
+// A copy is stamped with the server's time, not the phone's: a phone whose clock runs a day slow would otherwise stamp a table
+// that already holds last night's games as "saved before last night's first tip". Until the server's time is known no copy is saved.
+let clockOff = null, clockAsked = false;
+function clockSync() {
+if (clockOff != null || clockAsked) return;
+clockAsked = true;
+DB.serverNow().then((t) => { if (t != null) { clockOff = t - Date.now(); snapSave(); } }).catch(() => {}).finally(() => { clockAsked = false; });
+}
 function snapSave() {
 try {
 const today = DB.etDate(0);
 if (snapDay === today) return;
+if (clockOff == null) { clockSync(); return; }
 let sn = DB.store.get(snapKey(today));
 const cur = state.priors && state.priors.cur;
 if ((!sn || !sn.p) && cur && Object.keys(cur).length >= 20) {
 const r3 = (x) => (x == null || !Number.isFinite(+x) ? null : +(+x).toPrecision(3));
 const p = {};
 for (const [k, c] of Object.entries(cur)) p[k] = SNAP_F.map((f) => r3(c[f]));
-sn = { at: Date.now(), p, t: null, tAt: 0 };
-for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(SNAP_KEEP - 1))) localStorage.removeItem(k);
+sn = { at: Date.now() + clockOff, p, t: null, tAt: 0 };
+// (old copies are removed after the nightly learning has looked for them, see snapPrune; here only a backstop)
+for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(SNAP_KEEP + 1))) localStorage.removeItem(k);
 DB.store.set(snapKey(today), sn);
 }
 if (sn && sn.p && !sn.t && state.teamsDb && state.teamsDb.teams && Object.keys(state.teamsDb.teams).length >= 20) {
-sn.t = { teams: state.teamsDb.teams, league: state.teamsDb.league || null }; sn.tAt = Date.now();
+sn.t = { teams: state.teamsDb.teams, league: state.teamsDb.league || null }; sn.tAt = Date.now() + clockOff;
 DB.store.set(snapKey(today), sn);
 }
 // only once the complete copy is really in storage (a write can be refused when storage is full: then the next refresh tries again)
 if (sn && sn.p && sn.t) { const back = DB.store.get(snapKey(today)); if (back && back.p && back.t) snapDay = today; }
 } catch (e) { /* storage blocked or full: that day is simply not learned from */ }
 }
-/** The newest dated copy saved before the first tip of day d (from that day or the two days before), or null. */
+/** Copies no night can need any more (a night is learned the next day, or the day after on a retry, from its own day's copy or the day before's). */
+function snapPrune() {
+try { const today = DB.etDate(0); for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(SNAP_KEEP - 1))) localStorage.removeItem(k); } catch (e) { /* ignore */ }
+}
+/** The newest dated copy saved before the first tip of day d (from that day or the day before), or null. */
 function snapFor(d, firstTip) {
 for (let k = 0; k <= SNAP_BACK; k++) {
 let sn = null;
@@ -427,20 +443,27 @@ cur[k] = c;
 return { last: state.priors.last, cur };
 }
 
+let learnedDay = '', learnTriedAt = 0; // kept in memory too, so the check still runs only once a day when storage refuses writes
 async function learnRecent() {
 if (learning || !state.priors) return;
 const today = DB.etDate(0);
+if (learnedDay === today) return;
+// today's season table has to be there: the replay takes names and ids from it (a failed load is tried again on the next refresh)
+if (Object.keys(state.priors.cur || {}).length < 20) return;
+// a night that is still waiting (last night's late games not final yet) is looked at again every 20 minutes, not on every refresh
+if (Date.now() - learnTriedAt < (window.__LEARN_RETRY_MS || 20 * 60000)) return;
 let rec;
 try { rec = DB.store.get(PAT_DATES) || { done: [], games: 0, checked: '' }; } catch { rec = { done: [], games: 0, checked: '' }; }
-if (rec.checked === today) return;
-learning = true;
+if (rec.checked === today) { learnedDay = today; return; }
+learning = true; learnTriedAt = Date.now();
+let waiting = false; // last night still has games going: do not call the day checked yet
 try {
 for (let i = 5; i >= 1; i--) {
 const d = DB.addDays(today, -i);
 if (d < PAT_FROM || rec.done.includes(d)) continue;
 const rows = await DB.slate(d, 3600000);
 const fin = rows.filter((g) => g.status_state === 'final');
-if (!fin.length || fin.length < rows.length) continue;
+if (!fin.length || fin.length < rows.length) { if (i === 1 && rows.length) waiting = true; continue; }
 let oddsD = [];
 try { oddsD = await DB.gameLines(d); } catch { oddsD = []; }
 // the tables as the app had them before this day's first tip (tip times come with the slate; without them, noon Eastern)
@@ -490,8 +513,7 @@ rec.done = rec.done.slice(-30);
 DB.store.set(PAT_DATES, rec);
 patCache = null;
 }
-rec.checked = today;
-DB.store.set(PAT_DATES, rec);
+if (!waiting) { rec.checked = today; DB.store.set(PAT_DATES, rec); learnedDay = today; snapPrune(); }
 } catch (e) { console.warn('learn', e); }
 finally { learning = false; }
 }
@@ -572,7 +594,7 @@ t.className = 'toast'; t.textContent = msg; t.hidden = false;
 clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
 }
 function statusPill(s) {
-if (s.phase === 'live') return `<span class="pill live">${s.label === 'HALF' ? 'HALFTIME' : `Q${s.period > 4 ? 'OT' + (s.period - 4) : s.period} ${esc(s.clock)}`}</span>`;
+if (s.phase === 'live') return `<span class="pill live">${s.label === 'HALF' ? 'HALFTIME' : `${perLbl(s)} ${esc(s.clock)}`}</span>`;
 if (s.phase === 'final') return '<span class="pill final">FINAL</span>';
 return `<span class="pill pre">${esc(s.label || 'SOON')}</span>`;
 }
@@ -877,12 +899,13 @@ let wrap = $('#sheetWrap');
 const fresh = !wrap;
 if (!wrap) { wrap = document.createElement('div'); wrap.id = 'sheetWrap'; document.body.appendChild(wrap); }
 const ladder = (k, label) => {
-const rungs = p.ladders[k].filter((r) => r.t > p.now[k] && r.p >= 0.04).slice(0, 6);
+const nowK = k === 'pra' ? (p.now.pts || 0) + (p.now.reb || 0) + (p.now.ast || 0) : p.now[k];
+const rungs = (p.ladders[k] || []).filter((r) => r.t > nowK && r.p >= 0.04).slice(0, 6);
 if (!rungs.length) return '';
 const m = p.market && p.market[k];
 const ahead = m ? p.proj[k] - m.line : 0;
 const book = m && ahead > 0 ? `<div class="book">Book line <b>${m.line}</b> · proj <b>${half(p.proj[k])}</b> · <b style="color:var(--green)">+${ahead.toFixed(1)} ahead</b> · hits <b>${pct(m.model)}</b>${m.model - m.book >= 0.03 ? ` (book ${pct(m.book)}) · <b style="color:var(--green)">edge ✓</b>` : ''}</div>` : '';
-return `<h3>${label} · now ${p.now[k]} → ${half(p.proj[k])}</h3><div class="ladder">${rungs.map((r) => `<div class="rung"><span>${r.t}+ ${E.STAT_LABEL[k]}</span><div class="bar"><i class="${tier(r.p)}" style="width:${(r.p * 100).toFixed(0)}%"></i></div><span class="pct">${pct(r.p)}</span></div>`).join('')}</div>${book}`;
+return `<h3>${label} · now ${nowK} → ${half(p.proj[k])}</h3><div class="ladder">${rungs.map((r) => `<div class="rung"><span>${r.t}+ ${E.STAT_LABEL[k]}</span><div class="bar"><i class="${tier(r.p)}" style="width:${(r.p * 100).toFixed(0)}%"></i></div><span class="pct">${pct(r.p)}</span></div>`).join('')}</div>${book}`;
 };
 const qmax = Math.max(12, ...[1, 2, 3, 4].map((q) => p.qavg[q] || 0));
 const usage = (x) => (x == null ? '–' : pct(x));
@@ -1020,7 +1043,7 @@ return `<button class="card edgecard sig-${sig} ${mv ? (mv.d > 0 ? 'flash-up' : 
 <div class="ec-num"><span class="led">${half(k.proj)}</span><small>proj ${E.STAT_LABEL[k.stat]}</small></div>
 <div class="ec-main"><div class="ec-name">${rank ? `<span class="ec-rank">${rank}</span>` : ''}<b>${esc(k.name)}</b></div>
 <div class="ec-line">${k.kind === 'line' ? 'Line' : 'Rung'} <b>${k.kind === 'line' ? k.line : esc(k.label.split(' ')[0])}</b><span class="ec-edge">+${ahead.toFixed(1)} edge</span><span class="ec-pct">${pct(k.prob)}</span></div>
-<div class="ec-sub">${esc(k.game)}${s && s.phase === 'live' ? ` · ${s.label === 'HALF' ? 'half' : `Q${s.period} ${esc(s.clock)}`} · has ${k.now}` : ''}${rng ? ` · ${rng}` : ''}</div></div>
+<div class="ec-sub">${esc(k.game)}${s && s.phase === 'live' ? ` · ${s.label === 'HALF' ? 'half' : `${perLbl(s)} ${esc(s.clock)}`} · has ${k.now}` : ''}${rng ? ` · ${rng}` : ''}</div></div>
 <span class="conf ${k.tier}">${TIER_LBL[k.tier] || ''}</span>
 ${mv ? `<div class="ec-move">${moveHTML(mv)}</div>` : p && p.fade ? '<div class="ec-move"><span class="mvflash down still">📉 Fade warning: tap for why</span></div>' : k.tier === 'unsure' && k.tierWhy ? `<div class="ec-move"><span class="mvflash still">No play yet: ${esc(k.tierWhy.join(', '))}</span></div>` : ''}
 </button>`;
@@ -1050,7 +1073,7 @@ const head = a.type === 'fade' ? `📉 FADE WARNING · ${esc(a.name)}` : a.type 
 const nums = a.type === 'fade' ? `<span class="al-n down">on pace ${Math.round(a.onPace)}</span><span class="al-n">we project ${a.proj.toFixed(1)}</span>`
 : `<span class="al-n up">▲ ${esc(a.up.name.split(' ').slice(-1)[0])} ${a.up.proj.toFixed(1)}</span>${a.down ? `<span class="al-n down">▼ ${esc(a.down.name.split(' ').slice(-1)[0])} ${a.down.proj.toFixed(1)}</span>` : ''}`;
 return `<button class="card alert ${a.type === 'fade' ? 'sig-fade' : 'sig-rise'}" data-act="player" data-g="${g.id}" data-p="${pid}">
-<div class="al-head">${head}<span class="grow"></span><span class="al-when">${s.label === 'HALF' ? 'HALF' : `Q${s.period} ${esc(s.clock)}`}</span></div>
+<div class="al-head">${head}<span class="grow"></span><span class="al-when">${s.label === 'HALF' ? 'HALF' : `${perLbl(s)} ${esc(s.clock)}`}</span></div>
 <div class="al-text">${esc(a.type === 'fade' ? a.text.replace(/^Fade warning: /, '') : a.text)}</div>
 <div class="al-nums">${nums}</div></button>`;
 }

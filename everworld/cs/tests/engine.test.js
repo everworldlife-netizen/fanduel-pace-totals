@@ -333,6 +333,71 @@ test("the phone's own accuracy sums count everyone who played 10+ minutes: a pla
   E.patScore(P, { ...fx.rows, 987654321: { ...extra, min: 4 }, 987654322: { ...extra, team: 'ZZZ' } }, c);
   assert.strictEqual(c.acc.pre.n, a.acc.pre.n);
 });
+test('the first minutes of a game: the tip-off number is carried in, nothing jumps at the tip, 6:00 is untouched', () => {
+  for (const fx of FX) {
+    const pre = run(fx, 0), live = run(fx, 0.25);
+    const keep = E.TUNE.tipBlend; let raw, six1, six0;
+    six1 = run(fx, 6);
+    E.TUNE.tipBlend = 0; try { raw = run(fx, 0.25); six0 = run(fx, 6); } finally { E.TUNE.tipBlend = keep; }
+    let n = 0, moved = 0, movedRaw = 0;
+    for (const p of pre.players) {
+      const a = live.players.find((x) => E.norm(x.name) === E.norm(p.name)), b = raw.players.find((x) => E.norm(x.name) === E.norm(p.name));
+      if (!a || !b) continue;
+      n++; moved += Math.abs(a.mean.min - p.mean.min); movedRaw += Math.abs(b.mean.min - p.mean.min);
+    }
+    assert.ok(n >= 14, `only ${n} players matched across the tip`);
+    assert.ok(moved / n < 0.45, `minutes move ${(moved / n).toFixed(2)} on average in the first 15 seconds`);
+    assert.ok(moved < movedRaw, `the blend should move minutes less than no blend (${(moved / n).toFixed(2)} vs ${(movedRaw / n).toFixed(2)})`);
+    assert.deepStrictEqual(six1.players.map((p) => [p.pid, p.mean.min, p.proj.pts]), six0.players.map((p) => [p.pid, p.mean.min, p.proj.pts]), 'six minutes in must not depend on the tip-off blend');
+  }
+});
+test('early-game readings: no pace reading before 3:00, and the scoring-so-far input has no switch-on step', () => {
+  const fx = FX[0];
+  const a = run(fx, 1.5), b = run(fx, 3), c = run(fx, 6);
+  assert.strictEqual(a.pace.live, a.pace.season, `pace reads ${a.pace.live} after 90 seconds (season norm ${a.pace.season})`);
+  // the scoring-so-far input grows smoothly from the tip (no switch at 3:00): small after 90 seconds, no step across 3:00
+  const b0 = run(fx, 2.95);
+  for (const p of a.players) assert.ok(Math.abs(p.pat.x.pts[IX.tdLive]) < 0.45, `${p.name}: the scoring-so-far input reads ${p.pat.x.pts[IX.tdLive]} after 90 seconds`);
+  for (const p of b.players) { const q = b0.players.find((x) => x.pid === p.pid); if (q) assert.ok(Math.abs(p.pat.x.pts[IX.tdLive] - q.pat.x.pts[IX.tdLive]) < 0.25, `${p.name}: the scoring-so-far input steps from ${q.pat.x.pts[IX.tdLive]} to ${p.pat.x.pts[IX.tdLive]} across 3:00`); }
+  assert.ok(c.players.some((p) => p.pat.x.pts[IX.tdLive] !== 0), 'the scoring-so-far input never comes on');
+});
+test('a tied game with seconds left is close to a coin flip, and the two chances add up to 1', () => {
+  const fx = FX[0];
+  const m = momentAt(fx.g, fx.plays, 47.9);
+  const P = E.projectGame({ ...fx.base, game: { ...m.game, visitor_team_score: 110, home_team_score: 110 }, plays: m.plays, nsims: 1000, seed: 9, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+  const [v, h] = [P.state.v, P.state.h];
+  assert.ok(Math.abs(P.winProb[v] + P.winProb[h] - 1) < 1e-9);
+  assert.ok(P.winProb[v] > 0.3 && P.winProb[v] < 0.7, `${v} is shown ${(100 * P.winProb[v]).toFixed(0)}% in a tied game with six seconds left`);
+});
+test('late in a game the minutes a note quotes are the minutes shown on the card', () => {
+  let seen = 0;
+  for (const fx of FX) for (const el of [42, 45, 47.5]) {
+    const P = run(fx, el);
+    for (const p of P.players) for (const w of p.why || []) {
+      const m = /Projected: ([\d.]+) more minutes/.exec(`${w.text || ''} ${w.so || ''}`);
+      if (!m) continue;
+      seen++;
+      assert.ok(Math.abs(+m[1] - Math.max(p.proj.min - p.now.min, 0)) < 0.06, `${p.name} at ${el} min: note says ${m[1]} more minutes, the card shows ${(p.proj.min - p.now.min).toFixed(1)}`);
+    }
+  }
+  assert.ok(seen >= 5, `only ${seen} notes with a minutes figure were found`);
+});
+test('the combined stat (points + rebounds + assists) is graded and calibrated like the others', () => {
+  const fx = FX[0];
+  const acc = E.patEmpty();
+  for (const el of [0, 24]) { const m = momentAt(fx.g, fx.plays, el); const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 200, seed: 3, patterns: null, sitPrior: fx.sitPrior }); E.patGrade(P, fx.rows, acc); }
+  const count = (g) => acc.cal[g].pra.reduce((a, lvl) => a + lvl.reduce((x, b) => x + b[0], 0), 0);
+  assert.ok(count('pre') > 50 && count('s24') > 50, `combined-stat rungs graded: ${count('pre')} before the game, ${count('s24')} at halftime`);
+  // with a table that says "half the time" for everything, the shown chances of rungs still ahead follow the table
+  const pats = E.patBeta(null);
+  const flat = [[0, 1], [0.5, 0.5]];
+  const P = run(fx, 24, { patterns: { ...pats, cal: { ...pats.cal, s24: { ...pats.cal.s24, pra: [flat, flat] } } } });
+  const p = P.players.find((x) => x.now.min > 10);
+  const now = p.now.pts + p.now.reb + p.now.ast;
+  const ahead = p.ladders.pra.filter((r) => r.t > now && p.laddersRaw.pra.find((q) => q.t === r.t).p > 0 && p.laddersRaw.pra.find((q) => q.t === r.t).p < 1);
+  assert.ok(ahead.length >= 1 && ahead.every((r) => Math.abs(r.p - 0.5) < 1e-9), `calibrated chances not applied: ${JSON.stringify(ahead.slice(0, 3))}`);
+  for (const r of p.ladders.pra.filter((x) => x.t <= now)) assert.ok(r.p === 1 || r.p === p.laddersRaw.pra.find((q) => q.t === r.t).p, 'a rung already reached keeps its simulated chance');
+});
 test('no user-facing wording uses the words "over" or "under"', () => {
   // every note the engine can attach to a player, across the fixture moments
   const texts = [];

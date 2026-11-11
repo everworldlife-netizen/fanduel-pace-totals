@@ -18,14 +18,16 @@ const test = async (name, fn) => { try { await fn(); pass++; console.log(`  ok  
 
 // (windows are never closed during the run: closing one in the middle of the app's own work makes the simulated browser
 // throw from that pending work later; the process exit at the end takes them all down)
-async function boot(phase, hook) {
+async function boot(phase, hook, pre) {
   const html = read('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link rel="stylesheet"[^>]*>/g, '');
   const dom = new JSDOM(html, { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   const errors = [];
   w.addEventListener('error', (e) => errors.push(String(e.error || e.message)));
   w.console = { ...console, warn: (...a) => errors.push('warn: ' + a.map(String).join(' ')), error: (...a) => errors.push('error: ' + a.map(String).join(' ')), log: () => {} };
-  w.fetch = async () => { throw new Error('network is off in tests'); };
+  // the network is off in tests, except the server's clock (the Date header of a same-origin file); a test can set w.__serverNow
+  w.fetch = async (u, o) => { if (o && o.method === 'HEAD') return { ok: true, headers: { get: (k) => (String(k).toLowerCase() === 'date' ? new Date(w.__serverNow ? w.__serverNow() : Date.now()).toUTCString() : null) } }; throw new Error('network is off in tests'); };
+  if (pre) pre(w); // a test can seed saved data before the data module starts
   w.scrollTo = () => {}; // the simulated browser has no scrolling
   w.eval(read('engine.js'));
   w.eval(read('sitprior.js').replace(/^self\./m, 'window.'));
@@ -176,7 +178,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
   const copyOf = (at) => JSON.stringify({ at, tAt: at, p: Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, SNAP_F.map((f) => (c[f] == null ? null : +(+c[f]).toPrecision(3)))])), t: { teams: FX[0].base.teams.teams, league: FX[0].base.teams.league } });
   // the morning after the fixture games: they are final, and today's season table is deliberately wrong (a full season of games
   // with every scoring, rebounding and assist rate tripled), so a replay that used today's table would show up as a huge miss in the phone's own table
-  const morningAfter = async (seed, offDay) => {
+  const morningAfter = async (seed, offDay, opt = {}) => {
     const graded = []; // the season lines each learning replay was given
     const M = await boot('final', (w) => {
       const post = w.Worker.prototype.postMessage;
@@ -187,13 +189,16 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       w.DB.currentSeasonPriors = async () => Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, { ...c, gp: 82, pts: c.pts * 3, reb: c.reb * 3, ast: c.ast * 3 }]));
       // yesterday's games are final; the same two teams play again tonight (the app only does its background work on a day with games)
       const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
-      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next && !offDay ? FX.map(tonight) : []);
+      // (opt.late: one of last night's games is still going until the test says otherwise; opt.reads counts how often last night is read)
+      const lastNight = () => FX.map((x, i) => (opt.late && opt.late.on && i === 1 ? { ...x.g, status_state: 'in', period: 4, time: 'Q4 2:00', status: 'Q4 2:00' } : x.g));
+      w.DB.slate = async (d) => { if (d === DAY && opt.reads) opt.reads.n++; return d === DAY ? lastNight() : d === next && !offDay ? FX.map(tonight) : []; };
+      if (opt.retryMs) w.__LEARN_RETRY_MS = opt.retryMs;
       w.DB.livePlays = async () => [];
       w.DB.props = async () => [];
       if (seed) seed(w);
     });
     const next = M.w.DB.addDays(DAY, 1);
-    for (let i = 0; i < 240; i++) { await sleep(500); const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'); if (rec && rec.checked === next) break; }
+    for (let i = 0; i < (opt.wait || 240); i++) { await sleep(500); const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'); if (rec && rec.checked === next) break; }
     const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'), sum = JSON.parse(M.w.localStorage.getItem('pat:v5:sum') || 'null');
     return { M, rec, sum, graded };
   };
@@ -243,6 +248,114 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       assert.ok(!sum || !sum.acc || !sum.acc.pre || !(sum.acc.pre.n > 0), `the night was learned from ${seed ? 'with a copy saved after the first tip' : 'with no copy at all'}`);
       assert.strictEqual(rec.games || 0, 0);
     }
+  });
+  await test('a copy from the day before is enough, and old copies are only removed after the night has been learned', async () => {
+    const dayBefore = (n) => { const d = new Date(DAY + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const { M, rec, sum } = await morningAfter((w) => { w.localStorage.setItem(`psnap:${dayBefore(1)}`, copyOf(TIP - 30 * 3600000)); w.localStorage.setItem(`psnap:${dayBefore(4)}`, copyOf(TIP - 100 * 3600000)); });
+    assert.ok(rec && rec.done.includes(DAY) && rec.games >= 2 && sum && sum.acc.pre.n >= 20, `the night was not learned from the day-before copy: ${JSON.stringify(rec)}`);
+    const left = Object.keys(M.w.localStorage).filter((k) => k.startsWith('psnap:')).sort();
+    assert.ok(!left.includes(`psnap:${dayBefore(4)}`), 'a copy no night can need any more was kept');
+    assert.ok(left.includes(`psnap:${dayBefore(1)}`), 'the copy from two days ago was removed although a retry could still need it');
+  });
+  await test('while one of last night\'s games is still going the day is not called checked; once it is final the night is learned the same day', async () => {
+    const late = { on: true };
+    const { M, rec: rec1 } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)), false, { late, retryMs: 300, wait: 24 });
+    const next = M.w.DB.addDays(DAY, 1);
+    assert.ok(!rec1 || (rec1.checked !== next && !rec1.done.includes(DAY)), `the day was called checked with a game still going: ${JSON.stringify(rec1)}`);
+    late.on = false;
+    M.w.document.getElementById('refreshBtn').click();
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'); if (rec && rec.checked === next) break; }
+    assert.ok(rec && rec.checked === next && rec.done.includes(DAY) && rec.games >= 2, `the night was not learned once its last game was final: ${JSON.stringify(rec)}`);
+  });
+  await test('when the phone refuses to store anything the nightly check still runs only once a day', async () => {
+    const reads = { n: 0 };
+    const M = await boot('final', (w) => {
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY; w.__LEARN_RETRY_MS = 200;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => { if (d === DAY) reads.n++; return d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []; };
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+    }, (w) => { w.Storage.prototype.setItem = function () { throw new w.DOMException('The quota has been exceeded.', 'QuotaExceededError'); }; });
+    await sleep(9000);
+    const first = reads.n;
+    assert.ok(first >= 1, 'last night was never looked at');
+    for (let k = 0; k < 3; k++) { M.w.document.getElementById('refreshBtn').click(); await sleep(6000); }
+    assert.strictEqual(reads.n, first, `last night was read ${reads.n} times (once is enough)`);
+    assert.deepStrictEqual(M.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('if today\'s season table did not load, last night waits instead of being replayed with no season lines', async () => {
+    let jobs = 0;
+    const { rec } = await morningAfter((w) => {
+      w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+      w.DB.currentSeasonPriors = async () => ({});
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) jobs++; return post.call(this, m); };
+    }, false, { wait: 24 });
+    assert.strictEqual(jobs, 0, 'a learning replay ran with an empty season table');
+    assert.ok(!rec || !rec.done.includes(DAY), 'the night was closed although it could not be replayed properly');
+  });
+  await test('a phone whose clock runs slow cannot stamp a copy earlier than it was really taken', async () => {
+    // the server says it is 12 hours after last night's first tip; the phone believes it is three hours before it
+    const B = await boot('pre', (w) => { w.__serverNow = () => TIP + 12 * 3600000; w.Date.now = () => TIP - 3 * 3600000; });
+    await sleep(3500);
+    const sn = JSON.parse(B.w.localStorage.getItem(`psnap:${DAY}`) || 'null');
+    assert.ok(sn && sn.p && sn.t, 'no copy was saved');
+    assert.ok(sn.at >= TIP + 11 * 3600000 && sn.tAt >= TIP + 11 * 3600000, `the copy is stamped ${new Date(sn.at).toISOString()} (the phone's clock), the server's time is ${new Date(TIP + 12 * 3600000).toISOString()}`);
+  });
+  await test('with no server time the app saves no copy at all (a wrong stamp is worse than no copy)', async () => {
+    const B = await boot('pre', (w) => { w.fetch = async () => { throw new Error('network is off in tests'); }; });
+    await sleep(3500);
+    assert.strictEqual(B.w.localStorage.getItem(`psnap:${DAY}`), null);
+    assert.deepStrictEqual(B.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('dated keys that nothing reads any more are cleared at start, fresh ones stay', async () => {
+    const real = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const back = (n) => { const d = new Date(real + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const B = await boot('pre', null, (w) => {
+      const L = w.localStorage;
+      L.setItem(`slate:v5:${back(40)}`, '[]'); L.setItem(`slate:v5:${back(10)}`, '[]');
+      L.setItem(`slate:last:${back(3)}`, '[]'); L.setItem(`slate:last:${back(1)}`, '[]');
+      L.setItem(`tip:${back(5)}`, '{}'); L.setItem(`tip:${back(1)}`, '{}'); L.setItem(`overrides:${back(9)}`, '{}');
+      L.setItem('glines:111', JSON.stringify({ at: Date.now() - 9 * 86400000, c: {} })); L.setItem('glines:222', JSON.stringify({ at: Date.now() - 3600000, c: {} }));
+      L.setItem('ledger:v1', '[]'); L.setItem('settings', '{}');
+    });
+    const has = (k) => B.w.localStorage.getItem(k) != null;
+    for (const k of [`slate:v5:${back(40)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
+    for (const k of [`slate:v5:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
+  });
+  await test('a number of calendar days from today is right in the hour around a daylight-saving change', async () => {
+    const vm = require('vm');
+    const src = read('data.js');
+    const fnSrc = src.slice(src.indexOf('function addDays('), src.indexOf('const lastSlate'));
+    const at = (iso) => { const FIXED = Date.parse(iso); class D extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED); } static now() { return FIXED; } } const ctx = { Date: D, Intl }; vm.runInNewContext(`${fnSrc}; this.etDate = etDate;`, ctx); return ctx.etDate; };
+    let f = at('2027-03-15T04:30:00Z'); // 12:30 AM Eastern, the night after clocks go forward
+    assert.strictEqual(f(0), '2027-03-15'); assert.strictEqual(f(-1), '2027-03-14'); assert.strictEqual(f(1), '2027-03-16');
+    f = at('2026-11-02T04:30:00Z'); // 11:30 PM Eastern on the day clocks go back
+    assert.strictEqual(f(0), '2026-11-01'); assert.strictEqual(f(-1), '2026-10-31'); assert.strictEqual(f(1), '2026-11-02');
+  });
+  await test('overtime reads as OT on the board, and the player sheet has its points + rebounds + assists section', async () => {
+    const B = await boot('live', (w, state, fxOf) => {
+      const E = w.Engine;
+      const ot = (fx) => { const bx = E.boxFromPlays(fx.plays, 4, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation; return { ...fx.g, status_state: 'in', display_status: 'OT 2:30', status: 'OT 2:30', period: 5, time: 'OT 2:30', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts }; };
+      w.DB.slate = async (d) => (d === DAY ? FX.map(ot) : []);
+      w.DB.livePlays = async (g) => fxOf(g.id).plays.filter((p) => p.period <= 4);
+      w.DB.props = async () => [];
+    });
+    await sleep(6000);
+    let v = await B.go('#/games', 600);
+    assert.ok(/OT 2:30/.test(v.textContent), `the board shows: ${v.textContent.replace(/\s+/g, ' ').slice(0, 160)}`);
+    assert.ok(!/QOT|Q5/.test(v.textContent), 'overtime is written as a fifth quarter');
+    const link = v.querySelector('a[href^="#/game/"]');
+    v = await B.go(link.getAttribute('href'), 1500);
+    const btn = v.querySelector('[data-act="player"]');
+    assert.ok(btn, 'no player rows on the game screen');
+    btn.click(); await sleep(800);
+    const sheet = B.w.document.getElementById('sheetWrap');
+    assert.ok(sheet && /PTS\+REB\+AST/.test(sheet.textContent), 'the player sheet has no points + rebounds + assists section');
+    assert.deepStrictEqual(banned(visibleText(B.w)), []);
+    assert.deepStrictEqual(B.errors.filter((e) => !/^warn:/.test(e)), []);
   });
   console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
   process.exit(process.exitCode || 0);

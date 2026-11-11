@@ -9,6 +9,7 @@
  *   node tools/fit2.js --engine cs/build/engine.js --seasons 2025,2026 [--from D --to D] --out data/lessons/x.json
  *        [--nsims 300] [--jobs 4] [--every 1] [--lam 32] [--sit auto|prev|shipped|none] [--tune k=v,...] [--passes 3]
  *        [--xfrom 2025-10-01 --xto 2026-01-17]   leave a date window out (for a mirror fold)
+ *        [--cal-only lessons.json]               keep these lessons, add only the chance calibration of points+rebounds+assists
  */
 'use strict';
 const path = require('path');
@@ -101,6 +102,18 @@ if (opt.shard != null) {
     }
   };
   const merge = (parts) => { const sum = E.patEmpty(); let used = 0; for (const p of parts) { E.patAdd(sum, L.readJSON(p.file)); fs.unlinkSync(p.file); used += p.used; } return { sum, used }; };
+  // --cal-only <lessons.json>: keep those lessons as they are and only add the chance calibration of the combined stat
+  // (points + rebounds + assists), counted the way the other calibrations were: every lesson applied, chances as simulated
+  if (arg('--cal-only', null)) {
+    const src = arg('--cal-only');
+    const base = L.readJSON(path.resolve(L.ROOT, src));
+    const r0 = merge(await runPass(3, src));
+    for (const g of Object.keys(r0.sum.cal || {})) { const c = r0.sum.cal[g] && r0.sum.cal[g].pra; if (c && base.CAL_PRIOR && base.CAL_PRIOR[g]) base.CAL_PRIOR[g].pra = c.map((lvl) => lvl.map((b) => [b[0], +b[1].toFixed(2), b[2]])); }
+    base.meta = { ...base.meta, praCal: { engine: opt.engine, games: r0.used, at: new Date().toISOString() } };
+    L.writeJSON(outPath, base);
+    console.log(`calibration of the combined stat from ${r0.used} games → ${opt.out}`);
+    return;
+  }
   const t0 = Date.now();
   const tmp = `${opt.out}.tmp.json`;
   // pass 1: minutes

@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 const dir = require('path').resolve(__dirname, '..', 'cs', 'build');
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 (async () => {
-  const srv = http.createServer((req, rsp) => { let p = decodeURIComponent(req.url.split('?')[0]); if (p.endsWith('/')) p += 'index.html'; const f = path.join(dir, p); if (!f.startsWith(dir) || !fs.existsSync(f)) { rsp.writeHead(404); rsp.end('x'); return; } rsp.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(rsp); });
+  const srv = http.createServer((req, rsp) => { let p = decodeURIComponent(req.url.split('?')[0]); if (p.endsWith('/')) p += 'index.html'; const f = path.join(dir, p); if (!f.startsWith(dir) || !fs.existsSync(f)) { rsp.writeHead(404); rsp.end('x'); return; } rsp.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' }); if (req.method === 'HEAD') { rsp.end(); return; } fs.createReadStream(f).pipe(rsp); });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r));
   const url = `http://127.0.0.1:${srv.address().port}/`;
   const browser = await chromium.launch();

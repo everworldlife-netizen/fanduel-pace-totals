@@ -24,6 +24,7 @@ function serve(dir) {
       const f = path.join(dir, p);
       if (!f.startsWith(dir) || !fs.existsSync(f)) { rsp.writeHead(404); rsp.end('not found'); return; }
       rsp.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
+      if (req.method === 'HEAD') { rsp.end(); return; } // (the app asks the server's clock with a HEAD request)
       fs.createReadStream(f).pipe(rsp);
     }).listen(0, '127.0.0.1', () => res({ srv, url: `http://127.0.0.1:${srv.address().port}/` }));
   });

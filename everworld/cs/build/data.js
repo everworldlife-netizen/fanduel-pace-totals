@@ -10,6 +10,18 @@ const raw = { players: new Map(), teams: new Map(), logs: new Map() }; // full D
 // free the space held by older log formats
 try { Object.keys(localStorage).filter((k) => k.startsWith('log:') && !k.startsWith(`log:${VER}:`)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 try { Object.keys(localStorage).filter((k) => (k.startsWith('priors:') && !k.startsWith(`priors:${PVER}:`)) || (k.startsWith('glog:') && !k.startsWith(`glog:${PVER}:${etDate(0)}:`))).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+// dated keys nothing reads any more: slates older than the look-back, the working slate from before yesterday, old tip-off and
+// status maps, lines of games from more than a week ago. Left in place they crowd the game logs out of a small phone's storage.
+try {
+const today = etDate(0);
+for (const k of Object.keys(localStorage)) {
+let m;
+if ((m = k.match(/^slate:last:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -1)) localStorage.removeItem(k); }
+else if ((m = k.match(/^slate:[^:]+:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -25)) localStorage.removeItem(k); }
+else if ((m = k.match(/^(?:tip|overrides):(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -2)) localStorage.removeItem(k); }
+else if (k.startsWith('glines:')) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch { v = null; } if (!v || !(v.at > Date.now() - 7 * 86400000)) localStorage.removeItem(k); }
+}
+} catch { /* ignore */ }
 
 const store = {
 get(k) { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : null; } catch { return null; } },
@@ -36,11 +48,13 @@ mem.set(path, { data, at: Date.now() });
 return data;
 }
 
+// (function declarations, so the start-up clean-up above can use them)
+function addDays(s, n) { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+/** Today's date in US Eastern time, or that date plus a number of calendar days (shifting the clock by 24 hours instead was a day off for an hour around each daylight-saving change). */
 function etDate(offsetDays = 0) {
-const d = new Date(Date.now() + offsetDays * 86400000);
-return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+return offsetDays ? addDays(today, offsetDays) : today;
 }
-const addDays = (s, n) => { const d = new Date(s + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 const lastSlate = new Map();
 let slateSource = 'databallr', savedAt = 0;
@@ -411,6 +425,20 @@ const cur = m >= 8 ? y + 1 : y;
 return { cur, last: cur - 1 };
 }
 
-window.DB = { livePlays, espnScores, feed, slateSource: () => slateSource, etDate, addDays, seasons, slate, plays, lastSeasonPriors, currentSeasonPriors, injuries, props, teamLogs, clearCache, store,
+/**
+* The time by the server's clock: the Date header of a small file from the app's own address (never from the phone's cache), or
+* null when it cannot be read. A phone's own clock can be set wrong; what must not happen is a copy of the season tables being
+* stamped earlier than it really was taken.
+*/
+async function serverNow() {
+try {
+const t0 = Date.now();
+const r = await fetch(`manifest.webmanifest?t=${t0}`, { method: 'HEAD', cache: 'no-store' });
+const t = Date.parse((r && r.headers && r.headers.get('date')) || '');
+return Number.isFinite(t) ? t + Math.round((Date.now() - t0) / 2) : null;
+} catch { return null; }
+}
+
+window.DB = { serverNow, livePlays, espnScores, feed, slateSource: () => slateSource, etDate, addDays, seasons, slate, plays, lastSeasonPriors, currentSeasonPriors, injuries, props, teamLogs, clearCache, store,
 teamStats, teamAll, gameLines, linesFor, playerLogs, playersLogs, logAll, playerLogsRaw, playerAll, availability, espnInjuries, lineupFor };
 })();

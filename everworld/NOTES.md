@@ -41,16 +41,16 @@ Akara then wrote "Nevermind just continue as you were before", so the cloud sess
 
 - LIVE on the two Spaces: the old builds (`ca-shell-v14`, `gg-winner-v3.9.0`; copies in `baseline/`). NOTHING from this branch is published.
 - `cs/build` = Courtside 16 (`ca-shell-v16`, Settings shows "Version 16 (Nov 11, 2026)"): the "anchors" build with
-  its own lessons built in (`data/lessons/H4-anch1.json`, 62 inputs, 3,709 games), the live team check at half
+  its own lessons built in (`data/lessons/H4-anch7.json` = `H4-anch1` plus the chance table for points+rebounds+assists; 62 inputs, 3,709 games), the live team check at half
   strength, the middle shown for minutes in the last six minutes, a fresh learning tally on the phone
   (`pat:v5:sum`). `gg/static` = GG Winner 3.10.0 (unchanged since the version-15 round).
 - `release-2026-11-11/` holds exactly these files (Courtside: app.js, data.js, engine.js, sw.js, worker.js; GG
   Winner: app.js, index.html, league-live.js, profiles.js, research.js, sw.js). READY TO PUBLISH, not published:
   the cloud session had no Hugging Face write access.
-- Tests: engine 80 checks, app 13, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
+- Tests: engine 85 checks, app 22, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
   (10 games on the board, `ca-shell-v16`, `gg-winner-v3.10.0`, no page errors).
 - Frozen engines for the lab (tracked): `data/engines/anch1/` (anchors as first tested), `anch3/` (lessons built
-  in, before the review), `anch5/` (after the first review), `anch6/` (THE FINISHED ENGINE = `cs/build/engine.js`; same numbers as `anch5` at all 13 stages) and `base18/` (version 15, the
+  in, before the review), `anch5/` (after the first review), `anch6/` (after the phone-table fix; same numbers as `anch5`), `anch10/` (THE FINISHED ENGINE = `cs/build/engine.js`, after the second review pass; identical to `anch6` at all 13 standard stages, different only in the first six minutes of a game) and `base18/` (version 15, the
   "before" of the lab tables). `data/engines/base` (not
   tracked) is the live app's engine = `baseline/cs/engine.js`.
 
@@ -58,7 +58,7 @@ Akara then wrote "Nevermind just continue as you were before", so the cloud sess
 
 "Before" = the live app (version 14) taught the same way (`data/runs/H2-base.json`); "after" = the finished engine
 (after the review fixes below, frozen as `data/engines/anch5`) with the hold-out lessons `P2H-anch1`
-(`data/runs/P2h-anch6.json`, identical to `P2g-anch5.json`; `P2f-anch3.json` is the same engine before the review fixes: only the 6, 9 and 12 minute rows differ). This is what the in-app report shows. Everyone
+(`data/runs/P2j-anch10.json`, identical to `P2h-anch6.json` and `P2g-anch5.json`; `P2f-anch3.json` is the same engine before the review fixes: only the 6, 9 and 12 minute rows differ). This is what the in-app report shows. Everyone
 who really played 10+ minutes; a player with no number counts as a full miss. z is paired by game.
 
 | moment | minutes miss | points miss | rebounds miss | assists miss | game total miss |
@@ -137,6 +137,9 @@ Six minutes in is now closer than tip-off, as it should be (it was worse before:
   number as full misses); the live team check passed a clean test on a third unseen set (`tools/p1r.sh`). Engine
   frozen as `anch6`; report, tests and release folder rebuilt. Still to come: the second review pass over the
   three areas the first reviewers did not reach (scheduled for about 20:25 UTC), then publishing.
+- 20:25 to 22:30: second review pass (three of four reviewers finished): 23 findings, all fixed and re-proven (see
+  "Second review pass"). Akara: "I need it done before 7pm eastern", so the build is published before the fourth
+  review area can run; that last area runs right after publishing.
 
 ### How to set up on a new computer
 
@@ -819,6 +822,77 @@ Manual pass over the three areas the reviewers did not reach:
   and the phone-sized browser check). Run the review workflow again when agents are available
   (`wf_777412b7-b9f` in the cloud session; the script asks five areas).
 
+### Second review pass (Nov 11, evening): 23 findings from three reviewers, all fixed before publishing
+
+Four reviewers were started (team totals and shown minutes; the app shell on a real phone; honesty of every claim;
+everything changed since the first pass). Three finished before the usage limit; the fourth and all skeptics did not
+run, so every finding was checked by hand (scripts, tests that fail on the old code, lab runs). Most findings are
+OLDER than version 16 (they are in the live app too); the reviewers dug them up. All are fixed in the published build.
+
+ENGINE (final engine frozen as `data/engines/anch10`, lessons `data/lessons/H4-anch7.json`):
+- THE OPENING TIP. From 0:00 to 6:00 the 6-minute lessons were used whole, so at the tip minutes moved 1.2 on average
+  with nothing happening and were WORSE than the tip-off number until about 4:30. FIX (`tipBlend`): for the first six
+  minutes the same lineup is projected once more as if the game had not started, and minutes, the learned stat
+  factors and the team check are a mix: all tip-off at 0:00, all live at 6:00. Measured (stages 0.02, 1.5, 3, 4.5
+  min; `data/runs/E1-*`): minutes on 121 games 4.085 → 3.968 in the first second (tip-off 3.969), 4.046 → 3.965,
+  4.032 → 3.975, 3.998 → 3.965 (z -3.2 to -4.1); on 592 games -1.2% / -1.2% / -1.2% / -0.9% (z -2.5 to -9.0) and
+  points -0.5% / -0.3% / -0.5% / -0.2%. Six minutes in and every later stage are bit-for-bit unchanged (13 of 13
+  standard stages identical). Cost: one extra small projection per refresh during the first six minutes of a game.
+- TIED FINISHES. A simulation that ended level was handed to one side by hundredths of a point, so a tied game with
+  seconds left read 77% or 30%. Now half a win each (reviewer's check on 121 games at 0:06 left: win-chance error
+  0.0101 → 0.0066).
+- THE SCORING-SO-FAR INPUT was held at zero until 3:00 and then switched on whole (a team's projected final moved
+  1.8 points on average in one second, up to 9.7). It is now on from the tip (its own damping keeps it near zero
+  early); from 3:00 on its values are unchanged.
+- PACE METER read 30 to 85 in the first two minutes (only finished possessions counted): no reading before 3:00 now.
+- NOTES QUOTE THE SHOWN MINUTES in the last stage (the card showed the middle, the note the average).
+- CHANCES FOR POINTS+REBOUNDS+ASSISTS were never calibrated: on the 121 unseen games 85% said came in 92% before
+  tip-off and 95% said came in 91% after Q3. They are now calibrated like the other stats (`CAL_STATS` has `pra`;
+  `fit2.js --cal-only` adds that table to an existing lesson file). With tables from the three seasons before, the
+  121 games read 85% → 84%, 75% → 74%, 96% → 96% before tip-off; 85% → 84% at half; 85% → 90% after Q3.
+  The player sheet's PTS+REB+AST section, which a bug had kept hidden since the live version, shows now.
+- Still a small, older quirk (not a defect in the numbers users act on): in the first four minutes the projected game
+  TOTAL sits about 1.5 points lower than before tip-off (bias -3.7 / -4.6 / -4.4 / -3.0 at 0:01, 1:30, 3:00, 4:30
+  against -2.9 at tip-off and -1.9 at 6:00; total miss level). The early pace reading runs low; a lead.
+
+APP SHELL:
+- Old copies were deleted just before the nightly learning looked for them: they are removed after it now; a night
+  uses its own day's copy or the day before's (four kept).
+- The day was marked as checked while last night's late games were still on, so that night was learned two days
+  late or never: the day is only called checked once last night is final (looked at again every 20 minutes).
+- A phone whose clock runs a day slow could stamp a copy that already held a night's results as "before the first
+  tip": copies are stamped with the SERVER's time now (a HEAD request to the app's own address; the Space answers
+  with a Date header, checked). With no server time no copy is saved.
+- With storage refused the nightly check re-ran after every refresh (older): remembered in memory too.
+- Dated keys were never removed (older: slates, working slates, tip maps, status maps, game lines): on an
+  iPhone-sized store they crowded the game logs out after some weeks. Cleared at start once nothing reads them.
+- A day count was off by one for an hour around each daylight-saving change (older): calendar-day arithmetic now.
+- If today's season table failed to load, last night was replayed with no season lines: it waits now.
+- Overtime read "QOT1 5:00" / "Q5 2:30" (older): "OT 5:00", "2OT 5:00".
+- Legs marked unsure stay out of tickets; a not-checked-in player is never named as getting the minutes (first pass).
+
+HONESTY OF THE IN-APP REPORT (numbers all reproduced; no leakage; the wording said more than the data):
+- "The app had never seen these games" → the LESSONS never saw them; what to build was chosen by studying last
+  season and checked against the 121 games ("a careful estimate, not a blind test"). The 592 games "were in view
+  when the inputs were picked". The 585 games "were not used to set the strength" of the team check.
+- The before-lineups gain was measured with every absence known in advance (the phone only has the injury report
+  then): said so.
+- The second-learning-stage sentence now matches the probe (no gain early, at most about 1% at a few later
+  moments) and names no method.
+- "Six minutes used to be the weakest moment" was not true of the live app on the exam games: dropped.
+- Dates (Oct 24 to Nov 9, a team's first two games left out), "3,709 regular-season games", "3 to 12%", and the
+  21% total marked as every change together.
+- NOTE for later sessions: in "Final exam", the paragraph "Against version 15" mixes two player sets and three of
+  its figures are from before the first review (end Q1 top-scorer rate is 82.6%, not 81.8%; points -1.7% at 6 min
+  and -1.6% at the end of Q1; minutes on everyone who played 10+ are -7.3 / -10.4 / -8.5 / -4.3 / -6.0). The
+  split-season table is the first anchors build; the finished engine differs in five cells (points 6 min -2.0%, 9
+  min -1.7%, end Q1 -1.8%; minutes 6:00 left -3.8%, 3:00 left -10.9%).
+
+Tests after this pass: engine 85, app 22, GG Winner 15 (every new test fails on the code as it was before).
+`tools/phonecheck.js` (real browser, real feeds, storage squeezed) and `tools/phoneshots.js` (all 14 screens at
+Pixel 9a size) pass. STILL TO DO after publishing: the fourth review area (everything changed since the first pass,
+which now includes this pass's fixes) when reviewers are available; anything it finds is a follow-up release.
+
 ### Third unseen set (mirror fold, `tools/p1r.sh`): 585 complete 2025-26 games before Jan 18
 
 Lessons from 2023-24, 2024-25 and the part of 2025-26 AFTER Jan 17 (`fit2.js --xfrom 2025-10-01 --xto 2026-01-17`
@@ -923,8 +997,8 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 ## Test suites (run all before publishing)
 
 ```
-node cs/tests/engine.test.js          # engine on two real games (80 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
-node cs/tests/app.test.js             # boots the real app in a simulated phone browser (13 checks): screens, wording rules, edge record, stale boxes, offline start, dated copies of the season stats and the morning-after replay
+node cs/tests/engine.test.js          # engine on two real games (85 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
+node cs/tests/app.test.js             # boots the real app in a simulated phone browser (22 checks): screens, wording rules, edge record, stale boxes, offline start, dated copies of the season stats and the morning-after replay
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/phonecheck.js              # real browser, real feeds: the dated copies and the morning-after learning (FREE=2500000 squeezes storage like an iPhone)
