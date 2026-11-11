@@ -15,3 +15,6 @@ gg/static/screens/
 gg/static/icons/icon-512.png
 gg/static/icons/maskable-512.png
 data/lessons/*.log
+# lab test lessons (split-season P1, final exam P2, shipping fit P3) appear while jobs run: the ones a reported number rests on are added by hand (git add -f) at the end of a round
+data/lessons/P[0-9][MKH]-*.json
+data/lessons/H4-*.json
