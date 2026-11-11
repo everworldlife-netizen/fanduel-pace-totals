@@ -7,20 +7,18 @@ Only these files changed. Upload each Space's files to that Space and nowhere el
 Upload page: https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main
 Live link: https://everworldlife-courtside-arcade.static.hf.space/
 
-- `app.js` (92303 bytes)
+- `app.js` (92570 bytes)
 - `data.js` (19289 bytes)
-- `engine.js` (198627 bytes)
+- `engine.js` (198699 bytes)
 - `sw.js` (1441 bytes)
 - `worker.js` (2283 bytes)
 
-With the Hugging Face CLI (after `hf auth login`):
+On the upload page, add ALL of these files in one go and commit once (a phone that updates between two separate uploads could save a mix of old and new files).
+
+With the Hugging Face CLI (after `hf auth login`), one commit for the whole Space:
 
 ```
-hf upload everworldlife/courtside-arcade release-2026-11-11/courtside-arcade/app.js app.js --repo-type space
-hf upload everworldlife/courtside-arcade release-2026-11-11/courtside-arcade/data.js data.js --repo-type space
-hf upload everworldlife/courtside-arcade release-2026-11-11/courtside-arcade/engine.js engine.js --repo-type space
-hf upload everworldlife/courtside-arcade release-2026-11-11/courtside-arcade/sw.js sw.js --repo-type space
-hf upload everworldlife/courtside-arcade release-2026-11-11/courtside-arcade/worker.js worker.js --repo-type space
+hf upload everworldlife/courtside-arcade release-2026-11-11/courtside-arcade . --repo-type space --commit-message "Release 2026-11-11"
 ```
 
 ## gg-winner
@@ -35,15 +33,14 @@ Live link: https://everworldlife-gg-winner.static.hf.space/
 - `research.js` (22719 bytes)
 - `sw.js` (1825 bytes)
 
-With the Hugging Face CLI (after `hf auth login`):
+On the upload page, add ALL of these files in one go and commit once (a phone that updates between two separate uploads could save a mix of old and new files).
+
+With the Hugging Face CLI (after `hf auth login`), one commit for the whole Space:
 
 ```
-hf upload everworldlife/gg-winner release-2026-11-11/gg-winner/app.js app.js --repo-type space
-hf upload everworldlife/gg-winner release-2026-11-11/gg-winner/index.html index.html --repo-type space
-hf upload everworldlife/gg-winner release-2026-11-11/gg-winner/league-live.js league-live.js --repo-type space
-hf upload everworldlife/gg-winner release-2026-11-11/gg-winner/profiles.js profiles.js --repo-type space
-hf upload everworldlife/gg-winner release-2026-11-11/gg-winner/research.js research.js --repo-type space
-hf upload everworldlife/gg-winner release-2026-11-11/gg-winner/sw.js sw.js --repo-type space
+hf upload everworldlife/gg-winner release-2026-11-11/gg-winner . --repo-type space --commit-message "Release 2026-11-11"
 ```
+
+Or both Spaces, with the checks, in one step: `tools/publish.sh release-2026-11-11`.
 
 After publishing: `node tools/mkrelease.js --verify release-2026-11-11` then `node tools/livecheck.js`.

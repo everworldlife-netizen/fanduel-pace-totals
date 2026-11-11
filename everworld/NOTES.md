@@ -151,6 +151,38 @@ who really played 10+ minutes, a missing projection counts as a full miss):
 | 6:00 left | 1.254 → 1.253 (no change) | 1.62 → 1.61 | 6.29 → 6.32 |
 
 Runs: `data/lessons/A2-base.json`, `A2-v15d.json`; `tools/exp2.sh A2-v15d cs/build "<switches>" 2024,2025 2026`.
+(The table is the run with `teamCal` off, `data/runs/A2-v15d-noteam.json`, which is what shipped.)
+
+Fold B, the final exam (lessons from 2023-24 + 2024-25 + 2025-26 = 3,586 games; tested ONCE on the 123 games of
+2026-27, Oct 21 to Nov 9, which no setting was chosen on; "before" = the live engine refit on the same 3,586 games,
+`data/lessons/B-base.json`; `node tools/cmp.js data/runs/B-base.json data/runs/ship-holdout.json`):
+
+| moment | PTS miss, live engine → v15 | MIN miss | game total miss |
+|---|---|---|---|
+| before lineups | 4.832 → 4.845 (n.s.) | 5.05 → 5.05 | 13.91 → 13.96 (n.s.) |
+| tip-off | 4.832 → 4.725 (-2.2%, z -4.0) | 5.05 → 4.52 (-10.5%, z -6.7) | 13.91 → 13.97 (n.s.) |
+| 6 min in | 4.518 → 4.442 (-1.7%, z -3.7) | 5.15 → 4.70 (-8.7%, z -7.1) | 14.82 → 13.47 (-9.1%, z -2.1) |
+| 9 min in | 4.385 → 4.337 (-1.1%, z -2.0) | 4.89 → 4.48 (-8.4%, z -6.4) | 14.01 → 13.12 (-6.4%, z -2.1) |
+| end Q1 | 4.132 → 4.142 (n.s.) | 4.44 → 4.32 (-2.6%, z -3.0) | 13.92 → 12.65 (-9.2%, z -3.3) |
+| 21 min in | 3.522 → 3.480 (-1.2%, z -2.5) | 3.90 → 3.69 (-5.3%, z -6.4) | 12.09 → 12.01 (n.s.) |
+| half | 3.263 → 3.258 (n.s.) | 3.56 → 3.50 (-1.8%, z -2.7) | 10.99 → 11.09 (n.s.) |
+| 33 min in | 2.573 → 2.567 (n.s.) | 3.12 → 3.06 (-2.1%, z -3.2) | 8.86 → 8.68 (n.s.) |
+| end Q3 | 2.203 → 2.182 (-0.9%, z -3.5) | 2.87 → 2.84 (-1.0%, z -2.6) | 7.87 → 7.87 |
+| 6:00 left | 1.234 → 1.234 | 1.61 → 1.61 | 6.79 → 6.83 (n.s.) |
+| 3:00 left | 0.701 → 0.702 (n.s.) | 0.787 → 0.794 (+0.9%, z 4.3: real but 0.007 of a minute) | 5.64 → 5.65 |
+
+Same direction and about the same size as Fold A everywhere it matters, so the gains are not a one-season fluke.
+Assists also moved: -1.1 to -1.7% in the first half (z -2.4 to -3.8). Rebounds and threes: no real change.
+Top scorer in our top 3 at tip-off: 79% → 79%; end of Q1: 85% → 82% (123 games, about one sigma; watch it).
+
+Chances (how often a stated chance came in). Before tip-off only players who went on to play are counted (a pick on
+a player who sits is no action). Fold A, 1,199 games: v15 said 65% → came in 64.1%, said 85% → 84.9%; the live
+engine: 68% and 88% (average gap 0.51% vs 1.37%). Fold B, 123 games: 85% at tip-off came in 83% (before 85%), 65%
+came in 62% (before 64%); 85% at halftime 84% (84%); 65% at halftime 65% (68%); 65% after Q3 65% (66%). On 123 games
+a 2 to 3 point gap is inside the noise.
+
+What the phone gets: the in-app report shows exactly the Fold B table above. The engine that ships then learns from
+every final game in the cache as well (see Publishing: "refit on everything"), like v14 did.
 
 Blending lessons between stages (`patInterp`, 400 unseen games, in-between moments only): 15 min in: minutes -8.6%
 (z -17.7), points -1.2% (z -4.3); 9 min: minutes -1.9%, points -0.5%; 21 min: minutes -2.1%; 33 min: minutes -2.4%;
@@ -242,11 +274,27 @@ node tools/livecheck.js               # both LIVE links (after publishing)
 
 ## Publishing
 
-No Hugging Face write access existed in the cloud session (the connector is read-only). To publish from a session:
-a write token for huggingface.co must be provided through the session's secure credential form, or the changed
-files are uploaded by hand at
+How the Courtside release is built (in this order, so the in-app report stays honest):
+1. `tools/ship.sh <holdout lessons> <before run> "<switches>" <train games> cs/accuracy-findings.json <date>` writes
+   the hold-out lessons into `cs/build/engine.js`, replays this season with them (`data/runs/ship.json`; keep a copy
+   as `ship-holdout.json`), writes the in-app report from that run, runs every test and builds the release folder.
+2. Refit on everything: `node tools/fit2.js --engine <frozen copy> --seasons 2024,2025,2026,2027 --no-playoffs
+   --out data/lessons/C-v15d.json`, then `node tools/mkengine.js --engine cs/build/engine.js --lessons
+   data/lessons/C-v15d.json`. Do NOT rerun `ship.sh` or `mkaccuracy.js` after this (the run would be in-sample).
+   Set `PAT_FROM` in `cs/build/app.js` to the day after the last game in the lessons, so the phone's own nightly
+   learning picks up from there (it only looks back 5 days).
+3. Tests, `node tools/mkrelease.js --date <date>`, `node tools/livecheck.js --local cs` and `--local gg`.
+4. After uploading: `node tools/mkrelease.js --verify release-<date>` (byte-for-byte against the live files) and
+   `node tools/livecheck.js` (both live links in a phone-sized browser).
+
+Release `release-2026-11-11/` (Courtside v15 `ca-shell-v15`, GG Winner v3.10.0 `gg-winner-v3.10.0`) is built and
+checked locally. STATUS: NOT PUBLISHED YET. No Hugging Face write access existed in the cloud session (the
+connector is read-only, and no token was available). To publish from a session: a write token for huggingface.co
+must be provided through the session's secure credential form (never pasted into chat), or the changed files are
+uploaded by hand at
 `https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main` and
-`https://huggingface.co/spaces/everworldlife/gg-winner/upload/main`. Never the Gridiron Arcade Space.
+`https://huggingface.co/spaces/everworldlife/gg-winner/upload/main` (`release-2026-11-11/UPLOAD.md` lists them).
+Never the Gridiron Arcade Space.
 
 ## Ideas not yet tested (ranked)
 
@@ -259,3 +307,10 @@ files are uploaded by hand at
 4. `shiftCenter` 0 vs 1 (usage-shift centring is applied but was not trained).
 5. A real-league tracker on the GG server (time, score, clock, FanDuel line, our number, final) so the late-game
    blend can be refit against FanDuel's live line.
+6. End of Q1 points did not move on the 123-game exam (4.13 → 4.14) though it won on 1,199 games (-1.0%), and the
+   top-scorer-in-top-3 rate there dipped 85% → 82%. Re-measure when 300+ games of this season exist.
+7. The edge record (`ledger:v1` on the phone) is the first real out-of-sample record of the picks themselves.
+   Once a few hundred edges are graded, read it: if results sit well short of our chance, shrink shown chances
+   toward the book's.
+8. Other leagues in GG Winner (WNBA, college): the model is NBA-tuned and no data was collected for them.
+9. `tools/ebfetch.js` (H2H feed history beyond the bundled seed) so the gamer ratings can be retuned on more games.

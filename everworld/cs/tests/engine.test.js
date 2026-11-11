@@ -115,15 +115,20 @@ for (const fx of FX) {
   });
   test(`${tag}: lessons between two stages blend smoothly (no jump at the stage border)`, () => {
     if (!(E.TUNE.patInterp > 0)) return;
-    const a = run(fx, 8.9), b = run(fx, 9.1); // the old border between the 6- and 12-minute lessons
-    // only players for whom nothing happened in those 12 seconds (same box line, same on/off the floor)
+    // the old border between the 6- and 12-minute lessons. The game itself moves in those 12 seconds (the pace
+    // estimate drifts, the simulation re-rolls), so the lessons' share of the change is what is checked: the change
+    // with lessons minus the change without them. With a hard switch at the border that share was about 2 minutes.
+    const a = run(fx, 8.9), b = run(fx, 9.1), a0 = run(fx, 8.9, { patterns: null }), b0 = run(fx, 9.1, { patterns: null });
     const big = a.players.filter((p) => p.mean.min >= 20);
     let n = 0;
     for (const p of big) {
-      const q = b.players.find((x) => x.pid === p.pid);
-      if (!q || q.on !== p.on || q.now.pts !== p.now.pts || q.now.fga !== p.now.fga || q.now.pf !== p.now.pf) continue;
+      const q = b.players.find((x) => x.pid === p.pid), p0 = a0.players.find((x) => x.pid === p.pid), q0 = b0.players.find((x) => x.pid === p.pid);
+      // only players for whom nothing happened in those 12 seconds (same box line, same on/off the floor)
+      if (!q || !p0 || !q0 || q.on !== p.on || q.now.pts !== p.now.pts || q.now.fga !== p.now.fga || q.now.pf !== p.now.pf) continue;
       n++;
-      assert.ok(Math.abs(q.mean.pts - p.mean.pts) < 1.5, `${p.name} jumps ${p.mean.pts.toFixed(1)} → ${q.mean.pts.toFixed(1)} across the border`);
+      const dMin = (q.mean.min - p.mean.min) - (q0.mean.min - p0.mean.min), dPts = (q.mean.pts - p.mean.pts) - (q0.mean.pts - p0.mean.pts);
+      assert.ok(Math.abs(dMin) < 0.6, `${p.name}: the lessons move his minutes by ${dMin.toFixed(2)} across the border`);
+      assert.ok(Math.abs(dPts) < 2.5, `${p.name}: the lessons move his points by ${dPts.toFixed(2)} across the border`);
     }
     assert.ok(n >= 4, 'too few unchanged players to compare');
   });
