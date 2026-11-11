@@ -12,15 +12,19 @@ function bins(X, nb = 32) {
   return cuts;
 }
 const binOf = (c, v) => { let lo = 0, hi = c.length; while (lo < hi) { const m = (lo + hi) >> 1; if (v >= c[m]) lo = m + 1; else hi = m; } return lo; };
-function train(X, y, { rounds = 150, depth = 4, lr = 0.08, minLeaf = 40, nb = 32 } = {}) {
+// loss 'l2' (default) fits the average; 'l1' fits the middle (splits on the sign of the miss, leaf = middle of the misses in it),
+// which is what an average-miss score rewards
+function train(X, y, { rounds = 150, depth = 4, lr = 0.08, minLeaf = 40, nb = 32, loss = 'l2' } = {}) {
   const n = X.length, d = X[0].length, cuts = bins(X, nb);
   const Xb = X.map((x) => Uint8Array.from(x.map((v, j) => binOf(cuts[j], v))));
-  const base = y.reduce((a, b) => a + b, 0) / n; const pred = new Float64Array(n).fill(base); const trees = [];
+  const base = loss === 'l1' ? y.slice().sort((a, b) => a - b)[n >> 1] : y.reduce((a, b) => a + b, 0) / n; const pred = new Float64Array(n).fill(base); const trees = [];
   for (let t = 0; t < rounds; t++) {
-    const res = new Float64Array(n); for (let i = 0; i < n; i++) res[i] = y[i] - pred[i];
+    const raw = new Float64Array(n); for (let i = 0; i < n; i++) raw[i] = y[i] - pred[i];
+    const res = loss === 'l1' ? raw.map((v) => Math.sign(v)) : raw;
+    const leaf = (idx) => { if (loss !== 'l1') { let s = 0; for (const i of idx) s += raw[i]; return (s / idx.length) * lr; } const v = idx.map((i) => raw[i]).sort((a, b) => a - b); return v[v.length >> 1] * lr; };
     const build = (idx, dep) => {
-      let s = 0; for (const i of idx) s += res[i]; const mean = s / idx.length;
-      if (dep === 0 || idx.length < 2 * minLeaf) return { v: mean * lr };
+      let s = 0; for (const i of idx) s += res[i];
+      if (dep === 0 || idx.length < 2 * minLeaf) return { v: leaf(idx) };
       let best = null;
       for (let j = 0; j < d; j++) {
         const nbj = cuts[j].length + 1; const hs = new Float64Array(nbj), hc = new Float64Array(nbj);
@@ -28,7 +32,7 @@ function train(X, y, { rounds = 150, depth = 4, lr = 0.08, minLeaf = 40, nb = 32
         let ls = 0, lc = 0;
         for (let b = 0; b < nbj - 1; b++) { ls += hs[b]; lc += hc[b]; const rc = idx.length - lc; if (lc < minLeaf || rc < minLeaf) continue; const gain = (ls * ls) / lc + ((s - ls) * (s - ls)) / rc; if (!best || gain > best.gain) best = { gain, j, b }; }
       }
-      if (!best || best.gain - (s * s) / idx.length < 1e-9) return { v: mean * lr };
+      if (!best || best.gain - (s * s) / idx.length < 1e-9) return { v: leaf(idx) };
       const L = [], R = []; for (const i of idx) (Xb[i][best.j] <= best.b ? L : R).push(i);
       return { j: best.j, c: cuts[best.j][best.b], l: build(L, dep - 1), r: build(R, dep - 1) };
     };

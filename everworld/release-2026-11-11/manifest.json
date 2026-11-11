@@ -8,8 +8,8 @@
    "files": [
     {
      "path": "app.js",
-     "bytes": 97708,
-     "sha256": "9e8b949f88b8d5cd0dad1a6320ab3290374e9b7edfef4b1fc1235bfcead05c3c"
+     "bytes": 98261,
+     "sha256": "3444fcb0926630db782d6b651e51139f24cf86f41d76a428eb262915ab24d327"
     },
     {
      "path": "data.js",
@@ -18,13 +18,13 @@
     },
     {
      "path": "engine.js",
-     "bytes": 208552,
-     "sha256": "0f593d434f489843b870d8e0b3e33032bb12c627042f2e3fe253a9a048c9e687"
+     "bytes": 219899,
+     "sha256": "1a5d234c3bd4279812fb83207a7ebf319e2bc99472c20a8d43d928847ad677e5"
     },
     {
      "path": "sw.js",
      "bytes": 1441,
-     "sha256": "59c817bd68f7ddb361c8c0dc7aebaa3635869ea5970cd126f2e298c2f3eb36c1"
+     "sha256": "8d849b582f0dce9ffdc4fd10dcb5e1f5833dd7e31e09d0d481ed1d4f5710eb32"
     },
     {
      "path": "worker.js",

@@ -39,12 +39,17 @@ for (const fx of FX) {
     });
     test(`${tag} at ${el} min: a team never plays more than five players' worth of the time left`, () => {
       for (const tm of [v, h]) {
-        const rem = P.players.filter((p) => p.team === tm).reduce((a, p) => a + (p.mean.min - p.now.min), 0);
+        const mine = P.players.filter((p) => p.team === tm);
+        const rem = mine.reduce((a, p) => a + (p.mean.min - p.now.min), 0);
         // regulation minutes left, plus room for the overtime share of the simulations. Before tip-off (v15) each player's
         // minutes are an "if he plays" number, so a full active list may add up to more than a team can play: the TEAM
-        // total is what gets scaled to five players' worth there (checked in the team totals test below)
-        const cap = el === 0 && E.TUNE.condMin > 0 ? 5 * P.state.left * 1.4 : 5 * P.state.left + 5 * 5 * 0.6 + 0.5;
-        assert.ok(rem <= cap, `${tm} has ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
+        // total is what gets scaled to five players' worth there (checked in the team totals test below). From v16 a
+        // player still waiting to check in keeps that kind of number during the game too, so the strict cap is for the
+        // players who have checked in and the looser one for everyone listed
+        const strict = 5 * P.state.left + 5 * 5 * 0.6 + 0.5;
+        const ifPlays = E.TUNE.condMin > 0 && (el === 0 || E.TUNE.condLive > 0);
+        assert.ok(rem <= (ifPlays ? 5 * P.state.left * 1.4 : strict), `${tm} has ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
+        if (el > 0) { const inRem = mine.filter((p) => !p.dnpYet).reduce((a, p) => a + (p.mean.min - p.now.min), 0); assert.ok(inRem <= strict, `${tm}: players who have checked in have ${inRem.toFixed(1)} minutes to come with ${P.state.left} left`); }
         // (in a lopsided game some of the time left goes to deep-bench players the engine does not track by name)
         assert.ok(rem >= 5 * P.state.left * 0.55 - 0.5, `${tm} has only ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
       }
@@ -141,7 +146,8 @@ for (const fx of FX) {
     const P = run(fx, 0, { avail: fx.availReport });
     for (const p of P.players) {
       assert.ok(p.mean.min <= 44.5, `${p.name} is projected ${p.mean.min.toFixed(1)} minutes before lineups post`);
-      assert.ok(p.mean.min <= Math.max(1.3 * p.mpg, p.mpg + 8), `${p.name}: ${p.mean.min.toFixed(1)} minutes against a usual ${(+p.mpg).toFixed(1)}`);
+      // (a deep-bench player's number means "if he plays": measured, those who get in play about 10 to 13 minutes, so 14 is allowed for anyone)
+      assert.ok(p.mean.min <= Math.max(1.3 * p.mpg, p.mpg + 8, 14), `${p.name}: ${p.mean.min.toFixed(1)} minutes against a usual ${(+p.mpg).toFixed(1)}`);
     }
   });
   test(`${tag}: at the opening tip a posted starter the play-by-play has not named yet is on the floor, not "not checked in"`, () => {

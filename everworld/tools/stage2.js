@@ -15,7 +15,8 @@ const L = require('./lib');
 const G = require('./research/late-gbm');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
 const STAT = arg('--stat', 'min'), SI = { min: 0, pts: 1, reb: 2, ast: 3 }[STAT];
-const opt = { rounds: +arg('--rounds', 150), depth: +arg('--depth', 4), lr: +arg('--lr', 0.06), minLeaf: +arg('--leaf', 60) };
+const opt = { rounds: +arg('--rounds', 150), depth: +arg('--depth', 4), lr: +arg('--lr', 0.06), minLeaf: +arg('--leaf', 60), loss: arg('--loss', 'l1') };
+// the target is what is SHOWN (average or its blend with the middle), and the loss is the average miss, so the trees learn the middle of what is left
 const GROUPS = (arg('--groups', 'rep,pre,s6,s12,s18,s24,s30,s36,s42')).split(',');
 const read = (f) => L.readJSON(path.resolve(L.ROOT, f)).filter((r) => !r.un && r.g && r.mn && r.ac && r.ac[0] > 0 && r.x);
 // what the trees may look at: the engine's own numbers, the player, the game state, and the layer's inputs
@@ -32,9 +33,9 @@ const train = split ? all.filter((r) => r.d < split) : all;
 const tests = [];
 if (split) tests.push(['later games of the training file', all.filter((r) => r.d >= split)]);
 for (const f of String(arg('--test', '')).split(',').filter(Boolean)) tests.push([f, read(f)]);
-console.log(`stat ${STAT} | train ${train.length} rows, ${new Set(train.map((r) => r.id)).size} games | trees ${opt.rounds} x depth ${opt.depth}, step ${opt.lr}, leaf ${opt.minLeaf}`);
+console.log(`stat ${STAT} | loss ${opt.loss} | train ${train.length} rows, ${new Set(train.map((r) => r.id)).size} games | trees ${opt.rounds} x depth ${opt.depth}, step ${opt.lr}, leaf ${opt.minLeaf}`);
 const models = {};
-const shown = (r) => r.pr[SI], y0 = (r) => r.ac[SI] - r.mn[SI]; // target: real minus the engine's average
+const shown = (r) => r.pr[SI], y0 = (r) => r.ac[SI] - r.pr[SI]; // target: real minus the number shown
 for (const g of GROUPS) {
   const tr = train.filter((r) => r.g === g);
   if (tr.length < 2000) continue;

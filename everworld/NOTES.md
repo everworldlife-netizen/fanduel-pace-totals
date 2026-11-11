@@ -4,11 +4,12 @@ Memory between sessions. Read this before trying anything; add to it at the end 
 
 Last updated: 2026-11-11 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
 
-## HANDOFF (Nov 11, 2026): the work moves to a Claude Code session on Akara's own computer
+## START HERE (Nov 11, 2026): state of the work, written so any new session can pick it up
 
-Akara asked on Nov 11 to finish this project in a Claude Code session on their own computer. The cloud session could
-not reach that computer, so this file and this branch (`claude/player-performance-apps-bjy4mx`, draft PR #5) are the
-handoff. Everything below is enough to carry on without the cloud session.
+Written when Akara asked, on Nov 11, to move the project to a Claude Code session on their own computer (the
+cloud session could not reach that computer), and kept up to date after Akara said to carry on in the cloud after
+all. This file and this branch (`claude/player-performance-apps-bjy4mx`, draft PR #5) are enough to carry on
+anywhere: the brief, the state of the build, the proof, the set-up on a new computer, and what is left.
 
 ### The standing brief (Akara's rules, as given at the start; Akara's own words always win)
 
@@ -34,17 +35,65 @@ what matters most.
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit
+### Where the build stands at this commit (updated 17:30 UTC, Nov 11)
+
+Akara then wrote "Nevermind just continue as you were before", so the cloud session went on and FINISHED version 16.
 
 - LIVE on the two Spaces: the old builds (`ca-shell-v14`, `gg-winner-v3.9.0`; copies in `baseline/`). NOTHING from this branch is published.
-- `release-2026-11-11/` = Courtside 15 + GG Winner 3.10.0, finished and tested (see "FINAL build of Nov 11"). It
-  is superseded for Courtside by the work below but is still a valid release if something goes wrong.
-- `cs/build/engine.js` at this commit is BETWEEN two versions: it has the 13 new inputs and switches of the
-  "anchors" build (lab name `anch1`, see "Research round of Nov 11") but its built-in lessons are still the old
-  49-input ones (`H3-final`). DO NOT PUBLISH `cs/build` until the new lessons are built in (steps below).
-- Engine tests: 76 checks pass. App tests (9) and GG tests (15) were last run on the version-15 files.
-- Frozen engines for the lab are tracked for this handoff: `data/engines/anch1/` (the new build as tested) and
-  `data/engines/base18/` (the version-15 engine, the "before").
+- `cs/build` = Courtside 16 (`ca-shell-v16`, Settings shows "Version 16 (Nov 11, 2026)"): the "anchors" build with
+  its own lessons built in (`data/lessons/H4-anch1.json`, 62 inputs, 3,709 games), the live team check at half
+  strength, the middle shown for minutes in the last six minutes, a fresh learning tally on the phone
+  (`pat:v5:sum`). `gg/static` = GG Winner 3.10.0 (unchanged since the version-15 round).
+- `release-2026-11-11/` holds exactly these files (Courtside: app.js, data.js, engine.js, sw.js, worker.js; GG
+  Winner: app.js, index.html, league-live.js, profiles.js, research.js, sw.js). READY TO PUBLISH, not published:
+  the cloud session had no Hugging Face write access.
+- Tests: engine 76 checks, app 9, GG Winner 15, all passing; `livecheck --local cs` and `--local gg` OK
+  (10 games on the board, `ca-shell-v16`, `gg-winner-v3.10.0`, no page errors).
+- Frozen engines for the lab (tracked): `data/engines/anch1/` (anchors as first tested), `anch3/` (the finished
+  engine, lessons built in) and `base18/` (version 15, the "before" of the lab tables). `data/engines/base` (not
+  tracked) is the live app's engine = `baseline/cs/engine.js`.
+
+### Final exam of the finished engine: this season's 121 complete games, never seen by any lesson (`tools/p2.sh`)
+
+"Before" = the live app (version 14) taught the same way (`data/runs/H2-base.json`); "after" = the finished engine
+with the hold-out lessons `P2H-anch1` (`data/runs/P2f-anch3.json`). This is what the in-app report shows. Everyone
+who really played 10+ minutes; a player with no number counts as a full miss. z is paired by game.
+
+| moment | minutes miss | points miss | rebounds miss | assists miss | game total miss |
+|---|---|---|---|---|---|
+| before lineups | 5.106 → 4.344 (-14.9%) | 4.835 → 4.723 (-2.3%, z -4.4) | 1.917 → 1.895 | 1.424 → 1.405 | 14.58 → 14.17 |
+| tip-off | 5.106 → 4.026 (-21.2%, z -13) | 4.835 → 4.665 (-3.5%, z -5.7) | 1.917 → 1.891 (-1.3%) | 1.424 → 1.403 (-1.5%) | 14.58 → 14.22 |
+| 6 min in | 5.018 → 4.000 (-20.3%, z -12) | 4.507 → 4.353 (-3.4%, z -5.3) | 1.822 → 1.801 (-1.1%) | 1.316 → 1.303 (-1.0%) | 14.27 → 13.53 |
+| 9 min in | 4.871 → 3.921 (-19.5%, z -11) | 4.381 → 4.237 (-3.3%, z -4.6) | 1.758 → 1.711 (-2.7%) | 1.271 → 1.242 (-2.2%) | 14.03 → 13.45 |
+| end Q1 | 4.429 → 3.862 (-12.8%, z -9.9) | 4.134 → 4.071 (-1.5%, z -2.8) | 1.669 → 1.652 (-1.0%) | 1.212 → 1.202 (-0.9%) | 13.82 → 12.67 |
+| 21 min in | 3.695 → 3.417 (-7.5%, z -8.3) | 3.500 → 3.459 (-1.2%, z -3.2) | 1.442 → 1.429 (-0.9%) | 1.006 → 1.002 (-0.5%) | 11.85 → 11.72 |
+| halftime | 3.437 → 3.225 (-6.2%, z -6.5) | 3.244 → 3.211 (-1.0%, z -2.7) | 1.333 → 1.325 (-0.6%) | 0.934 → 0.927 (-0.7%) | 10.93 → 10.92 |
+| 33 min in | 3.037 → 2.831 (-6.8%, z -5.7) | 2.581 → 2.514 (-2.6%, z -4.7) | 1.090 → 1.055 (-3.2%) | 0.655 → 0.652 (-0.4%) | 8.80 → 8.68 |
+| end Q3 | 2.817 → 2.638 (-6.4%, z -6.6) | 2.197 → 2.160 (-1.7%, z -2.9) | 0.941 → 0.918 (-2.4%) | 0.553 → 0.547 (-1.1%) | 7.90 → 7.78 |
+| 6:00 left | 1.608 → 1.499 (-6.8%, z -4.5) | 1.242 → 1.234 (-0.6%, z -1.0) | 0.505 → 0.498 (-1.4%) | 0.283 → 0.286 (+0.8%, z 1.8) | 6.89 → 6.92 |
+| 3:00 left | 0.791 → 0.666 (-15.8%, z -7.9) | 0.706 → 0.703 (-0.4%) | 0.274 → 0.273 | 0.142 → 0.142 | 5.68 → 5.74 |
+
+Against version 15 (never published; `data/runs/P2-base18.json`) on the same 121 games: minutes -7.5% at tip-off,
+-10.5% at 6 min, -8.6% end Q1, -4.5% at half, -6.2% end Q3, -5.9% at 6:00, -13.6% at 3:00 (z -4 to -13);
+points -0.9% / -1.5% / -1.4% / -1.1% / -1.5% / -0.6% / -0.9%; rebounds -1.2% / -1.3% / -2.1% / -0.8% / -2.2% /
+-1.0% / -0.6%; assists between -1.2% and +0.5% (flat). Top scorer inside our top three at tip-off: 76.9% (live
+app) → 78.5%; end Q1 85.1% → 81.8% (the same dip as in the version-15 exam, still unexplained: see idea 6);
+half 88.4% → 90.9%. Stated chances stayed honest (85% said at tip-off happened 84%; 65% said happened 63%).
+
+Two switches decided on the way (both measured on the two unseen sets):
+- TEAM CHECK (`teamCal` 2, `teamCalW` 0.5). Projected game totals ran low at every live stage (592 games: -5.7
+  points 6 min in, -5.3 at half, -2.8 end Q3; 121 games: -2.1, -3.4, -2.9). The learned factors on complete games
+  are 1.03 to 1.05 at every live stage (`mklessons.js` now takes the team check of EVERY live stage from the
+  complete games: with the older, incomplete seasons mixed in the early factors came out at 1.00). The full check
+  removed the average bias in both sets but went past the middle on the 121 games (late totals are lopsided:
+  overtime, fouling), so HALF of it is applied, fading to none from 33 to 42 minutes in. Finished engine against
+  version 15, game total miss: 592 games -4.7% at 6 min, -5.2% at half, -5.3% at 30 min, -2.3% end Q3 (z -3 to
+  -5.3), level at tip-off and late; 121 games within noise at every stage (z -1.1 to +1.5). Player numbers do not
+  change at all. Tool for this: `bt2` runs now keep each game's signed total miss and raw points to come
+  (`per[17..19]`).
+- MIDDLE FOR MINUTES (`LAND.s42.min` 1). The engine's own middle only helps in the last stage: 1.095 → 1.069
+  (-2.3%, 592 games), 1.090 → 1.083 (-0.7%, 121 games). Set for that stage only. (Trees given the whole state
+  get -12.7% there: the engine's simulated minutes are not two-valued enough. A lead for the minutes number only.)
 
 ### Proof so far: split-season test (`tools/p1.sh`), 592 complete games the lessons never saw
 
@@ -70,17 +119,13 @@ Better or level at every stage and every stat. Before lineups, counting every pl
 The "everyone we listed or who played" view also improved at every stage (6 min: minutes 5.383 → 5.269).
 Six minutes in is now closer than tip-off, as it should be (it was worse before: 4.885 against 4.623).
 
-### What the cloud session was still running when this was written, and will push if it lives long enough
+### Cloud session log (newest last)
 
-1. `tools/p2.sh anch1 data/engines/anch1` then `tools/p2.sh base18 data/engines/base18 data/lessons/H2-final.json`:
-   the final exam on this season's 121 complete games. Results → `data/runs/P2-anch1.json`, `P2-base18.json`
-   (compare with `node tools/cmp.js data/runs/P2-base18.json data/runs/P2-anch1.json`).
-2. `tools/p3.sh anch1 data/engines/anch1`: the shipping lessons → `data/lessons/H4-anch1.json`.
-If those files are in the repo when you start (`git pull` first, and look at "Cloud session log" just below), do not
-redo them. If they are not, they take about 50 minutes on 4 cores once the play-by-play cache is rebuilt.
-
-Cloud session log (newest last):
-- 16:30 UTC Nov 11: handoff written; P1 table above is final; P2 and P3 running.
+- 16:30 UTC Nov 11: handoff written; split-season table final; exam and shipping fit running.
+- 16:45: exam passed (`P2-anch1` vs `P2-base18`). 17:10: shipping lessons `H4-anch1.json` done.
+- 17:15: team check and minutes-middle switches decided; finished engine frozen as `data/engines/anch3`; final exam
+  runs `P2f-anch3.json` (121 games) and `P1f-anch3.json` (592 games).
+- 17:30: in-app report rebuilt from `H2-base.json` and `P2f-anch3.json`; all tests pass; release folder rebuilt.
 
 ### How to set up on a new computer
 
@@ -103,48 +148,38 @@ node tools/fetch.js 2023-10-24 2026-11-10      # then, to add newer games: fetch
 
 Tests, the release build and publishing do NOT need the cache.
 
-### Steps to finish Courtside 16 (the "anchors" build), in order
+### What is left for Courtside 16: publish
 
-1. Exam (P2). Ship only if this season's 121 games confirm the split-season table (same direction, no stage
-   clearly worse). Then build the in-app report from the two exam runs:
-   `node tools/mkaccuracy.js --before data/runs/P2-base18.json --after data/runs/P2-anch1.json --train <games in P2M> --findings cs/accuracy-findings.json --note "$(cat cs/accuracy-note.txt)"`
-   and rewrite `cs/accuracy-findings.json` / `cs/accuracy-note.txt` in plain words for the new numbers (no banned words).
-2. Two small switches to test on the exam and the split before deciding (each is one `bt2` run with `--tune`):
-   - `teamCal=2` (team check during games only). Projected game totals run 2 to 5 points LOW at every live stage in
-     both seasons (2026-27: -2.1 at 6 min, -3.4 at half, -2.9 end Q3; 2025-26 second half: -5.6, -4.4, -2.5). The
-     learned team factors are 1.03 to 1.05 mid-game, and the check was simply switched off (`teamCal` 0) after an
-     old test on the tip-off stage. Expect the total miss to drop about 3% mid-game. Player numbers do not change.
-   - `LAND[stage].min` (show the middle for minutes late in games): the engine now exports `mid.min`; dump rows
-     carry it as `mm`; `tools/fitland.js` fits the weight (it now knows `min`). Fit on a P1 dump made with the
-     CURRENT engine (`DUMP=1 tools/p1.sh <name> <dir>` reuses the lessons and writes the rows), check on a P2 dump.
-     The research measured -8% (2025-26) to -10% (2026-27) on the minutes number at 6:00 left.
-3. Shipping lessons: `tools/p3.sh anch1 data/engines/anch1` (or reuse `data/lessons/H4-anch1.json`), then
-   `node tools/mkengine.js --engine cs/build/engine.js --lessons data/lessons/H4-anch1.json`.
-4. In `cs/build/app.js`: `APP_VERSION = '16 (<date>)'`; `PAT_KEY = 'pat:v5:sum'` (the phone's saved learning sums
-   have 49 inputs; the new layer has 62, so the old sums must not be loaded); `PAT_FROM` = the day after the last
-   game in the lessons. In `cs/build/sw.js`: `ca-shell-v16`.
-5. `node tools/mkfixture.js`, all three test suites, `node tools/mkrelease.js --date <date>`,
-   `node tools/livecheck.js --local cs` and `--local gg`.
-6. Publish (only when Akara says so, and only the finished build): on Akara's computer run `hf auth login` in a
-   terminal (a token with Write permission, typed there, never in a chat), then `tools/publish.sh release-<date>`
-   (bash; on Windows use Git Bash, or run its three steps by hand: the tests, one `hf upload ... --repo-type space`
-   per Space, then `node tools/mkrelease.js --verify release-<date>` and `node tools/livecheck.js`).
-7. Report to Akara (plain words, exact numbers with game counts, both links, phone update steps: Courtside
-   Settings shows "Version 16 (...)"; GG Winner's footer shows "Version 3.10.0 (Nov 11, 2026)").
+Everything up to the release folder is done (the recipe that was followed is under "Publishing" further down, with
+`tools/p1.sh`, `p2.sh`, `p3.sh` as the three fits). Left:
+
+1. Publish, only when Akara says so. Hugging Face write access is needed: in a cloud session through the secure
+   sign-in card (Akara has to ask for it; never a token in chat), on Akara's own computer with `hf auth login` in a
+   terminal. Then `tools/publish.sh release-2026-11-11` (bash; on Windows use Git Bash, or run its steps by hand: the
+   three test suites, one `hf upload everworldlife/<space> release-2026-11-11/<space> . --repo-type space` per Space,
+   then `node tools/mkrelease.js --verify release-2026-11-11` and `node tools/livecheck.js`).
+2. Report to Akara (plain words, exact numbers with game counts, both links, phone update steps: Courtside
+   Settings shows "Version 16 (Nov 11, 2026)"; GG Winner's footer shows "Version 3.10.0 (Nov 11, 2026)").
+3. If new games have been played since Nov 9 and you want them in the lessons: refresh the data, rerun
+   `tools/p3.sh` under a new name, `mkengine.js`, set `PAT_FROM` in `cs/build/app.js` to the day after the last game,
+   bump `ca-shell-vNN` and `APP_VERSION`, rerun the tests and `mkrelease.js`. Do NOT rerun `mkaccuracy.js` unless
+   the exam (`p2.sh`) is rerun too.
 
 ### The next round after that (best leads, in order)
 
-1. A SECOND LEARNING STAGE (boosted trees on the live state). Probe done on Nov 11 (`tools/stage2.js`, trained on
-   only 315 unseen games of the new build, tested on the 277 later ones): minutes miss on top of the anchors build
-   -1.8% before lineups (z -4.0), about 0 at tip-off, 6 and 12 min, then -1.7% at 18 min (z -3.1), -1.9% at half
-   (z -3.4), -3.0% at 30 min (z -4.7), -4.3% end Q3 (z -6.6), -4.8% at 6:00 left (z -3.8). Real, and it should grow
-   with more training games. To do it properly: (a) out-of-fold rows for all of 2025-26 (the P1 dump covers the
-   second half; make the mirror lessons, taught without Oct 2025 to Jan 17 2026, and dump the first half: fit2 needs
-   a "leave this date window out" option for that); (b) train per stage on 2025-26, test on the P2 dump (2026-27);
-   (c) only if it wins there, put the trees into `engine.js` after the linear layer (a tree is a few numbers; 80
-   trees of depth 3 per stage is about 100 KB in all), with tests; (d) then check points, rebounds and assists
-   move with it. Output of the probe: `data/research/stage2-min-probe.txt` (not in git; rerun the command in the
-   tool's header).
+1. A SECOND LEARNING STAGE (boosted trees on the live state): TESTED AS A PROBE, NOT WORTH BUILDING FOR POINTS,
+   REBOUNDS AND ASSISTS. `tools/stage2.js` trains trees per stage on rows of games the lessons never saw (315 games
+   of the split-season set) and tests on the 277 later ones, with the engine's own numbers, the game state and all
+   62 inputs as features. Learner that targets the middle (`--loss l1`, the right one for an average-miss score):
+   points -0.5% to +0.8% at every stage except the end of Q3 (-1.4%, z -4.5); rebounds within -0.9% and +0.6%;
+   assists within -0.9% and +0.8%; none of it steady across stages. With the average-targeting learner the late
+   stages got worse (+1.7% points, +4% rebounds, +7.6% assists at 6:00 left). So the stat numbers hold what the
+   game state can give. MINUTES are different: -1.6% at 18 min, -3.2% at 30, -4.0% end Q3, -12.7% at 6:00 left
+   (z -4 to -11; nothing before 18 min). That is the minutes number itself (late minutes are two-valued and the
+   engine's simulated minutes are not), and it barely reaches points. If it is ever built: train on out-of-fold
+   rows of all 2025-26 (the split-season dump covers the second half; the mirror lessons need a "leave this date
+   window out" option in fit2), test on the 2026-27 dump (`data/runs/P2f-anch3.rows.json.gz`), and ship it only for
+   the minutes number from 30 minutes in.
 2. The two research topics that were cut off (scenario audit, per-minute rates by scenario) and the skeptics'
    pass over the findings. The audit's partial scan found nothing new in the rates.
 3. Small late-game inputs measured but not built: a deep-bench player sitting at 6:00 of a close game is not coming
@@ -765,7 +800,7 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 ## Test suites (run all before publishing)
 
 ```
-node cs/tests/engine.test.js          # engine on two real games (73 checks): sanity, plus-edges-only, lineup and load inputs, short-handed and opening-tip cases, learning sums, wording
+node cs/tests/engine.test.js          # engine on two real games (76 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
 node cs/tests/app.test.js             # boots the real app in a simulated phone browser (9 checks): screens, wording rules, edge record, stale boxes, offline start
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
@@ -797,8 +832,8 @@ each on 4 cores; `<E>` is a frozen copy of `cs/build/engine.js` + `sitprior.js` 
 5. After uploading: `node tools/mkrelease.js --verify release-<date>` (byte-for-byte against the live files) and
    `node tools/livecheck.js` (both live links in a phone-sized browser).
 
-Release `release-2026-11-11/` (Courtside v15 `ca-shell-v15`, GG Winner v3.10.0 `gg-winner-v3.10.0`) is built and
-checked locally. STATUS: NOT PUBLISHED YET. No Hugging Face write access existed in the cloud session (the
+Release `release-2026-11-11/` (Courtside 16 `ca-shell-v16`, GG Winner v3.10.0 `gg-winner-v3.10.0`; version 15 was
+never published and is superseded) is built and checked locally. STATUS: NOT PUBLISHED YET. No Hugging Face write access existed in the cloud session (the
 connector is read-only, and no token was available). To publish from a session: a write token for huggingface.co
 must be provided through the session's secure credential form (never pasted into chat), or the changed files are
 uploaded by hand at
