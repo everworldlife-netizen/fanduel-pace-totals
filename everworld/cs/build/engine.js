@@ -717,7 +717,9 @@ b[PAT_IX.usgHi] = clamp((usgS - 0.2) * 10, -1.5, 2.5);
 b[PAT_IX.mpgC] = clamp((f.mpg - 24) / 8, -2, 1.5);
 b[PAT_IX.tdMkt] = f.tdMkt || 0;
 b[PAT_IX.startUp] = clamp(f.startUp || 0, 0, 2.5); b[PAT_IX.startDown] = clamp(f.startDown || 0, 0, 1);
-b[PAT_IX.fresh] = f.fresh ? 1 : 0; b[PAT_IX.deep] = f.deep ? 1 : 0;
+// back from a layoff: once he is on the floor or has played he is no longer an unknown; and the 6-minute lesson ("still not in
+// after six minutes: he is probably not playing") comes on gradually from the tip instead of at the first second
+b[PAT_IX.fresh] = f.fresh && !(live && (f.on || f.min > 0)) ? (live && f.el < 6 ? clamp(f.el / 6, 0.15, 1) : 1) : 0; b[PAT_IX.deep] = f.deep ? 1 : 0;
 b[PAT_IX.vacPos] = clamp(f.vacPos || 0, 0, 2); b[PAT_IX.lastMin] = clamp((f.lastMin || 0) / 10, -2, 2);
 b[PAT_IX.rest3] = f.rest3 ? 1 : 0; b[PAT_IX.missShare] = clamp(f.missShare || 0, 0, 1);
 // team load: 0 = a typical night, +1 = the usual minutes of tonight's available players add up to 24 more than usual

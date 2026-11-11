@@ -18,8 +18,9 @@ Last updated: 2026-11-11 (session 1 in this repo). Status lines marked WIP are s
 - Unseen test sets now: this season's complete games (121 through Nov 9; grows daily: refresh the data first) and
   the half-season split of 2025-26 (fit through Jan 31, test Feb to Apr: 490 games). The old 1,199-game fold
   (fit 2023-25, test 2025-26) still works for comparing two engines taught the same way on all games.
-- Lessons that ship: `data/lessons/H3-v17c.json` (= all four seasons for pre/rep/s6/s12/s42, complete 2025-26 +
-  2026-27 games for s18-s36). Hold-out twin without this season: `H2-v17c.json`. In-app report = `H2-*` runs.
+- Lessons that ship: `data/lessons/H3-final.json` (= all four seasons for pre/rep/s6/s12/s42, complete 2025-26 +
+  2026-27 games for s18-s36). Hold-out twin without this season: `H2-final.json`. In-app report = `H2-base` vs
+  `H2-v18c` runs. Tested engine snapshot: `data/engines/stage-v18c/` (+ the layoff-at-tip fix, same at every lesson stage).
 - Best open leads, in order: (1) starters before tip-off (BDL GOAT projected lineups, or any feed that has them);
   (2) `q4Pace` 1.0 with a refit, for the live game total that runs 2 to 4 points low; (3) repair the old seasons'
   targets from the official box lines for the tip-off stages; (4) the edge record on the phone, once it has a few
@@ -338,6 +339,61 @@ toward the shipped value), paired z against the shipped setting. A lead then had
   marginK, closerQ4, immuneLead, foulAfter, blowAhead, benchM50 (5 is clearly worse), minDecay.
 - `rotK` 0 divides by zero (no matching games): never use it.
 
+### FINAL build of Nov 11: exam on this season's 121 complete games (the numbers the in-app report shows)
+
+Lessons without this season (`data/lessons/H2-final.json`: pre/rep from the all-games fit of the v16b engine, s6/s12/
+s42 from the all-games fit of the final live engine, s18-s36 from complete 2025-26 games). "Before" = the live
+engine taught by the same recipe (`H2-base.json`), which is the stronger of the two ways to teach it.
+`node tools/cmp.js data/runs/H2-base.json data/runs/H2-v18c.json`:
+
+| moment | PTS miss, live engine → final | MIN miss | game total miss |
+|---|---|---|---|
+| before lineups | 4.835 → 4.809 (-0.6%, n.s.) | 5.11 → 4.93 (-3.5%, z -4.3) | 14.58 → 14.31 (n.s.) |
+| tip-off | 4.835 → 4.705 (-2.7%, z -4.5) | 5.11 → 4.34 (-14.9%, z -9.5) | 14.58 → 14.03 (-3.7%, n.s.) |
+| 6 min in | 4.507 → 4.420 (-1.9%, z -3.7) | 5.02 → 4.46 (-11.0%, z -7.5) | 14.27 → 13.56 (-5.0%, n.s.) |
+| 9 min in | 4.381 → 4.320 (-1.4%, z -2.6) | 4.87 → 4.36 (-10.4%, z -7.8) | 14.03 → 13.10 (-6.6%, z -2.5) |
+| end Q1 | 4.134 → 4.128 (n.s.) | 4.43 → 4.22 (-4.7%, z -4.8) | 13.82 → 12.76 (-7.6%, z -2.7) |
+| 21 min in | 3.500 → 3.481 (-0.6%, n.s.) | 3.70 → 3.57 (-3.5%, z -4.1) | 11.85 → 12.00 (n.s.) |
+| half | 3.244 → 3.245 | 3.44 → 3.37 (-1.9%, z -3.3) | 10.93 → 10.75 (n.s.) |
+| 33 min in | 2.581 → 2.562 (-0.7%, z -2.2) | 3.04 → 3.00 (-1.2%, n.s.) | 8.80 → 8.80 |
+| end Q3 | 2.197 → 2.193 | 2.82 → 2.81 | 7.90 → 7.79 (n.s.) |
+| 6:00 left | 1.242 → 1.241 | 1.61 → 1.59 (-0.9%, z -2.4) | 6.89 → 6.88 |
+| 3:00 left | 0.706 → 0.709 (n.s.) | 0.791 → 0.771 (-2.5%, z -5.3) | 5.68 → 5.68 |
+
+Top scorer in our top 3: tip-off 76.9% → 80.2%; end of Q1 85.1% → 82.6% (121 games: 3 games' worth; it was +1.1
+points on the 1,199-game fold). Chances stated at tip-off: said 85% → came in 84%; said 65% → 64%.
+
+### What two independent reviews of the code found (Nov 11) and what was done
+
+Engine stress test (15,000 projections with hostile inputs): no crash or NaN with real-typed inputs, but:
+- Before lineups, on a badly short-handed team (usual minutes of the available players under about 215) the
+  refill handed one player the whole shortfall: 48 minutes, "40+ points 75%". FIXED: `refillMax` 0.2 before
+  tip-off (most a refill may add to one player, as a share of his own minutes). It also made the before-lineups
+  stage better: minutes -1.1% (z -9.6), points -0.4% (z -4.5) on 587 games. A live limit (`refillMaxLive`) is 0:
+  0.35 changed nothing early and cost 0.8% on minutes in the last three minutes.
+- A posted starter the play-by-play had not named yet counted as "not checked in" (and one back from a layoff
+  lost more than half his number until his first event). FIXED: `startOn` 1 (he has been on the floor since the
+  tip: minutes at 3 minutes in -2.4%, z -9.3; at 6 minutes -0.5%) and the layoff input comes on gradually over
+  the first six minutes and stops once he is on the floor.
+- With NO posted lineup, starters were "known" at 8 found by the play-by-play, so the missing ones were flagged
+  NOT STARTING at minutes 3 to 6. FIXED: known = posted lineup (8+) or all ten found.
+- A deep-bench player with a few garbage minutes and no season line carried raw rates (12 rebounds in 36
+  minutes). FIXED: `thinK` 30 (bench-average rates mixed in; usage toward 0.16). Tip-off points -0.1% (z -2.1).
+- The top-scorer tally compared ids only (a layoff player has a negative id): FIXED, by name too.
+- NOT FIXED, known: at 27:00 the minutes lessons switch from the halftime set to the 30-minute set in one step
+  (a usual starter coming off the bench can move 3 minutes). Using the 30-minute set from the start of Q3
+  (`patHalf` 1) tested no better (assists +0.5%, total +1.2% at 25.5 minutes), so the step stays for now.
+- The smooth refill (`refillSoft`) and the rotation schedule apply to games in progress only: before tip-off the
+  smooth refill made the before-lineups stage 1.7% worse on minutes (z -5.9 on 1,177 games).
+App review (edge record and nightly learning), all FIXED and covered by `cs/tests/app.test.js` (9 checks):
+- Edges were graded from the last live read, which can be a play or two short of the final: now only from a box
+  that adds up to the final score, with a fresh re-read; a finished game stays in the refresh until graded; a sweep
+  grades earlier nights (also on a day with no games); rows still waiting after 6 days close as no action.
+- Nightly learning closed a night even when a game could not be read: now retried for two more days; a game with
+  no posted lineup is not learned (it would be filed under the wrong stage).
+- "Can't reach the scores" card instead of endless loading rows when the first slate request fails; a damaged
+  saved row no longer breaks Settings; two open copies of the app merge their records; the 55 to 59% band shows.
+
 ### The number shown (LAND), refit on 1,208 complete games (Nov 11): no change
 
 `node tools/fitland.js --fit data/runs/land-2026.rows.json.gz --check data/runs/land-2027.rows.json.gz`. The best
@@ -433,8 +489,8 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 ## Test suites (run all before publishing)
 
 ```
-node cs/tests/engine.test.js          # engine on two real games: sanity, plus-edges-only, lineup inputs, learning sums, wording
-node cs/tests/app.test.js             # boots the real app in a simulated phone browser: screens, wording rules, edge record
+node cs/tests/engine.test.js          # engine on two real games (73 checks): sanity, plus-edges-only, lineup and load inputs, short-handed and opening-tip cases, learning sums, wording
+node cs/tests/app.test.js             # boots the real app in a simulated phone browser (9 checks): screens, wording rules, edge record, stale boxes, offline start
 node gg/tests/league-live.test.js     # real-league model: clocks, quarter breaks, first-seen lines, plus-edges-only wording
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/livecheck.js               # both LIVE links (after publishing)
@@ -443,17 +499,26 @@ node tools/livecheck.js               # both LIVE links (after publishing)
 
 ## Publishing
 
-How the Courtside release is built (in this order, so the in-app report stays honest):
-1. `tools/ship.sh <holdout lessons> <before run> "<switches>" <train games> cs/accuracy-findings.json <date>` writes
-   the hold-out lessons into `cs/build/engine.js`, replays this season with them (`data/runs/ship.json`; keep a copy
-   as `ship-holdout.json`), writes the in-app report from that run, runs every test and builds the release folder.
-2. Refit on everything: `node tools/fit2.js --engine <frozen copy> --seasons 2024,2025,2026,2027 --no-playoffs
-   --out data/lessons/C-v15d.json`, then `node tools/mkengine.js --engine cs/build/engine.js --lessons
-   data/lessons/C-v15d.json`. Do NOT rerun `ship.sh` or `mkaccuracy.js` after this (the run would be in-sample).
+How the Courtside release is built (in this order, so the in-app report stays honest). Fits take 5 to 17 minutes
+each on 4 cores; `<E>` is a frozen copy of `cs/build/engine.js` + `sitprior.js` in `data/engines/<name>/`:
+1. Hold-out lessons (nothing from the current season):
+   `LAB_DIRTY=1 node tools/fit2.js --engine <E> --seasons 2024,2025,2026 --no-playoffs --out data/lessons/M2.json`
+   `node tools/fit2.js --engine <E> --seasons 2026 --no-playoffs --out data/lessons/K2.json` (complete games only)
+   `node tools/mklessons.js --base data/lessons/M2.json --mid data/lessons/K2.json --out data/lessons/H2.json`
+   Same three steps for the live engine (`data/engines/A2-base`) = the "before".
+2. Exam on the current season with both: `node tools/bt2.js --engine <E> --seasons 2027 --no-playoffs --nsims 500
+   --stages rep,0,6,9,12,21,24,33,36,42,45 --lessons data/lessons/H2.json --out data/runs/H2.json`, compare with
+   `tools/cmp.js`, then the in-app report: `node tools/mkaccuracy.js --before <base run> --after <new run> --train
+   <games> --findings cs/accuracy-findings.json --note "$(cat cs/accuracy-note.txt)"`.
+3. Shipping lessons: the same recipe with the current season added (`--seasons 2024,2025,2026,2027` and
+   `--seasons 2026,2027`), merged, then `node tools/mkengine.js --engine cs/build/engine.js --lessons <H3>`.
+   Do NOT rerun `mkaccuracy.js` after this (a run with the built-in lessons is in-sample).
    Set `PAT_FROM` in `cs/build/app.js` to the day after the last game in the lessons, so the phone's own nightly
    learning picks up from there (it only looks back 5 days).
-3. Tests, `node tools/mkrelease.js --date <date>`, `node tools/livecheck.js --local cs` and `--local gg`.
-4. After uploading: `node tools/mkrelease.js --verify release-<date>` (byte-for-byte against the live files) and
+   (If only the engine's behaviour before tip-off changed, `fit2.js --stages 0,rep` refits just those stages.)
+4. `node tools/mkfixture.js`, the three test suites, `node tools/mkrelease.js --date <date>`,
+   `node tools/livecheck.js --local cs` and `--local gg`.
+5. After uploading: `node tools/mkrelease.js --verify release-<date>` (byte-for-byte against the live files) and
    `node tools/livecheck.js` (both live links in a phone-sized browser).
 
 Release `release-2026-11-11/` (Courtside v15 `ca-shell-v15`, GG Winner v3.10.0 `gg-winner-v3.10.0`) is built and

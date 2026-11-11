@@ -18,8 +18,8 @@
     },
     {
      "path": "engine.js",
-     "bytes": 208228,
-     "sha256": "00a14a4fcb3a3cc2773203cba852dc09383a9dcf0b025e07d4c2b1854a4f689a"
+     "bytes": 208552,
+     "sha256": "0f593d434f489843b870d8e0b3e33032bb12c627042f2e3fe253a9a048c9e687"
     },
     {
      "path": "sw.js",
