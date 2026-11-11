@@ -145,25 +145,63 @@ minutes by how often he has been getting in. Lesson: any change that adds player
 - The phone's nightly learning ran without any lineup input and only at 4 of the 8 stages. Fixed in the working
   copy: it now fetches the posted lineup of each finished game from ESPN and replays all 8 stages.
 
-## GG Winner (WIP)
+## GG Winner
 
-Map of the real-league live model: `notes/map-gg-league-live.md` (bugs verified in Node, not yet fixed):
-1. The "starting total" is the first FanDuel line the phone saw, usually a LIVE line, so hot starts count twice.
-2. ESPN clocks under a minute (`"45.2"`) are read as 45.2 minutes.
-3. Quarter breaks on ESPN rows fall into the estimated-clock path.
-4. The league default total is worded as "FanDuel's line".
-5. The live number starts about 1% under the line at tip-off.
-6. Half and quarter calls can fire before tip-off from an even split.
-7. Rule check: the detail screen prints our number against FanDuel's line when we are BELOW it ("NO BET ... below
-   FanDuel's line"). That breaks "plus edges only" as written.
+### Real-league live totals model (`gg/static/league-live.js`, v3.10)
 
-There is no tracker for real-league games anywhere (the server tracker is eBasketball only).
+Test: `node tools/ggbt.js --model <league-live.js> --seasons 2024,2025 --out data/ll/x.json`, compare with
+`node tools/ggbt.js --cmp A.json B.json`. It replays NBA games minute by minute from the scoring timeline with the
+closing total as the starting number. `--prior live:<minute>` plays "the phone first opened this game at that minute
+and the first line it saw was a live line" (the live line is simulated as score so far + closing-line pace; no history
+of real FanDuel live lines exists anywhere).
+
+Live model as found (2,619 NBA games from 2023-25, which its settings never saw): it ran 2 to 3.5 points LOW through
+three quarters and was no better than "score so far + closing-line pace" until the last 3 minutes.
+
+| what | result on unseen games |
+|---|---|
+| Starting rate adds up to the line (the last quarter's slowdown and overtime were being taken off twice) | bias -2.2..-3.5 → -0.5..-1.8; miss 0.5 to 1.3% smaller through three quarters (z -2.4 to -5.9, 2,619 games); late game unchanged |
+| A line first seen during the game is spread over the time left, not the whole game | opened at end of Q1: miss 7.5% smaller 3 minutes later, 4.5% at 27 min; opened at half: 8.8% at 27 min, 3.4% at 39 min; opened after Q3: 3.9% (all z below -7, 4,088 games, simulated live line) |
+| Clocks under a minute (`"45.2"`) read as seconds; quarter breaks (`"End of 1st"`) read as a known clock | unit tests (`gg/tests/league-live.test.js`); real feed samples were not captured |
+| No calls before tip-off on halves/quarters; league default total no longer called "FanDuel's line" | unit tests |
+
+The app now stores, with the first line seen, the score and game minute at that moment (`lg-first-lines` in
+localStorage gets `pts`, `el`, `diff`) and passes it as `priorSeen` to `LeagueLive.project`.
+
+Not fixed / still open: live weights (`liveWeight`) and the late-game shape were left as they are (they test fine);
+the model is still NBA-tuned (no data for other leagues); there is no tracker for real-league games (needs a
+server-side log of time, score, clock, FanDuel line, our number, final).
+
+### GG League gamer ratings (`gg/static/profiles.js`)
+
+Test: `node tools/eb/browser_wf.js` (walk-forward on the 5,246 bundled league games, Oct 14 to Nov 4: every game
+projected from games that finished before it; ratings refit every 50 games). Live settings: total miss 9.29 on 3,216
+games (league average alone 11.46), winner picked 58%. This matches the app's own claim (9.31, 59%).
+
+TRIED, DID NOT WIN: `node tools/eb/browser_wf.js --grid` tried 432 settings (half-life 7 to 21 days, player /
+team / gamer-with-team / head-to-head shrink). The best on the tuning block (half-life 7, gamer-with-team 16: 9.400 →
+9.360) was WORSE on the unseen block (9.181 → 9.217). The live settings stay. More games are needed before retuning
+(the bundled seed stops Nov 4; the server keeps 14 days at `/api/eb/graded?days=14`, and a fetch tool for the H2H
+feed still has to be written: `tools/ebfetch.js` does not exist yet).
+
+### Wording rule fixes (both parts of GG Winner)
+
+"Plus edges only" was broken in sentences that printed our number against a line we were below ("GG expects 104,
+below FanDuel's 108..."). Fixed in `league-live.js`, `app.js` (three places), `research.js`: a line our number is not
+ahead of now gets "Our number is not ahead of this line" and no number. "points a game over the last N" in the
+gamer notes became "across the last N". The word "Overtime" is still used as a period name.
+
+Not done: the server bundle (`gg/static/server/*`) was not touched (no source in the Space; the server map agent
+did not finish). The late-game blend against FanDuel's live line for GG League games lives there.
 
 ## Test suites (run all before publishing)
 
 ```
-node cs/tests/engine.test.js      # engine on two real games: sanity, plus-edges-only, lineup inputs, learning sums, wording
-node cs/tests/app.test.js         # boots the real app in a simulated phone browser: screens, wording rules, edge record
+node cs/tests/engine.test.js          # engine on two real games: sanity, plus-edges-only, lineup inputs, learning sums, wording
+node cs/tests/app.test.js             # boots the real app in a simulated phone browser: screens, wording rules, edge record
+node gg/tests/league-live.test.js     # real-league model: clocks, quarter breaks, first-seen lines, plus-edges-only wording
+node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
+node tools/livecheck.js               # both LIVE links (after publishing)
 ```
 (After changing the engine or the fixture date: `node tools/mkfixture.js`.)
 

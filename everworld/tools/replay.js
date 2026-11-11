@@ -128,7 +128,8 @@ function contextFor(E, S, it, opts = {}) {
 
 /** Last season's situational prior for a season's games, built from the previous season's logs with the engine's own builder (cached on disk). */
 function sitPriorFor(E, season) {
-  const f = path.join(L.DATA, 'derived', `sitprior-${season}.json.gz`);
+  // (the builder changes with the engine's sitPre switch, so each variant keeps its own cached file)
+  const f = path.join(L.DATA, 'derived', `sitprior-${season}${E.TUNE.sitPre > 0 ? '-pre' : ''}.json.gz`);
   if (L.exists(f)) return L.readJSON(f);
   const src = path.join(L.DATA, 'derived', `games-${season - 1}.json.gz`);
   if (!L.exists(src)) return {};

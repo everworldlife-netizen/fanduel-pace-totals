@@ -1684,8 +1684,10 @@ availIn.add(pid); if (x.starter) startT.add(pid);
 }
 }
 // tonight's starters: from the posted lineup before tip, from who was on the floor at the opening tip once the game is on
-const startKnown = st.phase === 'live' ? el > 0.5 : startT.size >= 8;
-if (st.phase === 'live') { startT.clear(); for (const r of Object.values(now.players)) if ((r.team === v || r.team === h) && r.stints && r.stints[0] && r.stints[0][0] < 0.05) startT.add(+r.pid); }
+// (early in a game the play-by-play has not named every starter yet: a starter with no shot, rebound or foul so far is
+// missing from it, so the posted lineup stays in and the play-by-play only adds to it; fewer than 8 known = not known)
+if (st.phase === 'live') for (const r of Object.values(now.players)) if ((r.team === v || r.team === h) && r.stints && r.stints[0] && r.stints[0][0] < 0.05) startT.add(+r.pid);
+const startKnown = startT.size >= 8;
 const teamGames = {}, lastGameDay = {};
 for (const tm of [v, h]) { const tl = logs.filter((l) => tm in l.margin); teamGames[tm] = tl.length; lastGameDay[tm] = tl.reduce((a, l) => (String(l.date).slice(0, 10) > a ? String(l.date).slice(0, 10) : a), ''); }
 const rest3 = {};

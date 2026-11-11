@@ -117,11 +117,31 @@ for (const fx of FX) {
     for (const p of big) { const q = b.players.find((x) => x.pid === p.pid); if (q) assert.ok(Math.abs(q.mean.pts - p.mean.pts) < 2.5, `${p.name} jumps ${p.mean.pts.toFixed(1)} → ${q.mean.pts.toFixed(1)} across the border`); }
   });
 }
+test('team totals: "if he plays" minutes never inflate the game score, and the learned team check is applied', () => {
+  for (const fx of FX) {
+    const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+    for (const el of [0, 6, 24]) {
+      const P = run(fx, el);
+      for (const [tm, nowPts] of [[v, P.state.vs], [h, P.state.hs]]) {
+        assert.ok(P.teamRaw && Number.isFinite(P.teamRaw[tm]), 'no raw team number');
+        assert.ok(Math.abs(P.projScore[tm] - (nowPts + P.teamRaw[tm] * P.teamFactor)) < 0.05, 'team score is not points so far + the checked sum of players');
+        assert.ok(P.teamFactor >= 0.85 && P.teamFactor <= 1.15, `team check ${P.teamFactor} outside its cap`);
+      }
+      if (el === 0) {
+        // the books' line splits into two team totals: ours must be in the same range, however many players are on the active list
+        const mk = fx.base.market, tv = (mk.total + mk.spreadHome) / 2, th = (mk.total - mk.spreadHome) / 2;
+        assert.ok(Math.abs(P.projScore[v] - tv) < 0.16 * tv && Math.abs(P.projScore[h] - th) < 0.16 * th, `tip-off team totals ${P.projScore[v].toFixed(1)}/${P.projScore[h].toFixed(1)} far from the line's ${tv}/${th}`);
+      }
+    }
+  }
+});
 test('learning sums add up and solve (ridge), and the shipped lessons have one number per input', () => {
   const fx = FX[0];
   const acc = E.patEmpty();
   for (const el of [0, 12, 24]) { const m = momentAt(fx.g, fx.plays, el); const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 200, seed: 3, patterns: null, sitPrior: fx.sitPrior }); E.patGrade(P, fx.rows, acc); E.patScore(P, fx.rows, acc); }
   assert.ok(acc.pre.min.n > 10 && acc.s12.pts.n > 10 && acc.acc.pre.n > 10);
+  assert.ok(acc.team.pre[0] === 2 && acc.team.pre[1] > 100 && acc.team.pre[2] > 100, 'team check sums missing');
+  assert.strictEqual(E.patUnpack(E.patPack(acc)).team.pre[0], 2);
   const packed = E.patUnpack(E.patPack(acc));
   assert.strictEqual(packed.pre.min.n, acc.pre.min.n);
   const beta = E.patBeta(null);
