@@ -26,6 +26,27 @@ Last updated: 2026-11-11 (session 1 in this repo). Status lines marked WIP are s
   targets from the official box lines for the tip-off stages; (4) the edge record on the phone, once it has a few
   hundred graded edges; (5) teammate-out usage tables.
 
+## How close can a number get? (`tools/floor.js`, measured Nov 11 on 21,000 player-games per stage, lessons never saw them)
+
+Three reference points on the same player-games (everyone who played 10+ minutes and had a number): the number
+shown; the same per-minute numbers with the minutes he REALLY played; and real minutes times his own per-minute
+average over the rest of the season (an oracle that knows his minutes and his true level).
+
+| stage | PTS shown / real minutes / oracle | REB | AST |
+|---|---|---|---|
+| tip-off | 4.76 / 4.10 / 4.06 | 1.97 / 1.76 / 1.73 | 1.42 / 1.34 / 1.33 |
+| 12 min in | 4.17 / 3.53 / 3.51 | 1.69 / 1.48 / 1.47 | 1.22 / 1.13 / 1.13 |
+| half | 3.36 / 2.87 / 2.86 | 1.33 / 1.16 / 1.16 | 0.96 / 0.89 / 0.90 |
+| end Q3 | 2.29 / 1.84 / 1.85 | 0.91 / 0.75 / 0.75 | 0.57 / 0.56 / 0.57 |
+| 6:00 left | 1.25 / 1.13 / 1.15 | 0.50 / 0.46 / 0.46 | 0.29 / 0.33 / 0.35 |
+
+Reading: with real minutes plugged in, the engine's points, rebounds and assists are within 0 to 3% of the oracle
+at EVERY stage. The per-minute rates are solved; do not spend time on them. About 85% of the tip-off miss is the
+bounce of the ball (nobody removes it); the 15% that can still be closed is MINUTES (4.5 minutes of miss at
+tip-off, 2.8 at the end of Q3). All research after Nov 11 is aimed at minutes by game situation
+(`data/runs/research-2026.rows.json.gz` = every player, nine stages, 1,177 unseen games, with the game state and
+the 49 learned inputs; `research-2027` to confirm; fold-A lessons for the final engine: `data/lessons/A4-final.json`).
+
 ## Where everything is
 
 This folder (`everworld/` in the `fanduel-pace-totals` repo) is the lab. On a machine set up like the brief,
