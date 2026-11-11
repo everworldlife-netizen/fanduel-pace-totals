@@ -18,7 +18,9 @@ const base = { game: cp.game, plays: cp.plays, logs: j.logs, priors: payload.pri
 // the lineup that was posted for this game (active list and starters), same as the live app had from tip-off on
 avail: j.avail || null,
 // the game's pregame line as the phone saved it: the top-down team check learns from the same input it uses live (no line saved → that input sits out)
-market: j.market || null, tdOff: !j.market };
+market: j.market || null, tdOff: !j.market,
+// today's season table already contains this game: the season-long minutes input sits out of the replay (see engine.js, longMin)
+noLong: true };
 const P = Engine.projectGame({ ...base, patterns: Engine.patMinOnly(payload.patterns || Engine.patBeta(null)) });
 Engine.patGrade(P, j.rows, acc);
 // how the full app (everything it has learned so far) did on this game: the running accuracy report

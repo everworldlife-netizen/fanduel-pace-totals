@@ -7,11 +7,11 @@ Only these files changed. Upload each Space's files to that Space and nowhere el
 Upload page: https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main
 Live link: https://everworldlife-courtside-arcade.static.hf.space/
 
-- `app.js` (98287 bytes)
+- `app.js` (98666 bytes)
 - `data.js` (20093 bytes)
-- `engine.js` (219899 bytes)
+- `engine.js` (221281 bytes)
 - `sw.js` (1441 bytes)
-- `worker.js` (2283 bytes)
+- `worker.js` (2427 bytes)
 
 On the upload page, add ALL of these files in one go and commit once (a phone that updates between two separate uploads could save a mix of old and new files).
 

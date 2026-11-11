@@ -269,6 +269,55 @@ test('during a game, a player who never got in teaches nothing (the live number 
   assert.ok(grade(1) <= got, `${grade(1)} rows learned from, but only ${got} of the ${listed} listed players played`);
   if (listed > got) assert.ok(grade(0) > grade(1), 'with the switch off, players who never got in are counted again');
 });
+test('nothing jumps at the end of the first quarter or at the start of the next one', () => {
+  for (const fx of FX) {
+    // six seconds before the horn against the horn itself: the minutes-pace input comes in with its lesson, not all at once
+    const a = run(fx, 11.9), b = run(fx, 12);
+    let n = 0, sum = 0;
+    for (const p of a.players) {
+      const q = b.players.find((x) => x.pid === p.pid);
+      if (!q || !(p.now.min > 0) || q.on !== p.on || q.now.pts !== p.now.pts || q.now.pf !== p.now.pf) continue;
+      n++; sum += Math.abs(q.mean.min - p.mean.min);
+      assert.ok(Math.abs(q.mean.min - p.mean.min) < 1.5, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} minutes across the horn with nothing happening`);
+    }
+    assert.ok(n >= 8 && sum / n < 0.6, `players move ${(sum / n).toFixed(2)} minutes on average across the Q1 horn (${n} players)`);
+    // the scoreboard says Q2 12:00 but no Q2 play has arrived: the five who closed Q1 are still on the floor
+    const m = momentAt(fx.g, fx.plays, 12);
+    const c = E.projectGame({ ...fx.base, game: { ...m.game, period: 2, time: 'Q2 12:00' }, plays: m.plays, nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    const onB = b.players.filter((p) => p.on).map((p) => p.pid).sort(), onC = c.players.filter((p) => p.on).map((p) => p.pid).sort();
+    assert.ok(onB.length >= 8, 'too few players on the floor at the Q1 horn');
+    assert.deepStrictEqual(onC, onB, 'the on-floor picture changes when the scoreboard moves to Q2 before any Q2 play');
+    for (const p of b.players) { const q = c.players.find((x) => x.pid === p.pid); if (q) assert.ok(Math.abs(q.mean.min - p.mean.min) < 0.8, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} minutes at the start of Q2 with nothing happening`); }
+  }
+});
+test('tied when the fourth quarter ends: the numbers already hold the overtime that is certain', () => {
+  const fx = FX[0];
+  const m = momentAt(fx.g, fx.plays, 48);
+  const tied = { ...m.game, period: 4, time: 'End of 4th', visitor_team_score: 110, home_team_score: 110 };
+  const st = E.gameState(tied);
+  assert.strictEqual(st.period, 5); assert.ok(Math.abs(st.left - 5) < 1e-9, `left ${st.left}`);
+  // not tied: the game is simply about to go final
+  assert.strictEqual(E.gameState({ ...tied, home_team_score: 112 }).left, 0);
+  const P = E.projectGame({ ...fx.base, game: tied, plays: m.plays, nsims: 400, seed: 5, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+  const on = P.players.filter((p) => p.on);
+  assert.ok(on.length >= 8, `only ${on.length} players on the floor at the horn`);
+  const more = on.reduce((a, p) => a + (p.mean.min - p.now.min), 0) / on.length;
+  assert.ok(more > 2 && more <= 5.01, `players on the floor at the horn are shown ${more.toFixed(2)} more minutes`);
+  for (const tm of [P.state.v, P.state.h]) assert.ok(P.projScore[tm] > 110 + 4, `${tm} is shown ${P.projScore[tm].toFixed(1)} with five minutes to play from 110`);
+});
+test('a player who has not checked in: no alert says he is getting the minutes, and no note speaks of him coming back', () => {
+  for (const fx of FX) for (const el of [3, 6, 9]) {
+    const P = run(fx, el);
+    const waiting = new Set(P.players.filter((p) => p.dnpYet).map((p) => p.pid));
+    for (const a of P.alerts || []) if (a.type === 'shift' && a.up) assert.ok(!waiting.has(a.up.pid), `${a.up.name} has not checked in but an alert says he is getting the extra minutes (${el} min)`);
+    for (const p of P.players) {
+      if (!p.dnpYet) continue;
+      const texts = (p.why || []).map((w) => `${w.text} ${w.so || ''}`).join(' | ');
+      assert.ok(!/No guesswork on whether he plays|checks back in|comes back on his normal schedule/.test(texts), `${p.name} (not checked in, ${el} min): ${texts.slice(0, 200)}`);
+      assert.ok(/if he gets in tonight/.test(texts), `${p.name} (not checked in) has no "if he gets in" line`);
+    }
+  }
+});
 test('no user-facing wording uses the words "over" or "under"', () => {
   // every note the engine can attach to a player, across the fixture moments
   const texts = [];

@@ -254,6 +254,8 @@ if (/half/i.test(t)) { period = 2; clock = '0:00'; }
 else if (/^end/i.test(t)) clock = '0:00';
 else if (t) clock = t.split(/\s+/).pop();
 }
+// tied when the fourth quarter (or an overtime) ends: five more minutes are certain, so the break already counts as the start of overtime
+if (phase === 'live' && period >= 4 && clockSec(clock) === 0 && vs === hs && vs + hs > 0) { period += 1; clock = '5:00'; }
 const el = phase === 'pre' ? 0 : elapsedSec(period, clock) / 60;
 const regLeft = Math.max(48 - el, 0);
 const left = phase === 'final' ? 0 : period > 4 ? clockSec(clock) / 60 : regLeft;
@@ -416,6 +418,9 @@ for (const [id, c] of on) { const rec = pl(id); rec.q[per] = (rec.q[per] || 0) +
 prevEnd = new Set(on.keys());
 if (per === curPeriod) for (const id of on.keys()) onNow.add(id);
 }
+// the scoreboard is already in a new period but none of its events has arrived: until one says otherwise, the five who closed
+// the last period are still on the floor (the same picture as the break)
+if (pers.length && !byPer.has(curPeriod) && curPeriod > pers[pers.length - 1]) for (const id of prevEnd) onNow.add(id);
 const players = {};
 for (const rec of P.values()) {
 const t = teamOf(rec);
@@ -718,7 +723,9 @@ const PAT_SHIFT = ['track', 'shooting', 'uReal', 'luck', 'recent', 'fadeHist'];
 // The number we show. The average of the simulations is pulled up by rare big finishes; the middle of them is where a player
 // most often lands. How much of the middle to show at each stage was learned on last season (595 games) and checked on this
 // season's 123 games: average miss from the end of Q3 fell 3% on points, 13% on assists, 22% on threes (6 minutes left: 12%, 23%, 32%).
-const LAND = { pre: { fg3m: 1 }, s6: { fg3m: 1 }, s12: { ast: 0.25, fg3m: 1 }, s18: { ast: 0.5, fg3m: 1 }, s24: { pts: 0.25, ast: 1, fg3m: 1 },
+// (Nov 11: a quarter of the middle for points in the first quarter too, fitted on 592 unseen games with the minutes-pace input
+// coming in from 6:00: points 4.416 -> 4.407 and 4.148 -> 4.137; on this season's 121 games 4.332 -> 4.324 and 4.133 -> 4.123)
+const LAND = { pre: { fg3m: 1 }, s6: { pts: 0.25, fg3m: 1 }, s12: { pts: 0.25, ast: 0.25, fg3m: 1 }, s18: { ast: 0.5, fg3m: 1 }, s24: { pts: 0.25, ast: 1, fg3m: 1 },
 s30: { pts: 0.75, reb: 0.25, ast: 1, fg3m: 1 }, s36: { pts: 1, reb: 1, ast: 1, fg3m: 1 }, s42: { pts: 1, reb: 1, ast: 1, fg3m: 1, min: 1 }, rep: { fg3m: 1 } };
 function patGroup(st, lineupPosted) { if (st.phase === 'pre') return lineupPosted === false && TUNE.repGroup > 0 ? 'rep' : 'pre'; const k = clamp(Math.round(st.elapsed / 6), 1, 7); return 's' + k * 6; }
 /** One feature row per graded stat for a player at this moment (all scaled to about -2..2). */
@@ -759,7 +766,9 @@ if (live) {
 b[PAT_IX.aOn] = f.on ? a : 0;
 // his minutes pace tonight (first-half minutes once the half is over) carried over the time left
 const first = f.el <= 24 ? f.min : f.minH1;
-b[PAT_IX.aPace] = f.el >= 12 && first != null ? clamp((first * (f.left || 0)) / Math.min(f.el, 24) / f.rem, 0, 6) : 0;
+// (from 6:00 on, where the 12-minute lesson that carries this input starts to blend in: held back until 12:00 it left minutes
+// about a minute low through the back half of Q1 and made them jump at the horn)
+b[PAT_IX.aPace] = f.el > 6 && first != null ? clamp((first * (f.left || 0)) / Math.min(f.el, 24) / f.rem, 0, 6) : 0;
 const lop = clamp((Math.abs(f.mg || 0) - 8) / 10, 0, 2.5);
 b[PAT_IX.aLop] = clamp(lop * (a - 1), -2.5, 6);
 b[PAT_IX.lopTier] = f.el >= 18 ? lop * clamp((f.mpg - 24) / 8, -2, 1.5) : 0;
@@ -1328,8 +1337,8 @@ const restBites = ri.foulRest && Math.min(fr[0], fr[1]) < 0.95;
 if (restBites && ri.foulSit) out.push({ icon: '⚠️', text: `Sitting with ${r.pf} fouls. This coach usually rests a player in this spot until about ${clockLabel(ri.foulRest)}, then puts him back in.`, so: minSo, effect: 'down' });
 else if (restBites && r.on) out.push({ icon: '⚠️', text: `${r.pf} fouls and still playing. The coach is letting him play through it for now, but a rest before ${clockLabel(ri.foulRest)} is likely.`, so: minSo, effect: 'down' });
 else if (r.pf >= 4 && r.pf < 6 && c.el < 44) out.push({ icon: 'ℹ️', text: `${r.pf} fouls, but coaches this season mostly keep players in with ${r.pf === 4 ? '4 fouls in the 3rd quarter' : 'foul trouble this late'}.`, so: 'Only a small trim to his minutes, so his number barely moves.', effect: 'info' });
-if (!r.on && !ri.foulSit && ri.benched < 0.5) out.push({ icon: '🪑', text: `Out of the rotation: he's been on the bench for ${fmtMin(ri.sitFor)}, when he'd normally have played ${ri.missed.toFixed(1)} of those minutes. Either he's hurt or the coach has gone away from him.`, so: `${cuts(minEffect(c, dmin))} Only ${remPlayed.toFixed(1)} more minutes projected.`, effect: 'down' });
-else if (!r.on && !ri.foulSit && ri.missed >= 2) out.push({ icon: '🪑', text: `Longer rest than usual: ${fmtMin(ri.sitFor)} on the bench. Watch whether he checks back in.`, so: dmin < -0.3 ? cuts(minEffect(c, dmin)) : 'His number assumes he comes back on his normal schedule.', effect: 'down' });
+if (!r.on && !r.dnpYet && !ri.foulSit && ri.benched < 0.5) out.push({ icon: '🪑', text: `Out of the rotation: he's been on the bench for ${fmtMin(ri.sitFor)}, when he'd normally have played ${ri.missed.toFixed(1)} of those minutes. Either he's hurt or the coach has gone away from him.`, so: `${cuts(minEffect(c, dmin))} Only ${remPlayed.toFixed(1)} more minutes projected.`, effect: 'down' });
+else if (!r.on && !r.dnpYet && !ri.foulSit && ri.missed >= 2) out.push({ icon: '🪑', text: `Longer rest than usual: ${fmtMin(ri.sitFor)} on the bench. Watch whether he checks back in.`, so: dmin < -0.3 ? cuts(minEffect(c, dmin)) : 'His number assumes he comes back on his normal schedule.', effect: 'down' });
 if (r.on && ri.stintAvg && p.r.stints && p.r.stints.length) {
 const cur = c.el - p.r.stints[p.r.stints.length - 1][0];
 if (cur > ri.stintAvg + 2) out.push({ icon: '🔄', text: `On the floor for ${fmtMin(cur)} straight; his usual stretch is ${fmtMin(ri.stintAvg)}. A rest is coming.`, so: 'Already built in: his projection expects a short break before he returns.', effect: 'info' });
@@ -1530,7 +1539,7 @@ out.push({ icon: '💤', key: 'script', chip: `BLOWOUT ${pct0(c.pBlow)}`, effect
 }
 if (pre && c.b2b) out.push({ icon: '🛌', key: 'rest', chip: 'B2B', effect: p.starter && TUNE.b2bMin > 0 ? 'down' : 'info', text: 'Second night of a back-to-back.', so: p.starter && TUNE.b2bMin > 0 ? `Starters play a little less on these nights. ${cuts(minEffect(c, c.minProj * (1 - 1 / (1 - TUNE.b2bMin))))}` : 'Bench players play their normal minutes on these nights, so his number doesn\'t change.' });
 if (pre && c.doubt) out.push({ icon: '⚠️', key: 'status', chip: 'CHECK STATUS', effect: 'down', text: `Not confirmed to play: ${c.doubt}.`, so: 'His projection assumes he plays. Check his status before tip-off.' });
-else if (c.lineup && c.lineup.confirmed && c.inList) out.push({ icon: '✅', key: 'status', chip: 'CONFIRMED', effect: 'info', text: `Confirmed in tonight's lineup${c.lineup.source ? ` (${c.lineup.source})` : ''}.`, so: 'No guesswork on whether he plays.' });
+else if (c.lineup && c.lineup.confirmed && c.inList && (pre || !r.dnpYet)) out.push({ icon: '✅', key: 'status', chip: 'CONFIRMED', effect: 'info', text: `Confirmed in tonight's lineup${c.lineup.source ? ` (${c.lineup.source})` : ''}.`, so: 'No guesswork on whether he plays.' });
 // during the game a player still waiting to check in keeps the same kind of number as before tip-off
 if (!pre && r.dnpYet && TUNE.condLive > 0) out.push({ icon: '⏳', key: 'notin', effect: 'info', text: `${lastName(r.name)} has not checked in yet.`, so: 'These numbers are what he does if he gets in tonight.' });
 return out.concat(sitItems(p, r, c), patternItems(p, r, c));
@@ -1594,7 +1603,7 @@ if (ps.length < 5) continue;
 const sb = ps.reduce((a, p) => a + p.shift.baseRem, 0), sr = ps.reduce((a, p) => a + p.shift.rem, 0);
 const k = sb > 0 ? sr / sb : 1;
 const d = ps.map((p) => ({ p, d: p.shift.rem - k * p.shift.baseRem }));
-const up = d.filter((x) => x.d >= 2 && x.p.shift.baseRem > 0 && x.d / Math.max(x.p.shift.baseRem * k, 2) >= 0.15).sort((a, b) => b.d - a.d)[0];
+const up = d.filter((x) => !x.p.dnpYet && x.d >= 2 && x.p.shift.baseRem > 0 && x.d / Math.max(x.p.shift.baseRem * k, 2) >= 0.15).sort((a, b) => b.d - a.d)[0];
 const cause = (p) => {
 const r = p.rot;
 if (p.now.pf >= 6) return { w: 3, t: `${lastName(p.name)} has fouled out` };
@@ -2052,7 +2061,9 @@ lastMin: n >= 2 ? hs[n - 1].min - mpg : 0, rest3: rest3[tm], missShare: teamGame
 if (st.phase === 'pre' && sT === 0 && startShare >= 0.7 && mpg >= 20 && !forceIn.has(+r.pid)) doubt[r.pid] = doubt[r.pid] || 'usual starter, not in tonight\'s starting five';
 // long memory: his minutes over the whole season so far, with five games of last season mixed in (the recent window forgets)
 let longMin = null;
-{ const kN = norm(r.name), cs = cur[kN], ls = last[kN];
+// (not when the phone replays a finished game for its own learning: by then the season table already holds that game, so the
+// input would carry part of the answer; with it left out the phone keeps the built-in weight for this input)
+if (!o.noLong) { const kN = norm(r.name), cs = cur[kN], ls = last[kN];
 if (cs && cs.gp >= 3 && cs.mpg > 0) longMin = ls && ls.gp >= 10 && ls.mpg > 0 ? (cs.mpg * cs.gp + 5 * ls.mpg) / (cs.gp + 5) : cs.mpg;
 else if (ls && ls.gp >= 10 && ls.mpg > 0) longMin = ls.mpg; }
 players.push({ longMin, lineupF, sT, startShare, sit, qRem, ratePM, usgBase: usg, p2fA: p2f, r, tm, opp, usg: usgB, usgSeason: usgCur, usgTonight: r.min > 0 ? usgT : null, mix, r3, p3, p2, ft, rate, mins, mpg, mpgFlat, qavg, starter, n, rotInfo, lp, gl, zone, recent3: n ? mean(hs.slice(-3).map((x) => x.min)) : null });
