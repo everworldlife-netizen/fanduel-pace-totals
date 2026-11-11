@@ -677,7 +677,7 @@ const PAT_F = ['base', 'starter', 'bench', 'b2b', 'pace', 'blowout', 'roleTrend'
 const PAT_D = PAT_F.length;
 const PAT_IX = Object.fromEntries(PAT_F.map((k, i) => [k, i]));
 // How hard each input is pulled toward "no effect" when the lessons are solved, relative to the others (1 = the usual pull).
-// The lineup inputs are rare but strong (a reserve starts in about one game in two), so the usual pull would flatten them.
+// The lineup inputs are rare but strong (about one reserve a game starts), so the usual pull would flatten them.
 const PAT_LAMF = PAT_F.map((k) => (TUNE.patLamLineup > 0 && ['startUp', 'startDown', 'fresh', 'deep'].includes(k) ? TUNE.patLamLineup : 1));
 // stages of the game: pregame, then every 6 game minutes (the learned trust in live data changes with each)
 // 'rep' (v15) = before the lineups are posted, when only the injury report is known: the app knows less then, so it learns that moment separately
@@ -2051,6 +2051,9 @@ if (t > 0.001 && t < 0.999) {
 patB = {};
 for (const s2 of PAT_LEARN) {
 const a = A[s2], b2 = B[s2];
+// (just after halftime the minutes lessons do not blend: the halftime ones describe a break with nobody on the floor.
+// Measured on 400 unseen games: blending them made minutes 2% worse at 27 minutes, and better everywhere else)
+if (s2 === 'min' && lo === 24 && TUNE.patInterp < 2) { patB[s2] = (o.patterns[patG] || {}).min || a || b2 || null; continue; }
 patB[s2] = a && b2 ? a.map((x, i) => (1 - t) * (x || 0) + t * (b2[i] || 0)) : a || b2 || null;
 }
 } else patB = (t >= 0.999 ? B : A) || {};

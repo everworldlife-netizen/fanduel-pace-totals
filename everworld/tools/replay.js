@@ -194,7 +194,7 @@ function score(E, proj, it, A, dump) {
   const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
   A.games++;
   // [11..13]: everyone who really played 10+ minutes, projected or not (a missing projection counts as zero): players, |pts|, |min|
-  const pg = (A.per[g.id] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const pg = (A.per[g.id] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // [14..16]: the same fixed population, |reb|, |ast|, |3pm|
   let top = -1;
   for (const r of Object.values(rows)) if (r.pts > top) top = r.pts;
   const topIds = new Set(Object.entries(rows).filter(([, r]) => r.pts === top).map(([id]) => +id));
@@ -213,6 +213,7 @@ function score(E, proj, it, A, dump) {
       A.n++;
       for (const s of [...STATS, 'min']) { const e = p.proj[s] - act[s]; A.abs[s] += Math.abs(e); A.bias[s] += e; A.sq[s] += e * e; A.absMean[s] += Math.abs(p.mean[s] - act[s]); }
       pg[11]++; pg[12] += Math.abs(p.proj.pts - act.pts); pg[13] += Math.abs(p.proj.min - act.min);
+      pg[14] += Math.abs(p.proj.reb - act.reb); pg[15] += Math.abs(p.proj.ast - act.ast); pg[16] += Math.abs(p.proj.fg3m - act.fg3m);
       pg[0]++; pg[1] += Math.abs(p.proj.pts - act.pts); pg[2] += Math.abs(p.proj.reb - act.reb); pg[3] += Math.abs(p.proj.ast - act.ast); pg[4] += Math.abs(p.proj.fg3m - act.fg3m); pg[5] += Math.abs(p.proj.min - act.min); pg[10] += Math.abs(p.mean.pts - act.pts);
     }
     // the all-in view: anyone who really played 10+ or whom we expected to play 10+
@@ -244,7 +245,7 @@ function score(E, proj, it, A, dump) {
     A.nU++; A.unproj++;
     for (const s of [...STATS, 'min']) A.absU[s] += Math.abs(a[s]);
     pg[6]++; pg[7] += Math.abs(a.pts); pg[8] += Math.abs(a.min);
-    pg[11]++; pg[12] += Math.abs(a.pts); pg[13] += Math.abs(a.min);
+    pg[11]++; pg[12] += Math.abs(a.pts); pg[13] += Math.abs(a.min); pg[14] += Math.abs(a.reb); pg[15] += Math.abs(a.ast); pg[16] += Math.abs(a.fg3m);
     if (dump) dump.push({ id: g.id, d: g.date, el: proj.state.elapsed, pid: +pid, nm: a.name, tm: a.team, un: 1, ac: [a.min, a.pts, a.reb, a.ast, a.fg3m] });
   }
   // game total and each team's points (always from the plain averages)
