@@ -8,8 +8,8 @@
    "files": [
     {
      "path": "app.js",
-     "bytes": 102802,
-     "sha256": "94e134782243464a92e42ac5996d0e575660ce1a9cbef5759013e9cbb6bc2091"
+     "bytes": 103012,
+     "sha256": "babba77326133181477fc4dc095adf9d8cfa05d292346d88acde27f493b1a788"
     },
     {
      "path": "data.js",
