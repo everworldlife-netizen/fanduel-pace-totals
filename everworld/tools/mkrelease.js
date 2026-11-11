@@ -58,6 +58,7 @@ if (argv.includes('--verify')) {
     notes += `\n## ${sp.name}\n\nUpload page: ${sp.upload}\nLive link: ${sp.live}\n\n${files.map((f) => `- \`${f.path}\` (${f.bytes} bytes)`).join('\n')}\n\nOn the upload page, add ALL of these files in one go and commit once (a phone that updates between two separate uploads could save a mix of old and new files).\n\nWith the Hugging Face CLI (after \`hf auth login\`), one commit for the whole Space:\n\n\`\`\`\nhf upload everworldlife/${sp.name} release-${date}/${sp.name} . --repo-type space --commit-message "Release ${date}"\n\`\`\`\n`;
   }
   notes += `\nOr both Spaces, with the checks, in one step: \`tools/publish.sh release-${date}\`.\n\nAfter publishing: \`node tools/mkrelease.js --verify release-${date}\` then \`node tools/livecheck.js\`.\n`;
+  if (!man.spaces.some((sp) => sp.files.length)) { console.log('Nothing differs from the live files (baseline/): no release folder written.'); process.exit(0); }
   fs.writeFileSync(path.join(out, 'manifest.json'), JSON.stringify(man, null, 1));
   fs.writeFileSync(path.join(out, 'UPLOAD.md'), notes);
   for (const sp of man.spaces) console.log(`${sp.name}: ${sp.files.map((f) => f.path).join(', ')}`);
