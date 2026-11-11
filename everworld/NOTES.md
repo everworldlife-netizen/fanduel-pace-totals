@@ -114,25 +114,60 @@ Findings:
   who starts plays 27.6 minutes against a recent average of 20.6 (deep reserves: 24.4 vs 11.0). A usual starter who
   is on the active list but not in the starting five plays 9.8 minutes against 26.3.
 
-### v15 work (WIP: see the end of this file for the final numbers once the runs finish)
+### Courtside v15: what changed and what it measured
 
-Changes in `cs/build/engine.js`, each behind a TUNE switch:
-- `actDeep`, `actNew`: with the lineup posted, project deep-bench players (weighted by how often they have been
-  getting in) and players back from a layoff (from their season line; they get a negative id until they check in).
+Changes in `cs/build/engine.js`, each behind a TUNE switch (shipped setting in brackets):
+- `actDeep` [1], `actNew` [1]: with the lineup posted, project deep-bench players (weighted by how often they have
+  been getting in) and players back from a layoff (from their season line; they get a negative id until they
+  check in). Kept until the end of Q1.
 - Eight new learned inputs: `startUp`, `startDown`, `fresh`, `deep`, `vacPos`, `lastMin`, `rest3`, `missShare`
-  (PAT_F is now 42 long: `PAT_KEY`/`PAT_DATES` in app.js bumped to `pat:v4`).
-- `repGroup`: "before lineups are posted" is its own learning stage (`rep`), because the app knows less then.
-- `patCapMinUp`: the learned layer may raise remaining minutes by more than it may cut them.
-- `patLamLineup`: lighter ridge for the rare, strong lineup inputs.
-- `patInterp`: between two learning stages, blend their lessons by game minute.
-- `sitPre`: situational scoring files a basket under the score before it (the old code filed it after, which
-  pushed baskets into "ahead").
-- `patYCap`: 0 = learning target is the plain miss (the old one-sided cap is off).
+  (PAT_F is now 42 long: `PAT_KEY`/`PAT_DATES` in app.js bumped to `pat:v4`). Starters come from the posted lineup;
+  during live play the play-by-play only adds to it (early on it has not named every starter).
+- `repGroup` [1]: "before lineups are posted" is its own learning stage (`rep`), because the app knows less then.
+- `patCapMinUp` [1.5]: the learned layer may raise remaining minutes by more than it may cut them.
+- `patLamLineup` [0.1]: lighter ridge for the rare, strong lineup inputs.
+- `condMin` [1]: before tip-off, player minutes are "if he plays" numbers (a pick on a player who sits is no
+  action), so they may add up to more than 240; the TEAM total is scaled to five players' worth of minutes.
+- `patInterp` [1]: between two learning stages, blend their lessons by game minute. Exception: minutes lessons do
+  not blend between halftime and the next stage.
+- `patYCap` [0]: the learning target is the plain miss (the old one-sided cap is off).
+- `teamCal` [0, OFF]: a learned team-total factor per stage. TRIED, DID NOT WIN (see below).
+- `sitPre` [0, untested]: situational scoring files a basket under the score before it.
+- Usual starter left out of the posted five gets a status flag (his picks are hidden until confirmed, like other
+  shaky statuses) and a plain note; a reserve who starts gets a "STARTS TONIGHT" note.
 
-First run (lessons from 2024-25, 1,199 unseen 2025-26 games, tip-off): points miss for everyone who really played
-10+ minutes 4.989 → 4.840 (-3.0%, z -12); at 6 minutes in -1.3% (z -7). BUT game totals at tip-off ran 15 points
-high: deep-bench players were getting small phantom minutes every night. Fixed by weighting a deep-bench player's
-minutes by how often he has been getting in. Lesson: any change that adds players must be checked on team totals.
+Fold A (lessons from 2023-24 + 2024-25 = 2,387 games; tested on 1,199 unseen 2025-26 games; `real10` = everyone
+who really played 10+ minutes, a missing projection counts as a full miss):
+
+| moment | PTS miss, live engine → v15 | MIN miss | game total miss (bias) |
+|---|---|---|---|
+| before lineups | 5.001 → 5.004 (no change) | 5.56 → 5.55 | 15.17 (-4.1) → 15.14 (-4.1) |
+| tip-off | 4.999 → 4.860 (-2.8%, z -11.3) | 5.55 → 4.98 (-10.3%, z -22) | 15.17 (-4.1) → 14.96 (-1.1) |
+| 6 min in | 4.707 → 4.624 (-1.8%, z -10.0) | 5.51 → 5.11 (-7.3%, z -20) | 15.70 (-8.6) → 14.94 (-4.5) |
+| 9 min in | 4.498 → 4.389 (-2.4%, z -12.1) | 5.39 → 4.78 (-11.4%, z -32) | 14.29 → 14.48 (n.s.) |
+| end Q1 | 4.240 → 4.199 (-1.0%, z -6.4) | 4.74 → 4.47 (-5.7%, z -18) | 13.82 (-6.1) → 13.22 (-3.2) |
+| half | 3.410 → 3.400 (-0.3%, z -2.3) | 3.66 → 3.65 | 11.47 → 11.56 (n.s.) |
+| end Q3 | 2.316 → 2.310 (-0.3%, z -2.8) | 2.94 → 2.92 (-0.7%, z -6) | 8.34 → 8.30 |
+| 6:00 left | 1.254 → 1.253 (no change) | 1.62 → 1.61 | 6.29 → 6.32 |
+
+Runs: `data/lessons/A2-base.json`, `A2-v15d.json`; `tools/exp2.sh A2-v15d cs/build "<switches>" 2024,2025 2026`.
+
+Blending lessons between stages (`patInterp`, 400 unseen games, in-between moments only): 15 min in: minutes -8.6%
+(z -17.7), points -1.2% (z -4.3); 9 min: minutes -1.9%, points -0.5%; 21 min: minutes -2.1%; 33 min: minutes -2.4%;
+39 min: minutes -5.0%; points unchanged from 27 min on. Blending the minutes lessons across halftime made minutes
+2% WORSE at 27 min (z 5.2), so those do not blend there (confirmed on a second slice of 252 games: 0.0%).
+
+TRIED, DID NOT WIN:
+- First version of `actDeep` (deep bench at their per-appearance minutes): game totals at tip-off ran 15 points
+  high. Fixed by weighting by how often they get in, and by `condMin`.
+- Learning pregame lessons while squeezing "if he plays" minutes into 240: the points lessons learned a blanket
+  +10% to undo the squeeze, which inflated team totals by 13 to 16 points (found on the TRAINING season too, so it
+  was a pipeline flaw, not a season shift). Fixed by `condMin`.
+- `teamCal` (learned team-total factor per stage): on the training seasons the factor was 0.974 at tip-off and
+  about 1.00 live; on the unseen season it made the tip-off total WORSE (15.17 → 15.69, bias -7) because scoring
+  levels move between seasons. Without it: 14.96, bias -1.1. Left off. A factor tied to the books' line might work.
+- The paired `PTS` and `MIN` columns of `cmp.js` (players that were projected) look worse for v15 at tip-off
+  (MIN 4.99 → 4.93 is flat; an earlier version showed +8%) only because v15 projects more hard cases. Use `real10`.
 
 ### Traps found this session
 
