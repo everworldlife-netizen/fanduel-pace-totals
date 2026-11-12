@@ -2,7 +2,7 @@
 
 Memory between sessions. Read this before trying anything; add to it at the end of every session.
 
-Last updated: 2026-11-11 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
+Last updated: 2026-11-12 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
 
 ## START HERE (Nov 11, 2026): state of the work, written so any new session can pick it up
 
@@ -35,7 +35,36 @@ what matters most.
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 17:30 UTC, Nov 11)
+### Where the build stands at this commit (updated 09:10 UTC, Nov 12)
+
+**PUBLISHED on Nov 12, 2026 at 08:57 UTC (3:57 am Eastern): Courtside 17 (`ca-shell-v17`, Space commit `55a0ecb`) and
+GG Winner 3.10.1 (`gg-winner-v3.10.1`, Space commit `1f60c9e`).** Full story: "Version 17 (Nov 12)" further down.
+
+- What version 17 is: every made three is counted (one in ten was missing from the play-by-play box; 3PM lands 2.5% closer
+  at tip-off, 8% at halftime, 25% after three quarters, 45% with six minutes left on this season's 121 unseen games;
+  minutes, points, rebounds and assists unchanged), all lessons refitted on the corrected boxes (`data/lessons/H4-v17a.json`
+  built in: 3,709 games, mid-game stages from 1,298 complete games), no more steps in the live numbers at fixed game
+  minutes (27:00 above all), a player marked OUT mid-game is done, an app left open follows the calendar, storage that
+  cannot fill up, GG Winner polite when the league's results source refuses it.
+- `cs/build` = Courtside 17 (Settings shows "Version 17 (Nov 12, 2026)"); `gg/static` = GG Winner 3.10.1 (footer
+  "Version 3.10.1 (Nov 12, 2026)"); `baseline/` = these live files; `release-2026-11-12/` = exactly what was uploaded
+  (Courtside: app.js, data.js, engine.js, sw.js; GG Winner: app.js, index.html, sw.js).
+- Verified after publishing: 7 files byte for byte (`mkrelease.js --verify`), both live links load tonight's 4 games with
+  no page errors, all 14 screens pass at Pixel 9a size (`phoneshots.js --live`), the server-clock request answers and
+  the daily copy is saved on the live link (461 players, 30 teams), both version lines read as above.
+- Tests: engine 90 checks, app 34, GG Winner 15 + 5, all passing in one run.
+- Frozen engines (tracked): `data/engines/v17a/` (the engine the lessons were fitted with), `v17b/` (THE PUBLISHED ENGINE
+  = `cs/build/engine.js`), `anch10/` = `live16/` (version 16 as published), `live14/` (version 14).
+- Lab data: `data/derived/` now counts every made three; the old files are in git before commit 2854dcf (and in
+  `data/derived-v16/` on the machine that made them). Lessons and runs from before Nov 12 belong to the old boxes: compare
+  them only with `LAB_DERIVED=data/derived-v16`, or regrade with `LAB_TRUTH=data/derived`.
+- Known and left as is: on Nov 12 two of the ten Nov 11 games (ORL at UTA, GSW at HOU) had play-by-play in the feed that
+  did not add up to the final score, so phones leave that night open and retry it for two days (by design, same in 16);
+  the league's results site is refusing GG Winner's relay (see the GG Winner part of "Version 17"); a substitution still
+  moves a player's minutes by 3 or 4 in the first quarter.
+
+The rest of this section is the state on Nov 11 (version 16), kept for the record.
+
 
 Akara then wrote "Nevermind just continue as you were before", so the cloud session went on and FINISHED version 16.
 
@@ -169,7 +198,14 @@ node tools/fetch.js 2023-10-24 2026-11-10      # then, to add newer games: fetch
 
 Tests, the release build and publishing do NOT need the cache.
 
-### What is left for Courtside 16: publish
+### Publishing from a session, and how version 16 went out (Nov 11)
+
+Version 17 went out the same way on Nov 12: `tools/publish.sh release-2026-11-12`, then `node tools/phoneshots.js --live`.
+Update steps for Akara's Pixel: open the link in Chrome (or the installed app) with a connection, pull down to refresh or
+close it from the recent apps and open it again; Courtside Settings must show "Version 17 (Nov 12, 2026)", GG Winner's
+footer "Version 3.10.1 (Nov 12, 2026)". The first load after the update takes about a minute longer once (the phone
+rebuilds its saved game logs with the corrected three counts).
+
 
 Akara's phone is a Google Pixel 9a (Chrome on Android): `tools/livecheck.js` and `tools/phoneshots.js` use its screen
 size (412 x 923 CSS pixels). `node tools/phoneshots.js` walks every main screen of both working copies on the real
@@ -201,6 +237,14 @@ review pass has to finish and every confirmed finding has to be fixed and retest
    the exam (`p2.sh`) is rerun too.
 
 ### The next round after that (best leads, in order)
+
+0. (Added Nov 12.) (a) The shown number for threes (LAND `fg3m: 1` at every stage) was fitted on the old, short counts:
+   refit it on the corrected boxes (`tools/fitland.js` on a P1 row dump, check on P2). (b) A softer on-the-floor input
+   (share of the last few minutes on the floor) so a first-quarter substitution does not move minutes by 3 or 4; needs a
+   refit and both unseen sets. (c) The lessons stop at Nov 9: fetch the newer games (`tools/fetch.js`), rerun
+   `tools/p3.sh`, move `PAT_FROM`. (d) GG Winner's league source: if the block stays, the gamer profiles need another
+   source that welcomes this use, or the league's permission. (e) Assists at the end of Q3 were 0.8% further off on the
+   121 games after the refit (0.0% on the 592): watch it on the next exam.
 
 1. A SECOND LEARNING STAGE (boosted trees on the live state): TESTED AS A PROBE, NOT WORTH BUILDING FOR POINTS,
    REBOUNDS AND ASSISTS. `tools/stage2.js` trains trees per stage on rows of games the lessons never saw (315 games
