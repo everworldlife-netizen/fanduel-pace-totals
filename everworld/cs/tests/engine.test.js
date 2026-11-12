@@ -425,11 +425,12 @@ test('every made three counts, whatever its wording; long misses count as attemp
     sh('9:00', 'Pullup Jump Shot', 'A B misses 21-foot pullup jump shot', null),
     sh('8:40', 'Driving Layup Shot', 'A B misses driving layup', null),
     sh('8:20', 'Heave Jump Shot', 'A B misses heave', null),
+    { ...sh('0:01', 'Heave Jump Shot', 'A B misses heave', null), period: 4 }, // (the official box leaves a missed heave off the shooter in every period)
     sh('8:00', 'Free Throw - 1 of 1', 'A B makes free throw 1 of 1', 1),
   ];
-  const b = E.boxFromPlays(plays, 1, '8:00'), r = b.players[1];
+  const b = E.boxFromPlays(plays, 4, '0:00'), r = b.players[1];
   assert.deepStrictEqual({ pts: r.pts, fgm: r.fgm, fga: r.fga, fg3m: r.fg3m, fg3a: r.fg3a, ftm: r.ftm }, { pts: 12, fgm: 4, fga: 8, fg3m: 3, fg3a: 5, ftm: 1 });
-  assert.strictEqual(b.teams.BOS.fg3m, 3); assert.strictEqual(b.teams.BOS.fga, 9); // (the heave is the team's attempt)
+  assert.strictEqual(b.teams.BOS.fg3m, 3); assert.strictEqual(b.teams.BOS.fga, 10); // (the two heaves are the team's attempts)
   // on the real fixture games: a made shot worth three is always a three, and points are untouched
   for (const fx of FX) {
     const le = E.logEntry(fx.g, fx.plays);
@@ -451,6 +452,17 @@ test('a player marked OUT during a game keeps what he has, and his minutes go to
   assert.ok(o, 'a player with stats in the box vanished when marked out');
   assert.ok(o.proj.min - o.now.min < 0.05, `marked OUT with ${o.now.min.toFixed(1)} minutes played, still shown ${o.proj.min.toFixed(1)}`);
   for (const k of STATS) assert.ok(Math.abs(o.proj[k] - o.now[k]) < 0.051, `marked OUT with ${o.now[k]} ${k}, still shown ${o.proj[k]}`);
+  // nothing on his card speaks of minutes or points still to come: one plain line, no chips, no tags about later
+  assert.strictEqual(o.why.length, 1, `a player marked OUT has ${o.why.length} notes: ${o.why.map((w) => w.text).join(' | ').slice(0, 200)}`);
+  assert.ok(/marked him out/.test(o.why[0].text) && !/Helps his picks|returns|Confirmed/.test(o.why[0].text + o.why[0].so));
+  assert.strictEqual(o.chips.length, 0); assert.ok(!o.flags.includes('blowproof') && !o.flags.includes('sitrisk') && !o.flags.includes('fade') && o.fade == null);
+  // a fouled-out player reads the same way
+  const fouled = run(fx, 15); // (the same moment, six fouls written into the plays for one player)
+  { const m = momentAt(fx.g, fx.plays, 15); const pf = (i) => ({ period: 1, clock: `${2 + i}:00`, type: 'Personal Foul', text: `${star.name} personal foul`, participants: [star.pid], team: { abbreviation: star.team }, shooting_play: false, score_value: null });
+    const need = Math.max(0, 6 - star.now.pf); const P6 = E.projectGame({ ...fx.base, game: m.game, plays: [...m.plays, ...Array.from({ length: need }, (_, i) => pf(i))], nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    const f = P6.players.find((p) => p.pid === star.pid);
+    if (f && f.now.pf >= 6) { assert.strictEqual(f.why.length, 1, `a fouled-out player has ${f.why.length} notes`); assert.ok(/Fouled out/.test(f.why[0].text)); assert.strictEqual(f.chips.length, 0); } }
+  void fouled;
   const mates = (P) => P.players.filter((p) => p.team === star.team && p.pid !== star.pid).reduce((a, p) => a + (p.mean.min - p.now.min), 0);
   assert.ok(mates(out) > mates(base) + 0.5 * (star.mean.min - star.now.min), `teammates' minutes to come ${mates(base).toFixed(1)} -> ${mates(out).toFixed(1)} after a ${(star.mean.min - star.now.min).toFixed(1)}-minute player was marked out`);
 });

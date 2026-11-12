@@ -82,6 +82,8 @@
   // 1, 2, 4, 8 and at most 10 minutes). The board's lines and scores come from another source and are not affected.
   const LEAGUE = { fails: 0, until: 0, status: 0 };
   const leagueWaitMs = (fails) => Math.min(600000, 30000 * 2 ** Math.max(0, fails - 1));
+  // (several league requests are in flight together: a bad moment counts once, not once per request, or one dropped second would start the longest wait)
+  const leagueFail = (status) => { if (Date.now() < LEAGUE.until) return; LEAGUE.fails += 1; LEAGUE.status = status; LEAGUE.until = Date.now() + leagueWaitMs(LEAGUE.fails); };
   async function api(path, opts) {
     // live data comes from GG Winner's data server (a Supabase function); the app itself is static
     const DATA = 'https://pjthpontugjihnjsxxry.supabase.co/functions/v1/gg-winner';
@@ -90,10 +92,10 @@
     if (league && Date.now() < LEAGUE.until) { const e = new Error(`HTTP ${LEAGUE.status || 503}`); e.status = LEAGUE.status || 503; e.waiting = true; throw e; }
     let res;
     try { res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, ...opts }); }
-    catch (err) { if (league) { LEAGUE.fails += 1; LEAGUE.status = 0; LEAGUE.until = Date.now() + leagueWaitMs(LEAGUE.fails); } throw err; }
+    catch (err) { if (league) leagueFail(0); throw err; }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      if (league && (res.status === 403 || res.status === 429 || res.status >= 500)) { LEAGUE.fails += 1; LEAGUE.status = res.status; LEAGUE.until = Date.now() + leagueWaitMs(LEAGUE.fails); }
+      if (league && (res.status === 403 || res.status === 429 || res.status >= 500)) leagueFail(res.status);
       const e = new Error(body.error || `HTTP ${res.status}`);
       e.status = res.status;
       throw e;
@@ -711,6 +713,7 @@
       }
     } catch { /* private mode */ }
   }
+  const lastGoodDay = new Map();
   async function loadProfiles(force = false) {
     if (!GP || PF.loading) return;
     if (!force && PF.model && Date.now() - PF.builtAt < 120000) return;
@@ -723,7 +726,8 @@
       let missed = null; // the newest days could not be read (the league's source is turning the app away): the saved days still count
       for (let i = 0; i < days.length; i += 1) {
         const d = days[i];
-        try { games = games.concat(await finalsForDay(d, now)); } catch (err) { if (i < 2) missed = missed || err; }
+        // (a day that cannot be read now keeps its last good read from this visit: today is only saved on the phone once it is over)
+        try { const got = await finalsForDay(d, now); lastGoodDay.set(d, got); games = games.concat(got); } catch (err) { if (i < 2) missed = missed || err; games = games.concat(lastGoodDay.get(d) || []); }
         // first visit: show numbers from the newest days right away, then keep loading the older ones
         if (i === PROFILE_FIRST - 1 && !PF.model && games.length) {
           PF.model = GP.build(games, PF.q, { now }); PF.builtAt = now; PF.err = null; PF.partial = true;
@@ -733,7 +737,7 @@
       }
       PF.partial = false;
       if (missed && !games.length) throw missed;
-      PF.stale = missed ? (missed.message || 'no answer') : null;
+      PF.stale = Boolean(missed);
       pruneStore(days);
       const ids = new Set(games.map((g) => g.id));
       for (const id of Object.keys(PF.q)) if (!ids.has(id)) delete PF.q[id];
@@ -1076,7 +1080,7 @@
     const out = $('pfList');
     if (!out) return;
     if (!PF.model) {
-      out.innerHTML = PF.err ? `<div class="empty-line">The league’s results aren’t reaching the app right now (${esc(PF.err)}). Pull down to try again.</div>` : '<div class="skeleton tall"></div>';
+      out.innerHTML = PF.err ? '<div class="empty-line">The league’s results aren’t reaching the app right now. Pull down to try again.</div>' : '<div class="skeleton tall"></div>';
       return;
     }
     const q = ($('pfSearch')?.value || '').trim().toUpperCase();
@@ -1091,7 +1095,7 @@
     }[PF.sort] || (() => 0);
     list.sort(by);
     const L = PF.model.league;
-    $('pfNote').textContent = `${PF.stale ? `The league’s newest results are not reaching the app right now (${PF.stale}), so these numbers use the results already saved on this phone. ` : ''}Built from ${PF.model.games} official GG League games from the last ${PROFILE_DAYS} days${PF.partial ? ' (older days still loading)' : ''} (${L.qGames} with quarter splits so far). League average: ${L.ppg} points per gamer, ${L.total} per game. "Fast" = top 30% for points per game, "Blazing" = top 12%. Newer games count more.${PF.model.ratings ? ' Projections weigh who each gamer played, which NBA team each one is using, and how the two have done against each other. Tested on 7,800 past games: average miss on the game total 9.3 points (10.2 before this update), right winner 58% of the time (54% before).' : ''}`;
+    $('pfNote').textContent = `${PF.stale ? 'The league’s newest results are not reaching the app right now, so these numbers use the results already saved on this phone. ' : ''}Built from ${PF.model.games} official GG League games from the last ${PROFILE_DAYS} days${PF.partial ? ' (older days still loading)' : ''} (${L.qGames} with quarter splits so far). League average: ${L.ppg} points per gamer, ${L.total} per game. "Fast" = top 30% for points per game, "Blazing" = top 12%. Newer games count more.${PF.model.ratings ? ' Projections weigh who each gamer played, which NBA team each one is using, and how the two have done against each other. Tested on 7,800 past games: average miss on the game total 9.3 points (10.2 before this update), right winner 58% of the time (54% before).' : ''}`;
     out.innerHTML = list.length ? list.slice(0, 80).map(profileRow).join('') : '<div class="empty-line">No gamer matches that.</div>';
     out.querySelectorAll('[data-pf]').forEach((el) => { el.onclick = () => { haptic(); openProfile(el.dataset.pf); }; });
   }

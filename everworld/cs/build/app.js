@@ -70,7 +70,7 @@ DB.store.set(ovKey(), o);
 }
 
 const state = {
-dayOffset: 0, date: DB.etDate(0), today: DB.etDate(0), autoLate: false, slate: [], priors: null, priorsAt: 0, injuries: [], avail: {},
+dayOffset: 0, date: DB.etDate(0), today: DB.etDate(0), autoLate: false, dayCheck: false, slate: [], priors: null, priorsAt: 0, injuries: [], avail: {},
 logs: new Map(), logTeams: new Set(), proj: new Map(), busy: false, progress: null, gradeTries: new Map(), booted: false, bootFail: false,
 team: {}, pickFilter: 'all', sheetPid: null, sheetGame: null, installEvt: null, lastErr: null, lastUpdate: 0,
 teamsDb: null, oddsRows: [], glogs: {}, glogTried: new Set(), openDetails: new Set(), sheetAll: null,
@@ -146,7 +146,7 @@ else state.dayOffset = dayDiff(state.date, today); // a day the user picked stay
 } else if (resumed && state.autoLate && !liveOn && state.booted && state.slate.length) move = true;
 else return 0;
 if (move) { state.autoLate = false; state.dayOffset = 0; state.date = today; state.slate = []; state.sig.clear(); state.lastGame.clear(); state.moves.clear(); }
-state.proj.clear(); state.priors = null; state.logs.clear(); state.logTeams.clear(); state.lastFull = 0;
+state.proj.clear(); state.priors = null; state.logs.clear(); state.logTeams.clear(); state.glogs = {}; state.glogTried.clear(); state.lastFull = 0;
 return 2;
 }
 async function ensureLogs(teams) {
@@ -180,10 +180,12 @@ touched.add(g.id);
 }
 }
 if (!want.length) return;
+const day = state.date, box = state.glogs; // (an answer for one day must not land in another day's logs, nor re-project another day's games)
 const got = await DB.playersLogs(want, season, { onProgress: (d, n) => setProgress('Reading DataBallr game logs…', d, n) });
-Object.assign(state.glogs, got);
+Object.assign(box, got);
 setProgress(null);
 for (const g of games) {
+if (day !== state.date) return;
 if (!touched.has(g.id) || st(g).phase === 'final') continue;
 try { await projectGame(g); } catch (e) { console.warn('project', g.id, e); }
 render(true);
@@ -263,7 +265,8 @@ const tipKey = () => `tip:${state.date}`;
 let tipCache = null, tipCacheDay = ''; // the map in memory belongs to one day: looking at another day must never change tonight's
 function tipMap() { if (!tipCache || tipCacheDay !== state.date) { tipCacheDay = state.date; try { tipCache = DB.store.get(tipKey()) || {}; } catch { tipCache = {}; } } return tipCache; }
 function rememberTip(g, s, P) {
-if (!P || s.phase !== 'pre') return;
+// (only the day on screen: a projection of another day's game can finish after the user has tapped back)
+if (!P || s.phase !== 'pre' || String(g.date || state.date).slice(0, 10) !== state.date) return;
 const m = tipMap(); let changed = false;
 for (const p of P.players) { const v = Math.round(p.proj.pts * 10) / 10; if (m[p.pid] !== v) { m[p.pid] = v; changed = true; } }
 if (changed) { try { DB.store.set(tipKey(), m); } catch { /* storage full or blocked */ } }
@@ -579,6 +582,8 @@ state.booted = true; state.bootFail = false; // the first slate has answered: fr
 setTimeout(() => { ledgerSweep().catch((e) => console.warn('ledger sweep', e)); }, 6000); // grade what is still waiting from earlier nights
 if (stale()) return;
 state.slate = rows; state.lastUpdate = Date.now();
+// (a day decision that was waiting for fresh scores: only on an answer from a feed, never on the slate kept on the phone)
+if (state.dayCheck && DB.slateSource() !== 'saved') { state.dayCheck = false; if (dayTurn(true)) return; }
 render();
 if (!state.slate.length) {
 // no games on this date: nothing to project, but on an off day the app still saves its copy of the tables and learns from
@@ -1402,7 +1407,13 @@ if (k === 2) { if (state.dayOffset === 0) toast('New day: here are today’s gam
 if (k === 1) render();
 return false;
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden && !dayTurn(true)) refreshAll(); });
+document.addEventListener('visibilitychange', () => {
+if (document.hidden) return;
+// Back at the front after a while: whether last night's games are still going can only be told from fresh scores (the ones in
+// memory are from before the phone was put down). So look first, and decide the day once a real feed has answered (see refreshAll).
+if (state.booted && state.slate.length && Date.now() - state.lastUpdate > 20000 && (state.autoLate || DB.etDate(0) !== state.today)) { state.dayCheck = true; refreshAll(); return; }
+if (!dayTurn(true)) refreshAll();
+});
 
 // ------------------------------------------------------------------ boot
 $('#mascot').innerHTML = MASCOT;

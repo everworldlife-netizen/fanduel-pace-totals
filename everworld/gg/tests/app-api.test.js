@@ -56,5 +56,60 @@ function make(answer) {
     for (let i = 0; i < 20; i++) { try { await A.api('/h2h/v1/schedule/nba?date=x'); } catch { /* expected */ } }
     assert.strictEqual(A.calls.length, 1);
   });
+  await test('several league requests failing together count as one bad moment: the first wait is 30 seconds, not ten minutes', async () => {
+    for (const n of [1, 6, 16]) {
+      const A = make(() => ({ status: 502 }));
+      await Promise.all(Array.from({ length: n }, (_, i) => A.api(`/h2h/v1/timeline/?external_id=${i}`).catch(() => null)));
+      assert.strictEqual(A.LEAGUE.fails, 1, `${n} requests in flight: counted as ${A.LEAGUE.fails} failures`);
+      assert.strictEqual(A.LEAGUE.until - A.clock.now, 30000);
+    }
+    // one step per failed attempt: 30 s, 1, 2, 4, 8, then 10 minutes
+    const B = make(() => 'down'), waits = [];
+    for (let k = 0; k < 7; k++) { await Promise.all(Array.from({ length: 6 }, (_, i) => B.api(`/h2h/v1/timeline/?external_id=${i}`).catch(() => null))); waits.push((B.LEAGUE.until - B.clock.now) / 1000); B.clock.now = B.LEAGUE.until + 1; }
+    assert.deepStrictEqual(waits, [30, 60, 120, 240, 480, 600, 600]);
+  });
+  await test('when the league source starts refusing, the gamer profiles keep today\'s results they already had, and the note is in plain words', async () => {
+    const dir = path.join(__dirname, '..', 'static');
+    const pfFrom = src.indexOf('const GP = window.GGProfiles;'), pfTo = src.indexOf('// quarter splits for the gamers on the board right now');
+    assert.ok(pfFrom > 0 && pfTo > pfFrom, 'the profile loader was not found in app.js');
+    const clock = { now: Date.parse('2026-11-12T22:00:00Z') };
+    class D extends Date { constructor(...a) { if (a.length) super(...a); else super(clock.now); } static now() { return clock.now; } }
+    const mem = new Map();
+    const localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k), key: (i) => [...mem.keys()][i] || null, get length() { return mem.size; } };
+    let blocked = false;
+    const names = ['ACE', 'BOLT', 'CRUSH', 'DYNAMO', 'ECHO', 'FLASH', 'GHOST', 'HAWK'];
+    const dayRows = (d) => { // up to 40 finished games on each day
+      const rows = [];
+      for (let i = 0; i < 40; i++) { const a = names[i % 8], b = names[(i * 3 + 1) % 8 === i % 8 ? (i + 2) % 8 : (i * 3 + 1) % 8]; const t = Date.parse(`${d}T00:00:00Z`) + i * 30 * 60000; if (t > clock.now - 20 * 60000) break; rows.push({ externalId: `NB${String(i).padStart(3, '0')}${d.slice(2).replace(/-/g, '')}`, startDate: new Date(t).toISOString(), isCancelled: false, matchStatus: 'MATCH_ENDED', teamAScore: 50 + (i % 9), teamBScore: 48 + (i % 7), participantAName: a, participantBName: b, teamAName: 'Boston Celtics', teamBName: 'Denver Nuggets' }); }
+      return rows;
+    };
+    const note = { text: '' };
+    const ctx = { Date: D, Math, Error, Set, Map, Object, Array, Number, String, JSON, Promise, Boolean, encodeURIComponent, console, localStorage, plusOnly: (x) => x,
+      fetch: async (url) => { if (blocked && /\/h2h\//.test(url)) return { ok: false, status: 403, json: async () => ({}) }; const m = /date=(\d{4}-\d\d-\d\d)/.exec(decodeURIComponent(url)); return { ok: true, status: 200, json: async () => dayRows(m[1]) }; },
+      S: { view: 'none', board: {} }, renderBoard() {}, renderProfiles() {}, fillQuarters() {}, $: () => note };
+    ctx.window = ctx; ctx.self = ctx; ctx.globalThis = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(dir, 'profiles.js'), 'utf8'), ctx);
+    vm.runInContext(`const store = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+${src.slice(from, to)}
+${src.slice(pfFrom, pfTo)}
+this.loadProfiles = loadProfiles; this.PF = PF;`, ctx);
+    await ctx.loadProfiles(true);
+    const g0 = ctx.PF.model.games;
+    assert.ok(g0 >= 800 && !ctx.PF.stale && !ctx.PF.err, `first build: ${g0} games, stale ${ctx.PF.stale}, error ${ctx.PF.err}`);
+    blocked = true; clock.now += 125000; // two minutes later the source answers 403
+    await ctx.loadProfiles(false);
+    assert.strictEqual(ctx.PF.model.games, g0, `the profiles lost ${g0 - ctx.PF.model.games} games they already had when the source started refusing`);
+    assert.strictEqual(ctx.PF.stale, true);
+    assert.strictEqual(ctx.PF.err, null);
+    // the words a user reads carry no error code
+    const noteSrc = src.slice(src.indexOf("$('pfNote').textContent"), src.indexOf("$('pfNote').textContent") + 400);
+    assert.ok(/not reaching the app right now, so these numbers use the results already saved on this phone/.test(noteSrc) && !/\$\{PF\.stale\}|\(\$\{/.test(noteSrc.slice(0, 260)), 'the note prints a raw error code');
+    assert.ok(!/reaching the app right now \(\$\{/.test(src), 'a league message still prints a raw error code');
+    // the footer carries the version being published, in step with the service worker
+    const sw = fs.readFileSync(path.join(dir, 'sw.js'), 'utf8'), html = fs.readFileSync(path.join(dir, 'index.html'), 'utf8');
+    const v = /gg-winner-v([\d.]+)/.exec(sw)[1];
+    assert.ok(html.includes(`Version ${v} (`), `the footer does not say Version ${v}`);
+  });
   console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
 })();

@@ -346,7 +346,8 @@ if (txt.includes('free throw')) {
 a.fta++; if (made) a.ftm++;
 if (abbr) team(abbr).fta++;
 } else {
-// (a missed end-of-period heave is its own play type since 2025-26: the official box charges it to the team, not to the shooter)
+// (a missed end-of-period heave is its own play type since 2025-26: the official box charges it to the team, not to the shooter.
+// That holds in every period: 66 of 70 fourth-quarter and overtime heaves over two seasons are left off the shooter in the saved official boxes.)
 const heave = TUNE.threeFix > 0 && !made && typ === 'Heave Jump Shot';
 if (abbr) { team(abbr).fga++; if (three || heave) team(abbr).fg3a++; }
 if (!heave) {
@@ -2456,8 +2457,11 @@ else if (seasonRate > 0 && r.min >= 12 && r.pts / r.min < seasonRate * 0.5) flag
 }
 const blowP = (habits[p.tm].players || {})[r.name] || null;
 const proof = !!(p.starter && blowP && blowP.proof);
-if (proof) flags.push('blowproof');
-if (p.starter && pBlow >= 0.3 && st.phase === 'live' && !proof) flags.push('sitrisk');
+// done for the night (fouled out, ejected, or marked OUT by the user during the game): his number is locked at what he has, so
+// no tag, chip or note may speak of minutes or points still to come
+const done = st.phase === 'live' && doneFor(p);
+if (proof && !done) flags.push('blowproof');
+if (p.starter && pBlow >= 0.3 && st.phase === 'live' && !proof && !done) flags.push('sitrisk');
 if (doubt[r.pid] && st.phase === 'pre') flags.push('doubt');
 
 const stints = r.stints || [];
@@ -2472,14 +2476,15 @@ const baseRem = usualRem != null ? p.ratePM.pts * usualRem : null;
 cx.shift = usualRem != null ? { usualRem, remMin: remMinP, baseRem, rem: remPts, dMin: (remMinP - usualRem) * p.ratePM.pts, dRate: remPts - remMinP * p.ratePM.pts } : null;
 cx.fade = st.phase === 'live' ? fadeCheck(p, r, cx, shown, patF) : null;
 const ctxItems = contextItems(p, r, cx);
-const why = st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(explain(p, r, cx), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
-if (cx.fade) flags.push('fade');
+const why = done ? [{ icon: '🟥', key: 'done', effect: 'down', text: r.ejected ? 'Ejected: he is done for the night.' : r.pf >= 6 ? 'Fouled out: he is done for the night.' : 'You marked him out: he is done for the night.', so: `His projection is locked at what he has now${r.ejected || r.pf >= 6 ? ', so skip any pick that needs more from him.' : ', and his minutes go to his teammates.'}` }]
+: st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(explain(p, r, cx), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
+if (cx.fade && !done) flags.push('fade');
 if (cx.fade === null && st.phase === 'live' && p.lu && r.min >= 8 && flags.includes('hot') && p.pat.x.pts[PAT_IX.uReal] >= 1) flags.push('realhot');
 results.push({
-shift: cx.shift, fade: cx.fade,
+shift: cx.shift, fade: done ? null : cx.fade,
 pid: r.pid, name: r.name, team: p.tm, opp: p.opp, on: r.on, starter: p.starter, dnpYet: !!r.dnpYet, fresh: !!r.fresh, deep: !!r.deep, startsTonight: p.sT, blowProof: proof, blowHab: blowP,
 stints, stintNow: r.on && lastSt ? el - lastSt[0] : 0, sitting: !r.on && lastSt ? el - lastSt[1] : null, rot: p.rotInfo, why,
-chips: ctxItems.filter((x) => x.chip).sort((a, b) => (a.effect === 'info') - (b.effect === 'info')).map((x) => ({ t: x.chip, e: x.effect })), confirmed: lineup.confirmed && availIn.has(+r.pid),
+chips: done ? [] : ctxItems.filter((x) => x.chip).sort((a, b) => (a.effect === 'info') - (b.effect === 'info')).map((x) => ({ t: x.chip, e: x.effect })), confirmed: lineup.confirmed && availIn.has(+r.pid),
 now: { pts: r.pts, reb: r.reb, ast: r.ast, fg3m: r.fg3m, fg3a: r.fg3a, fga: r.fga, fgm: r.fgm, fta: r.fta, ftm: r.ftm, tov: r.tov, pf: r.pf, min: r.min },
 proj: { ...shown, min: landW && landW.min > 0 ? (1 - landW.min) * (r.min + minSum / N) + landW.min * mid.min : r.min + minSum / N }, mean: { ...avg, min: r.min + minSum / N }, mid,
 usage: { season: p.usgSeason, tonight: p.usgTonight, proj: usg },

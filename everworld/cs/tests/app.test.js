@@ -654,6 +654,111 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.deepStrictEqual(banned(visibleText(A.w)), []);
     assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
   });
+  // ---- review of version 17 (Nov 12): the phone was down when things changed
+  await test('a late game ends while the phone is down: back at the front the board goes to today, even when the first look at the scores does not get through', async () => {
+    for (const firstLookFails of [false, true]) {
+      const cur = { day: DAY, late: true }, count = {}, hid = { on: false }, feed = { stuck: false };
+      const A = await boot('final', (w) => {
+        calendar(cur, count)(w);
+        Object.defineProperty(w.document, 'hidden', { configurable: true, get: () => hid.on });
+        // (when the scores cannot be reached the data module hands back the slate it kept and says so)
+        const realSlate = w.DB.slate, kept = { rows: null };
+        w.DB.slate = async (d) => { if (feed.stuck && d === DAY && kept.rows) return kept.rows; const r = await realSlate(d); if (d === DAY) kept.rows = r; return r; };
+        w.DB.slateSource = () => (feed.stuck ? 'saved' : 'databallr');
+      });
+      await sleep(3500);
+      let v = await A.go('#/games', 300);
+      assert.ok(/^Today/.test(label(v)) && /Q4 2:00/.test(v.textContent), `evening board: ${label(v)}`);
+      hid.on = true; A.w.document.dispatchEvent(new A.w.Event('visibilitychange')); // the phone is put down with the game still going
+      await sleep(22000);
+      cur.day = A.w.DB.addDays(DAY, 1); cur.late = false; // overnight: the game ended, the calendar moved on
+      if (firstLookFails) feed.stuck = true;
+      hid.on = false; A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
+      if (firstLookFails) { await sleep(2500); v = await A.go('#/games', 300); assert.ok(!/7:00 PM ET/.test(v.textContent), 'the board moved on scores that never came from a feed'); feed.stuck = false; }
+      await sleep(firstLookFails ? 14000 : 7000);
+      v = await A.go('#/games', 400);
+      assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `${firstLookFails ? 'first look failed: ' : ''}next day the board says ${label(v)} and tonight's games are ${/7:00 PM ET/.test(v.textContent) ? '' : 'not '}shown`);
+      assert.strictEqual(count.table, 2, 'the season table was not read again for the new day');
+      assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
+    }
+  });
+  await test('after the day changes in an open app each player\'s own game logs are read again too', async () => {
+    const cur = { day: DAY }, count = {}, asked = {};
+    const A = await boot('final', (w) => {
+      calendar(cur, count)(w);
+      w.DB.playersLogs = async (want) => { (asked[cur.day] = asked[cur.day] || new Set()); for (const x of want) asked[cur.day].add(x.name); return {}; };
+    });
+    await sleep(5000);
+    const first = asked[DAY] ? asked[DAY].size : 0;
+    assert.ok(first >= 10, `only ${first} players had their game logs read on the first day`);
+    const next = A.w.DB.addDays(DAY, 1);
+    cur.day = next;
+    A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
+    await sleep(7000);
+    const again = asked[next] ? [...asked[next]].filter((n) => asked[DAY].has(n)).length : 0;
+    assert.ok(again >= 0.8 * first, `${again} of ${first} players had their game logs read again after the day changed`);
+  });
+  await test('a quick look at tomorrow and straight back, while tomorrow is still being worked out, leaves tonight\'s tip-off numbers alone', async () => {
+    const gate = { wait: null, release: null }, tap = { armed: false, done: false };
+    const A = await boot('pre', (w, state) => {
+      const d1 = w.DB.addDays(DAY, 1), E = w.Engine, OFF = 1e9; // (tomorrow's games carry their own ids)
+      const rowOf = (fx) => {
+        if (state.phase === 'pre') return { ...fx.g, status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+        const bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+        return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
+      };
+      const tomorrow = (fx) => ({ ...fx.g, id: fx.g.id + OFF, date: d1, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map(rowOf) : d === d1 ? FX.map(tomorrow) : []);
+      const base = (id) => (+id >= OFF ? +id - OFF : +id), fxOf2 = (id) => FX.find((x) => +x.g.id === base(id));
+      const realAvail = w.DB.availability;
+      // tomorrow one starter is ruled out, so everybody's number is different from tonight's
+      w.DB.availability = async (g) => {
+        const av = await realAvail({ ...g, id: base(g.id) });
+        if (String(g.date).slice(0, 10) !== d1 || !av) return av;
+        const tm = g.visitor_team.abbreviation, star = av.in.find((x) => x.team === tm && x.starter);
+        return { ...av, in: av.in.filter((x) => x !== star), out: [...av.out, { name: star.name, why: 'out (rest)', team: tm }], starters: { ...av.starters, [tm]: av.starters[tm].filter((n) => n !== star.name) } };
+      };
+      w.DB.lineupFor = w.DB.availability;
+      w.DB.linesFor = () => null; w.DB.props = async () => [];
+      w.DB.livePlays = async (g) => { const fx = fxOf2(g.id); return state.phase === 'pre' || +g.id >= OFF ? [] : fx.plays.filter((p) => p.period <= 2); };
+      w.DB.plays = async (id) => fxOf2(id).plays;
+      // the players' own game logs for tomorrow's slate take as long as the test says
+      w.DB.playersLogs = async () => { if (gate.wait) await gate.wait; return {}; };
+      // tap back to tonight at the moment tomorrow's first projection is handed to the worker
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) {
+        if (tap.armed && !tap.done && m && m.payload && m.payload.game && String(m.payload.game.date).slice(0, 10) === d1) { tap.done = true; setTimeout(() => { const b = w.document.querySelector('[data-act="day"][data-d="-1"]'); if (b) b.click(); }, 0); }
+        return post.call(this, m);
+      };
+    });
+    await sleep(3500);
+    const tip0 = A.w.localStorage.getItem(`tip:${DAY}`);
+    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 20, 'no tip-off numbers were kept before the game');
+    A.state.phase = 'live';
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(4000);
+    const since = async () => { const v = await A.go('#/scorers', 500); return [...v.querySelectorAll('.card.scorer')].map((c) => `${c.querySelector('.nmrow b').textContent}: ${c.querySelector('.big').textContent}${c.querySelector('.mv') ? ' ' + c.querySelector('.mv').textContent : ''}`); };
+    const before = await since();
+    assert.ok(before.some((x) => /since tip/.test(x)), `no moves since tip-off on the scorers screen: ${before.slice(0, 3).join(' | ')} || ${A.errors.slice(0, 4).join(' | ').slice(0, 500)}`);
+    // (1) back while tomorrow's first projection is in flight
+    let v = await A.go('#/games', 300);
+    tap.armed = true;
+    v.querySelector('[data-act="day"][data-d="1"]').click();
+    await sleep(6000);
+    assert.ok(tap.done, 'the test never tapped back');
+    assert.strictEqual(A.w.localStorage.getItem(`tip:${DAY}`), tip0, 'tonight\'s tip-off numbers were rewritten by a projection of tomorrow\'s game that finished late');
+    // (2) back while tomorrow's game logs are still being read (they re-project tomorrow's games when they arrive)
+    gate.wait = new Promise((r) => { gate.release = r; });
+    v = await A.go('#/games', 300);
+    v.querySelector('[data-act="day"][data-d="1"]').click();
+    await sleep(3500);
+    A.w.document.getElementById('view').querySelector('[data-act="day"][data-d="-1"]').click();
+    await sleep(1500);
+    gate.release(); gate.wait = null;
+    await sleep(5000);
+    assert.strictEqual(A.w.localStorage.getItem(`tip:${DAY}`), tip0, 'tonight\'s tip-off numbers were rewritten when tomorrow\'s game logs arrived after the tap back');
+    assert.deepStrictEqual(await since(), before, 'the moves since tip-off changed');
+  });
   console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
   process.exit(process.exitCode || 0);
 })();
