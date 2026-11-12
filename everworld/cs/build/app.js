@@ -381,7 +381,7 @@ ${S.n ? `<table class="mtable acc2" style="margin-top:10px"><tr><th>Chance we ga
 // Each day the app grades the last few nights: it re-projects every finished game from tip-off and every 6 game
 // minutes after, with the lineup that was posted that night, compares with the final box score, and adds the
 // misses to what it has learned.
-const PAT_KEY = 'pat:v6:sum', PAT_DATES = 'pat:v6:dates', PAT_FROM = window.__PAT_FROM || '2026-11-12'; // v17: the box counts every made three (one in ten was missing), so the phone's own tally of threes starts again; // v16: 13 more learned inputs (role anchors, late-game floor picture) and live numbers mean "if he plays", so the phone's own lessons start a fresh tally (the built-in ones cover every game through Nov 9)
+const PAT_KEY = 'pat:v6:sum', PAT_DATES = 'pat:v6:dates', PAT_FROM = window.__PAT_FROM || '2026-11-10'; // v17: the box counts every made three (one in ten was missing), so the phone's own tally starts again (v6) and is rebuilt from the nights after the built-in lessons end, where a copy from before tip-off was saved; // v16: 13 more learned inputs (role anchors, late-game floor picture) and live numbers mean "if he plays", so the phone's own lessons start a fresh tally (the built-in ones cover every game through Nov 9)
 try { ['pat:v1:sum', 'pat:v1:dates', 'pat:v3:sum', 'pat:v3:dates', 'pat:v4:sum', 'pat:v4:dates', 'pat:v5:sum', 'pat:v5:dates'].forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 function patSum() { let pk = null; try { pk = DB.store.get(PAT_KEY); } catch { pk = null; } try { return pk && pk.v === 2 ? E.patUnpack(pk) : null; } catch { return null; } }
 let patCache = null;
