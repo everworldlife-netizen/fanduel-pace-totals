@@ -1194,6 +1194,7 @@ node gg/tests/app-api.test.js         # GG Winner data calls (5 checks): the gro
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/phonecheck.js              # real browser, real feeds: the dated copies and the morning-after learning (FREE=2500000 squeezes storage like an iPhone)
 node tools/livecheck.js               # both LIVE links (after publishing)
+node tools/livewatch.js --minutes 50  # the LIVE Courtside link during a real game (start a few minutes before a tip): a look every 20 s, every number against what the player has, 3PM against the feed, moves with nothing happening
 ```
 (After changing the engine or the fixture date: `node tools/mkfixture.js`.)
 
