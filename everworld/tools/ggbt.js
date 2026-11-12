@@ -59,7 +59,7 @@ const rows = Object.fromEntries(MOMENTS.map((m) => [m, {}]));
 const ref = Object.fromEntries(MOMENTS.map((m) => [m, { n: 0, line: 0, rate: 0, lineBias: 0 }]));
 let games = 0;
 for (const s of seasons) {
-  for (const it of L.readJSON(path.join(L.DATA, 'derived', `games-${s}.json.gz`))) {
+  for (const it of L.readJSON(path.join(L.DERIVED, `games-${s}.json.gz`))) {
     const g = it.g;
     if (g.date < from || g.date > to || !it.market || !it.market.total || !it.log.sc || it.log.sc.length < 50) continue;
     const final = g.home_team_score + g.visitor_team_score;

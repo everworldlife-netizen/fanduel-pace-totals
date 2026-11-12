@@ -17,7 +17,7 @@ const season = +arg('--season', 2026);
 const rows = L.readJSON(path.resolve(L.ROOT, arg('--dump'))).filter((r) => !r.un && r.ac && r.ac[0] >= 10 && r.mn);
 // season totals per player from complete games
 const tot = {};
-for (const it of L.readJSON(path.join(L.DATA, 'derived', `games-${season}.json.gz`))) {
+for (const it of L.readJSON(path.join(L.DERIVED, `games-${season}.json.gz`))) {
   if (it.g.postseason || !R.boxOk(it)) continue;
   for (const [pid, a] of Object.entries(it.log.rows)) { const t = tot[pid] = tot[pid] || [0, 0, 0, 0]; t[0] += a.min || 0; t[1] += a.pts || 0; t[2] += a.reb || 0; t[3] += a.ast || 0; }
 }

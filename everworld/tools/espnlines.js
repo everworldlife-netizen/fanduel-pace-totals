@@ -10,7 +10,7 @@ const path = require('path');
 const L = require('./lib');
 
 const all = process.argv.includes('--all');
-const dir = path.join(L.DATA, 'derived');
+const dir = L.DERIVED;
 const need = [];
 for (const f of fs.readdirSync(dir).filter((x) => /^games-\d+\.json\.gz$/.test(x))) {
   for (const it of L.readJSON(path.join(dir, f))) {

@@ -122,6 +122,13 @@ patHalf: 0, // minutes lessons between halftime and 30 minutes in: 0 = nearest s
 // oracle at every stage, so what is left is minutes. The minutes numbers were too spread out everywhere (real = a + b x number
 // with b 0.70 to 0.90) and the learned layer could only multiply, not pull a number toward what a role normally plays.
 tipBlend: 1, // the first six minutes of a game: minutes are the tip-off projection fading out and the live one fading in (the 6-minute lessons were learned at 6:00; used whole from the opening tip they moved minutes 1.2 on average in the first second and were worse than the tip-off number until about 4:30)
+threeFix: 1, // v17: a made shot worth three is a three whatever its wording; missed long shots by distance (0 = the wording only, which missed one three in ten)
+outDone: 1, // v17: a player the user marks OUT during a game gets no more minutes (he was still projected for some), and they go to his teammates
+minXa: 25.5, minXb: 27.5, // v17: minutes lessons after halftime cross-fade from the halftime ones to the 30-minute ones between these game minutes (equal = the old switch at 27:00)
+paceFade: 1, // v17: the live pace reading fades in from 3:00 to 6:00 (0 = switched on whole at 3:00)
+tipSims: 400, // v17: simulations of the tip-off projection carried through the first six minutes (was 150: its noise moved minutes at the tip)
+landInterp: 1, // v17: the weights of the shown number blend by game minute between the stages they were fitted at (0 = nearest stage, which stepped at the tip, 15:00, 21:00, 27:00, 33:00)
+land18: null, // lab only: points weight of the shown number at the 18-minute stage (null = the LAND table)
 anchIn: 1, // anchor inputs for minutes: anchor / remaining minutes (a flat number of minutes once multiplied), for everyone, by role, on the floor, his pace tonight, lopsided scores, his own average, his season average
 flagIn: 1, // late game: who is on the floor in a decided game (the unit's usual minutes), deep bench in lopsided games, a starter's long stint
 condLive: 1, // a player who has not checked in yet keeps an "if he plays" number during the game too (a pick on a player who never plays is no action): never-in players are not learned from and team totals are scaled instead of squeezing every player
@@ -326,16 +333,28 @@ if (m) a.name = a.name || m[1];
 else { const mb = BLOCK.exec(txt); if (mb) a.name = a.name || mb[1]; }
 tag(a, abbr);
 const made = (' ' + txt + ' ').includes(' makes ');
-const three = txt.includes('three point');
+// A three: usually the feed says so in words, but about one three in ten is worded without them ("makes 25-foot running
+// jump shot", worth 3). So a made shot worth three points is a three, and so is a missed one from 23 feet or more, or a missed
+// running pull-up with no distance given (three in four of those are threes). Against the league's official totals for the
+// first 154 games of 2026-27: made threes match exactly (4,054; the wording alone found 3,646), attempts within half a percent.
+let three = txt.includes('three point');
+if (!three && TUNE.threeFix > 0 && !txt.includes('free throw')) {
+if (made) three = p.score_value === 3;
+else { const ft = /(\d+)-foot/.exec(txt); three = ft ? +ft[1] >= 23 : typ === 'Running Pullup Jump Shot'; }
+}
 if (txt.includes('free throw')) {
 a.fta++; if (made) a.ftm++;
 if (abbr) team(abbr).fta++;
 } else {
+// (a missed end-of-period heave is its own play type since 2025-26: the official box charges it to the team, not to the shooter)
+const heave = TUNE.threeFix > 0 && !made && typ === 'Heave Jump Shot';
+if (abbr) { team(abbr).fga++; if (three || heave) team(abbr).fg3a++; }
+if (!heave) {
 a.fga++; if (made) a.fgm++;
-if (abbr) team(abbr).fga++;
 const zn = shotZone(txt, three);
 const zz = (a.z[zn] = a.z[zn] || [0, 0]); zz[0]++; if (made) zz[1]++;
-if (three) { a.fg3a++; if (abbr) team(abbr).fg3a++; }
+if (three) a.fg3a++;
+}
 }
 if (made) {
 const sv = p.score_value || 0;
@@ -1701,6 +1720,8 @@ for (const [pid, r] of Object.entries(now.players)) if (r.team === v || r.team =
 // who played in each team's most recent game: a player who missed it is presumed out until he checks in
 const ov = o.overrides || {};
 const forceIn = new Set((ov.in || []).map(Number)), forceOut = new Set((ov.out || []).map(Number));
+// done for the night: fouled out, ejected, or (v17) marked OUT by the user in the middle of a game. No more minutes for him, and the team's minutes go to the others.
+const doneFor = (p) => p.r.ejected || p.r.pf >= 6 || (TUNE.outDone > 0 && forceOut.has(+p.r.pid));
 // lineup / injury report from outside DataBallr (ESPN in the app): names → ids on these two rosters
 const av = o.avail || null;
 const availOut = new Map(), availIn = new Set(), availDoubt = new Map();
@@ -1823,7 +1844,8 @@ paceMkt = clamp((100 * mk.total) / (ppV + ppH), 88, 112);
 seasonPace = (1 - TUNE.mktTotalW) * seasonPace + TUNE.mktTotalW * paceMkt;
 }
 // (no reading before 3:00: only finished possessions are counted, so the first minutes read 30 to 85 and pulled the total down)
-const livePace = el >= 3 ? (possNow * 48) / el : seasonPace;
+// (version 17: and from 3:00 it fades in until 6:00; switched on whole at 3:00 it moved the projected total 1.3 points in one second)
+const livePace = el >= 3 ? seasonPace + (TUNE.paceFade > 0 ? clamp((el - 3) / 3, 0, 1) : 1) * ((possNow * 48) / el - seasonPace) : seasonPace;
 const w = el / (el + TUNE.paceK);
 const q4Left = st.phase === 'final' ? 0 : st.period > 4 ? left : Math.min(left, 12);
 const possLeft = (((1 - w) * seasonPace + w * livePace) * (left - q4Left + q4Left * TUNE.q4Pace)) / 48;
@@ -2120,7 +2142,7 @@ excess -= take;
 }
 let deficit = Math.max(5 * left - tot, 0);
 // unclaimed minutes go to players already in tonight's rotation (not to guys the coach benched)
-const avail = (p) => (p.rotInfo ? p.rotInfo.benched : 1) * (p.r.ejected || p.r.pf >= 6 ? 0 : 1);
+const avail = (p) => (p.rotInfo ? p.rotInfo.benched : 1) * (doneFor(p) ? 0 : 1);
 const pn = posNeed[tm];
 const posW = (p) => (pn && TUNE.fillPos > 0 && st.phase === 'pre' && p.grp ? 1 + TUNE.fillPos * 3 * (pn[p.grp] || 0) : 1);
 const share = (p) => Math.max(left - p.mins[i], 0) * avail(p) * posW(p) * (TUNE.fillByMin ? Math.pow(p.mins[i] / Math.max(left, 1) + 0.02, TUNE.fillPow) : 1);
@@ -2201,7 +2223,12 @@ for (const s2 of PAT_LEARN) {
 const a = A[s2], b2 = B[s2];
 // (just after halftime the minutes lessons do not blend: the halftime ones describe a break with nobody on the floor.
 // Measured on 400 unseen games: blending them made minutes 2% worse at 27 minutes, and better everywhere else)
-if (s2 === 'min' && lo === 24 && TUNE.patInterp < 2) { patB[s2] = (TUNE.patHalf > 0 ? b2 || a : (o.patterns[patG] || {}).min || a || b2) || null; continue; }
+if (s2 === 'min' && lo === 24 && TUNE.patInterp < 2) {
+// (version 17: not a switch at 27:00 either, which moved the minutes of half the players by a minute or more in one second:
+// the halftime lessons fade out and the 30-minute ones fade in between minXa and minXb)
+if (TUNE.minXb > TUNE.minXa && a && b2) { const wx = clamp((el - TUNE.minXa) / (TUNE.minXb - TUNE.minXa), 0, 1); patB[s2] = a.map((x, i) => (1 - wx) * (x || 0) + wx * (b2[i] || 0)); continue; }
+patB[s2] = (TUNE.patHalf > 0 ? b2 || a : (o.patterns[patG] || {}).min || a || b2) || null; continue;
+}
 patB[s2] = a && b2 ? a.map((x, i) => (1 - t) * (x || 0) + t * (b2[i] || 0)) : a || b2 || null;
 }
 } else patB = (t >= 0.999 ? B : A) || {};
@@ -2230,10 +2257,22 @@ if (Fm.f !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i]
 // The first six minutes: carry the tip-off number into the game. The same lineup is projected once more as if the game had not
 // started (the tip-off lessons), and each player's minutes are a mix of the two: all tip-off at 0:00, all live at 6:00.
 let wTip = 0; // share of the tip-off projection still in the numbers (1 at the opening tip, 0 from 6:00)
+// The weights of the shown number (LAND) were fitted at 6:00, 12:00, ... Used by nearest stage they stepped where the stage
+// changes (the shown points of every player dropped 0.35 at the opening tip and moved 0.2 to 0.5 at 15:00, 21:00, 27:00 with
+// nothing happening). During a game they blend by game minute between the two stages around it, like the lessons do
+// (0:00 = the pre-game table); at the fitted stages themselves nothing changes.
+let landNow = (patG === 's18' && TUNE.land18 != null ? { ...LAND.s18, pts: TUNE.land18 } : LAND[patG]) || {};
+if (TUNE.landInterp > 0 && st.phase === 'live' && st.period <= 4) {
+const lo = clamp(Math.floor(el / 6) * 6, 0, 42), hi = Math.min(lo + 6, 42), t = hi > lo ? clamp((el - lo) / 6, 0, 1) : 0;
+const tbl = (g) => (g === 's18' && TUNE.land18 != null ? { ...LAND.s18, pts: TUNE.land18 } : LAND[g]) || {};
+const A = lo === 0 ? tbl('pre') : tbl('s' + lo), B = tbl('s' + hi);
+landNow = {};
+for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) landNow[k] = (1 - t) * (A[k] || 0) + t * (B[k] || 0);
+}
 const tipOf = new Map(); // player -> his line in the tip-off projection
 if (TUNE.tipBlend > 0 && patOn && patB.min && st.phase === 'live' && st.period === 1 && el < 6 && !o.noTipBlend) {
 let tip = null;
-try { tip = projectGame({ ...o, game: { ...o.game, status_state: 'scheduled', display_status: '', status: '', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 }, plays: [], nsims: Math.min(o.nsims || 300, 150), noTipBlend: true }); } catch (e) { tip = null; }
+try { tip = projectGame({ ...o, game: { ...o.game, status_state: 'scheduled', display_status: '', status: '', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 }, plays: [], nsims: Math.min(o.nsims || 300, TUNE.tipSims), noTipBlend: true }); } catch (e) { tip = null; }
 if (tip && tip.state && tip.state.phase === 'pre') {
 wTip = 1 - el / 6;
 const byPid = new Map(tip.players.map((q) => [q.pid, q])), byName = new Map(tip.players.map((q) => [`${q.team}:${norm(q.name)}`, q]));
@@ -2259,7 +2298,7 @@ const teamK = { [v]: null, [h]: null };
 // 1 = a ramp from 0.90 to 1.00
 // (the ramp is for games in progress. Before tip-off the fixed cut-off stays: with the ramp the before-lineups stage came out
 // 1.7% worse on minutes on 1,177 games, z 5.9, whichever lessons were used.)
-const refillW = (p) => (p.r.ejected || p.r.pf >= 6 ? 0 : TUNE.refillSoft > 0 && st.phase === 'live' ? clamp((p.pat.F.min.f - 0.9) / 0.1, 0, 1) : p.pat.F.min.f >= 0.97 ? 1 : 0);
+const refillW = (p) => (doneFor(p) ? 0 : TUNE.refillSoft > 0 && st.phase === 'live' ? clamp((p.pat.F.min.f - 0.9) / 0.1, 0, 1) : p.pat.F.min.f >= 0.97 ? 1 : 0);
 if (patOn && patB.min) for (const tm of [v, h]) {
 const ps = players.filter((p) => p.tm === tm);
 const amNow = Math.abs(st.vs - st.hs);
@@ -2289,8 +2328,8 @@ if (R.u() >= pOt) continue;
 otShare++;
 for (const tm of [v, h]) {
 let sw = 0;
-for (const p of players) if (p.tm === tm && !(p.r.ejected || p.r.pf >= 6)) sw += p.mins[i] * p.mins[i];
-if (sw > 0) for (const p of players) if (p.tm === tm && !(p.r.ejected || p.r.pf >= 6)) p.mins[i] += Math.min(5, (25 * p.mins[i] * p.mins[i]) / sw);
+for (const p of players) if (p.tm === tm && !doneFor(p)) sw += p.mins[i] * p.mins[i];
+if (sw > 0) for (const p of players) if (p.tm === tm && !doneFor(p)) p.mins[i] += Math.min(5, (25 * p.mins[i] * p.mins[i]) / sw);
 }
 }
 otShare /= N;
@@ -2403,7 +2442,7 @@ range[k] = [lo, hi];
 { const srt = Array.from(p.mins).sort((x, y) => x - y); let m = 0, c = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m += srt[q]; c++; } mid.min = r.min + (c ? m / c : minSum / N); }
 // what we show: average and middle blended by stage (LAND); the plain average stays in `mean` for the learning loop and team totals
 const shown = { ...avg };
-const landW = TUNE.landOn > 0 && st.phase !== 'final' && left > 0 ? LAND[patG] : null;
+const landW = TUNE.landOn > 0 && st.phase !== 'final' && left > 0 ? landNow : null;
 if (landW) for (const k of PAT_STATS) { const lw = landW[k] || 0; if (lw > 0) shown[k] = Math.max(r[k], (1 - lw) * avg[k] + lw * mid[k]); }
 const flags = [];
 if (r.pf >= 5) flags.push('foul5');
@@ -2423,7 +2462,7 @@ if (doubt[r.pid] && st.phase === 'pre') flags.push('doubt');
 
 const stints = r.stints || [];
 const lastSt = stints[stints.length - 1];
-const cx = { phase: st.phase, el, left, minProj: minSum / N, minShown: landW && landW.min > 0 ? Math.max(mid.min - r.min, 0) : minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
+const cx = { phase: st.phase, el, left, minProj: minSum / N, minShown: landW && landW.min > 0 ? (1 - landW.min) * (minSum / N) + landW.min * Math.max(mid.min - r.min, 0) : minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
 pace: seasonPace, livePace, mk, b2b: b2b[p.tm], doubt: st.phase === 'pre' ? doubt[r.pid] || null : null, lineup, inList: availIn.has(+r.pid), oppCtx: ctx[p.opp], lgP3: lgZ.three,
 b2b: b2b[p.tm], proj: shown, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
 // vs a normal night from this point: his usual remaining minutes at his usual scoring rate
@@ -2595,7 +2634,9 @@ if (p.flags.includes('out')) continue;
 let used = false;
 for (const stat of ['pts', 'reb', 'ast', 'fg3m', 'pra']) {
 const L = lines && lines[p.pid + ':' + stat];
-if (L) {
+// (a line he has already passed is a settled bet, not a play: the lines feed can keep listing it for a few minutes)
+const has = stat === 'pra' ? (p.now.pts || 0) + (p.now.reb || 0) + (p.now.ast || 0) : p.now[stat] || 0;
+if (L && !(has > L.line)) {
 const prob = calProb(p, stat, probOver(p._sims[stat], L.line));
 const edge = prob - L.fairOver;
 if (prob >= minP && edge >= 0.03 && p.proj[stat] > L.line) {

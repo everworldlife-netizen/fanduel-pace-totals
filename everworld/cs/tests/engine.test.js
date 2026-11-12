@@ -405,4 +405,105 @@ test('no user-facing wording uses the words "over" or "under"', () => {
   const bad = texts.filter((t) => t && /\b(over|under)\b/i.test(String(t)));
   assert.strictEqual(bad.length, 0, `found: ${[...new Set(bad)].slice(0, 3).join(' | ')}`);
 });
+// ---- version 17
+// the same plays and score, the game clock a moment later: what moves with nothing happening?
+const sameMoment = (fx, elA, elB, extra = {}) => {
+  const m = momentAt(fx.g, fx.plays, elA);
+  const per = Math.floor(elB / 12) + 1, left = (per * 12 - elB) * 60, clock = `${Math.floor(left / 60)}:${String(Math.round(left % 60)).padStart(2, '0')}`;
+  const o = { ...fx.base, plays: m.plays, nsims: 600, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, ...extra };
+  return [E.projectGame({ ...o, game: m.game }), E.projectGame({ ...o, game: { ...m.game, period: per, time: `Q${per} ${clock}` } })];
+};
+test('every made three counts, whatever its wording; long misses count as attempts; a missed heave is not charged to the shooter', () => {
+  const sh = (clock, type, text, sv) => ({ period: 1, clock, type, text, participants: [1, 2], team: { abbreviation: 'BOS' }, shooting_play: true, score_value: sv });
+  const plays = [
+    sh('11:00', 'Running Jump Shot', 'A B makes 25-foot running jump shot (C D assists)', 3),
+    sh('10:40', 'Running Pullup Jump Shot', 'A B makes 26-foot running pullup jump shot', 3),
+    sh('10:20', 'Jump Shot', 'A B makes 24-foot three point jumper', 3),
+    sh('10:00', 'Running Jump Shot', 'A B misses 26-foot running jump shot', null),
+    sh('9:40', 'Running Pullup Jump Shot', 'A B misses running pullup jump shot', null),
+    sh('9:20', 'Pullup Jump Shot', 'A B makes 22-foot pullup jump shot', 2),
+    sh('9:00', 'Pullup Jump Shot', 'A B misses 21-foot pullup jump shot', null),
+    sh('8:40', 'Driving Layup Shot', 'A B misses driving layup', null),
+    sh('8:20', 'Heave Jump Shot', 'A B misses heave', null),
+    sh('8:00', 'Free Throw - 1 of 1', 'A B makes free throw 1 of 1', 1),
+  ];
+  const b = E.boxFromPlays(plays, 1, '8:00'), r = b.players[1];
+  assert.deepStrictEqual({ pts: r.pts, fgm: r.fgm, fga: r.fga, fg3m: r.fg3m, fg3a: r.fg3a, ftm: r.ftm }, { pts: 12, fgm: 4, fga: 8, fg3m: 3, fg3a: 5, ftm: 1 });
+  assert.strictEqual(b.teams.BOS.fg3m, 3); assert.strictEqual(b.teams.BOS.fga, 9); // (the heave is the team's attempt)
+  // on the real fixture games: a made shot worth three is always a three, and points are untouched
+  for (const fx of FX) {
+    const le = E.logEntry(fx.g, fx.plays);
+    const made = {};
+    for (const p of fx.plays) if (p.shooting_play && p.score_value === 3 && / makes /.test(` ${p.text} `) && !/free throw/.test(p.text)) made[p.participants[0]] = (made[p.participants[0]] || 0) + 1;
+    for (const [pid, n] of Object.entries(made)) assert.strictEqual(le.rows[pid].fg3m, n, `${le.rows[pid].name}: ${n} made threes in the plays, ${le.rows[pid].fg3m} in the box`);
+    const keep = E.TUNE.threeFix; let old;
+    E.TUNE.threeFix = 0; try { old = E.logEntry(fx.g, fx.plays); } finally { E.TUNE.threeFix = keep; }
+    for (const [pid, r2] of Object.entries(le.rows)) { assert.strictEqual(r2.pts, old.rows[pid].pts); assert.ok(r2.fg3m >= old.rows[pid].fg3m); }
+  }
+});
+test('a player marked OUT during a game keeps what he has, and his minutes go to his teammates', () => {
+  const fx = FX[0];
+  const base = run(fx, 15);
+  const star = base.players.filter((p) => p.now.pts > 0 && p.on).sort((a, b) => b.proj.min - a.proj.min)[0];
+  assert.ok(star && star.proj.min - star.now.min > 8, 'the fixture has no player with minutes to come');
+  const out = run(fx, 15, { overrides: { in: [], out: [star.pid] } });
+  const o = out.players.find((p) => p.pid === star.pid);
+  assert.ok(o, 'a player with stats in the box vanished when marked out');
+  assert.ok(o.proj.min - o.now.min < 0.05, `marked OUT with ${o.now.min.toFixed(1)} minutes played, still shown ${o.proj.min.toFixed(1)}`);
+  for (const k of STATS) assert.ok(Math.abs(o.proj[k] - o.now[k]) < 0.051, `marked OUT with ${o.now[k]} ${k}, still shown ${o.proj[k]}`);
+  const mates = (P) => P.players.filter((p) => p.team === star.team && p.pid !== star.pid).reduce((a, p) => a + (p.mean.min - p.now.min), 0);
+  assert.ok(mates(out) > mates(base) + 0.5 * (star.mean.min - star.now.min), `teammates' minutes to come ${mates(base).toFixed(1)} -> ${mates(out).toFixed(1)} after a ${(star.mean.min - star.now.min).toFixed(1)}-minute player was marked out`);
+});
+test('no edge is listed on a book line the player has already passed', () => {
+  const fx = FX[0], P = run(fx, 24);
+  const p = P.players.filter((x) => x.now.pts >= 6).sort((a, b) => b.now.pts - a.now.pts)[0];
+  const lines = { [`${p.pid}:pts`]: { line: p.now.pts - 1.5, fairOver: 0.5 }, [`${p.pid}:reb`]: { line: Math.max(0.5, Math.floor(p.proj.reb) - 1.5) + (p.now.reb > Math.floor(p.proj.reb) - 1 ? 3 : 0), fairOver: 0.3 } };
+  const picks = E.picksForGame(P, lines, { minP: 0.5 });
+  assert.ok(!picks.some((k) => k.pid === p.pid && k.stat === 'pts' && k.kind === 'line'), `${p.name} has ${p.now.pts} points and is listed as an edge on ${p.now.pts - 1.5}`);
+  // the same line while it is still ahead of what he has is listed
+  const P0 = run(fx, 0), q = P0.players.find((x) => x.pid === p.pid) || P0.players[0];
+  const pk = E.picksForGame(P0, { [`${q.pid}:pts`]: { line: Math.max(0.5, Math.floor(q.proj.pts) - 4.5), fairOver: 0.5 } }, { minP: 0.5 });
+  assert.ok(pk.some((k) => k.pid === q.pid && k.stat === 'pts' && k.kind === 'line'), 'a line still ahead of him lost its edge card');
+});
+test('nothing steps at 27:00: the minutes lessons cross-fade after halftime', () => {
+  let n = 0, sum = 0, big = 0, sumOld = 0;
+  for (const fx of FX) {
+    const [a, b] = sameMoment(fx, 26.98, 27.0);
+    const keep = [E.TUNE.minXa, E.TUNE.minXb]; let a0, b0;
+    E.TUNE.minXa = E.TUNE.minXb = 27; try { [a0, b0] = sameMoment(fx, 26.98, 27.0); } finally { [E.TUNE.minXa, E.TUNE.minXb] = keep; }
+    for (const p of a.players) {
+      const q = b.players.find((x) => x.pid === p.pid), p0 = a0.players.find((x) => x.pid === p.pid), q0 = b0.players.find((x) => x.pid === p.pid);
+      if (!q || !p0 || !q0 || !(p.now.min > 0)) continue;
+      n++; const d = Math.abs(q.mean.min - p.mean.min); sum += d; sumOld += Math.abs(q0.mean.min - p0.mean.min); if (d >= 1) big++;
+    }
+  }
+  assert.ok(n >= 16, `only ${n} players`);
+  assert.ok(sum / n < 0.25 && big === 0, `minutes move ${(sum / n).toFixed(2)} on average in one second at 27:00 (${big} players by a minute or more)`);
+  assert.ok(sumOld / n > 2 * (sum / n), `the switch at 27:00 moved ${(sumOld / n).toFixed(2)}, the cross-fade ${(sum / n).toFixed(2)}`);
+  // at the fitted stages nothing changes
+  const fx = FX[0], keep = [E.TUNE.minXa, E.TUNE.minXb];
+  const x24 = run(fx, 24), x30 = run(fx, 30); let y24, y30;
+  E.TUNE.minXa = E.TUNE.minXb = 27; try { y24 = run(fx, 24); y30 = run(fx, 30); } finally { [E.TUNE.minXa, E.TUNE.minXb] = keep; }
+  assert.deepStrictEqual(x24.players.map((p) => [p.pid, p.mean.min]), y24.players.map((p) => [p.pid, p.mean.min]));
+  assert.deepStrictEqual(x30.players.map((p) => [p.pid, p.mean.min]), y30.players.map((p) => [p.pid, p.mean.min]));
+});
+test('the pace reading comes in gradually from 3:00, and the shown number has no step where the stage changes', () => {
+  const fx = FX[0];
+  const [a, b] = sameMoment(fx, 2.98, 3.0);
+  assert.ok(Math.abs(b.pace.live - a.pace.live) < 1, `the pace reading goes from ${a.pace.live} to ${b.pace.live} in one second at 3:00`);
+  const six = run(fx, 6), keepP = E.TUNE.paceFade; let six0;
+  E.TUNE.paceFade = 0; try { six0 = run(fx, 6); } finally { E.TUNE.paceFade = keepP; }
+  assert.strictEqual(six.pace.live, six0.pace.live, 'the reading at 6:00 changed');
+  // shown points across 15:00 and 21:00 with nothing happening (the weights used to switch there)
+  for (const [x, y] of [[14.98, 15.0], [20.98, 21.0]]) {
+    const [p0, p1] = sameMoment(fx, x, y);
+    let n = 0, signed = 0;
+    for (const p of p0.players) { const q = p1.players.find((z) => z.pid === p.pid); if (!q || !(p.now.min > 0)) continue; n++; signed += q.proj.pts - p.proj.pts - (q.mean.pts - p.mean.pts); }
+    assert.ok(n >= 8 && Math.abs(signed / n) < 0.08, `shown points step ${(signed / n).toFixed(2)} on average across ${y}:00 beyond what the simulation itself moved`);
+  }
+  // at a fitted stage the shown number is the table's, as before
+  const keepL = E.TUNE.landInterp; const t12 = run(fx, 12); let t12o;
+  E.TUNE.landInterp = 0; try { t12o = run(fx, 12); } finally { E.TUNE.landInterp = keepL; }
+  assert.deepStrictEqual(t12.players.map((p) => [p.pid, p.proj.pts, p.proj.ast]), t12o.players.map((p) => [p.pid, p.proj.pts, p.proj.ast]));
+});
 console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);

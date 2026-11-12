@@ -24,9 +24,16 @@ function loadEngine(enginePath) {
 function loadSeasons(seasons) {
   const games = [];
   for (const s of seasons) {
-    const f = path.join(L.DATA, 'derived', `games-${s}.json.gz`);
+    const f = path.join(L.DERIVED, `games-${s}.json.gz`);
     if (!L.exists(f)) throw new Error(`missing ${f}: run tools/prep.js`);
     for (const it of L.readJSON(f)) { it.season = +s; games.push(it); }
+    // LAB_TRUTH=<folder>: grade against the final boxes of another prepared set (the history and the lessons stay those of
+    // LAB_DERIVED). Used to grade the engine as it was published, on its own history, against the corrected box scores.
+    if (process.env.LAB_TRUTH) {
+      const tf = path.join(path.resolve(L.ROOT, process.env.LAB_TRUTH), `games-${s}.json.gz`);
+      const byId = new Map(L.readJSON(tf).map((x) => [x.g.id, x.log && x.log.rows]));
+      for (const it of games) if (it.season === +s && byId.get(it.g.id)) it.truth = byId.get(it.g.id);
+    }
   }
   games.sort((a, b) => String(a.g.date).localeCompare(String(b.g.date)) || a.g.id - b.g.id);
   const byDate = new Map();
@@ -150,9 +157,9 @@ function contextFor(E, S, it, opts = {}) {
 /** Last season's situational prior for a season's games, built from the previous season's logs with the engine's own builder (cached on disk). */
 function sitPriorFor(E, season) {
   // (the builder changes with the engine's sitPre switch, so each variant keeps its own cached file)
-  const f = path.join(L.DATA, 'derived', `sitprior-${season}${E.TUNE.sitPre > 0 ? '-pre' : ''}.json.gz`);
+  const f = path.join(L.DERIVED, `sitprior-${season}${E.TUNE.sitPre > 0 ? '-pre' : ''}.json.gz`);
   if (L.exists(f)) return L.readJSON(f);
-  const src = path.join(L.DATA, 'derived', `games-${season - 1}.json.gz`);
+  const src = path.join(L.DERIVED, `games-${season - 1}.json.gz`);
   if (!L.exists(src)) return {};
   const logs = L.readJSON(src).filter((it) => !it.g.postseason).map((it) => it.log);
   const stars = {};
@@ -211,7 +218,7 @@ function addStage(a, b) {
 
 /** Grade one projection against the final box (rows = logEntry(...).rows). The headline uses the app's own rule: players with 10+ real minutes. */
 function score(E, proj, it, A, dump) {
-  const rows = it.log.rows, g = it.g;
+  const rows = it.truth || it.log.rows, g = it.g;
   const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
   A.games++;
   // [11..13]: everyone who really played 10+ minutes, projected or not (a missing projection counts as zero): players, |pts|, |min|

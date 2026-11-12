@@ -77,17 +77,28 @@
     toast.t = setTimeout(() => el.classList.add('hidden'), ms);
   }
 
+  // The league's own results source (/h2h) can turn the app away: 403 when it blocks automated traffic, 429 when it is asked too
+  // often, 5xx when it is down. Then the app stops asking on every refresh and tries again after a growing wait (30 seconds, then
+  // 1, 2, 4, 8 and at most 10 minutes). The board's lines and scores come from another source and are not affected.
+  const LEAGUE = { fails: 0, until: 0, status: 0 };
+  const leagueWaitMs = (fails) => Math.min(600000, 30000 * 2 ** Math.max(0, fails - 1));
   async function api(path, opts) {
     // live data comes from GG Winner's data server (a Supabase function); the app itself is static
     const DATA = 'https://pjthpontugjihnjsxxry.supabase.co/functions/v1/gg-winner';
     const url = /^\/(api|h2h)\//.test(path) ? DATA + path : path;
-    const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, ...opts });
+    const league = path.startsWith('/h2h/');
+    if (league && Date.now() < LEAGUE.until) { const e = new Error(`HTTP ${LEAGUE.status || 503}`); e.status = LEAGUE.status || 503; e.waiting = true; throw e; }
+    let res;
+    try { res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' }, ...opts }); }
+    catch (err) { if (league) { LEAGUE.fails += 1; LEAGUE.status = 0; LEAGUE.until = Date.now() + leagueWaitMs(LEAGUE.fails); } throw err; }
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (league && (res.status === 403 || res.status === 429 || res.status >= 500)) { LEAGUE.fails += 1; LEAGUE.status = res.status; LEAGUE.until = Date.now() + leagueWaitMs(LEAGUE.fails); }
       const e = new Error(body.error || `HTTP ${res.status}`);
       e.status = res.status;
       throw e;
     }
+    if (league) { LEAGUE.fails = 0; LEAGUE.until = 0; LEAGUE.status = 0; }
     return plusOnly(body);
   }
   const qparams = () => `edge=${encodeURIComponent(S.settings.edge)}&ev=${encodeURIComponent(S.settings.ev / 100)}`;
@@ -709,9 +720,10 @@
       const days = [];
       for (let i = 0; i < PROFILE_DAYS; i += 1) days.push(dayStr(now - i * 86400000));
       let games = [];
+      let missed = null; // the newest days could not be read (the league's source is turning the app away): the saved days still count
       for (let i = 0; i < days.length; i += 1) {
         const d = days[i];
-        try { games = games.concat(await finalsForDay(d, now)); } catch (err) { if (d === days[0]) throw err; }
+        try { games = games.concat(await finalsForDay(d, now)); } catch (err) { if (i < 2) missed = missed || err; }
         // first visit: show numbers from the newest days right away, then keep loading the older ones
         if (i === PROFILE_FIRST - 1 && !PF.model && games.length) {
           PF.model = GP.build(games, PF.q, { now }); PF.builtAt = now; PF.err = null; PF.partial = true;
@@ -720,6 +732,8 @@
         }
       }
       PF.partial = false;
+      if (missed && !games.length) throw missed;
+      PF.stale = missed ? (missed.message || 'no answer') : null;
       pruneStore(days);
       const ids = new Set(games.map((g) => g.id));
       for (const id of Object.keys(PF.q)) if (!ids.has(id)) delete PF.q[id];
@@ -1077,7 +1091,7 @@
     }[PF.sort] || (() => 0);
     list.sort(by);
     const L = PF.model.league;
-    $('pfNote').textContent = `Built from ${PF.model.games} official GG League games from the last ${PROFILE_DAYS} days${PF.partial ? ' (older days still loading)' : ''} (${L.qGames} with quarter splits so far). League average: ${L.ppg} points per gamer, ${L.total} per game. "Fast" = top 30% for points per game, "Blazing" = top 12%. Newer games count more.${PF.model.ratings ? ' Projections weigh who each gamer played, which NBA team each one is using, and how the two have done against each other. Tested on 7,800 past games: average miss on the game total 9.3 points (10.2 before this update), right winner 58% of the time (54% before).' : ''}`;
+    $('pfNote').textContent = `${PF.stale ? `The league’s newest results are not reaching the app right now (${PF.stale}), so these numbers use the results already saved on this phone. ` : ''}Built from ${PF.model.games} official GG League games from the last ${PROFILE_DAYS} days${PF.partial ? ' (older days still loading)' : ''} (${L.qGames} with quarter splits so far). League average: ${L.ppg} points per gamer, ${L.total} per game. "Fast" = top 30% for points per game, "Blazing" = top 12%. Newer games count more.${PF.model.ratings ? ' Projections weigh who each gamer played, which NBA team each one is using, and how the two have done against each other. Tested on 7,800 past games: average miss on the game total 9.3 points (10.2 before this update), right winner 58% of the time (54% before).' : ''}`;
     out.innerHTML = list.length ? list.slice(0, 80).map(profileRow).join('') : '<div class="empty-line">No gamer matches that.</div>';
     out.querySelectorAll('[data-pf]').forEach((el) => { el.onclick = () => { haptic(); openProfile(el.dataset.pf); }; });
   }

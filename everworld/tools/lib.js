@@ -6,6 +6,9 @@ const zlib = require('zlib');
 
 const ROOT = process.env.EW_ROOT || path.resolve(__dirname, '..');
 const DATA = path.join(ROOT, 'data');
+// The prepared games (one file per season). LAB_DERIVED=<folder> points the tools at another set, e.g. data/derived-v16 (the
+// history as it was counted before Nov 12, 2026, when one made three in ten was missing from the play-by-play box).
+const DERIVED = process.env.LAB_DERIVED ? path.resolve(ROOT, process.env.LAB_DERIVED) : path.join(DATA, 'derived');
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 const DB = 'https://api.databallr.com';
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
@@ -66,4 +69,4 @@ function dateRange(from, to) { const out = []; for (let d = from; d <= to; d = a
 /** DataBallr labels seasons by end year: Oct 2026 → current 2027, last 2026. */
 function seasons(date) { const [y, m] = date.split('-').map(Number); const cur = m >= 8 ? y + 1 : y; return { cur, last: cur - 1 }; }
 
-module.exports = { ROOT, DATA, UA, DB, ESPN, espnAbbr, sleep, ensure, exists, readJSON, writeJSON, getJSON, pool, addDays, dateRange, seasons };
+module.exports = { ROOT, DATA, DERIVED, UA, DB, ESPN, espnAbbr, sleep, ensure, exists, readJSON, writeJSON, getJSON, pool, addDays, dateRange, seasons };

@@ -12,7 +12,7 @@ const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? proce
 const E = R.loadEngine(arg('--engine', 'cs/build/engine.js'));
 for (const kv of String(arg('--tune', '')).split(',').filter(Boolean)) { const [k, v] = kv.split('='); E.TUNE[k] = +v; }
 const season = +arg('--season', 2026);
-const logs = L.readJSON(path.join(L.DATA, 'derived', `games-${season}.json.gz`)).filter((it) => !it.g.postseason).map((it) => it.log);
+const logs = L.readJSON(path.join(L.DERIVED, `games-${season}.json.gz`)).filter((it) => !it.g.postseason).map((it) => it.log);
 const stars = {};
 const starOf = (tm) => { if (!(tm in stars)) { const x = E.teamStar(logs, tm); stars[tm] = x ? x.pid : null; } return stars[tm]; };
 const pids = new Set();

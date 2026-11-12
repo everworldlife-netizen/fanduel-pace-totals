@@ -7,7 +7,7 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const half = (x) => (Math.round(x * 2) / 2).toString();
 const pct = (p) => `${Math.round(p * 100)}%`;
-const APP_VERSION = '16 (Nov 11, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
+const APP_VERSION = '17 (Nov 12, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
 
 // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
 const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on 121 of this season's games (Oct 24 to Nov 9; a team's first two games of the season are left out) with lessons learned only from the 3,586 games of the three seasons before, so the lessons had never seen these games. What to build in this version was chosen by studying last season's games and checked against these 121, so read the gains as a careful estimate, not a blind test. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.89,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.75,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.55,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.3,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.14,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.67,"reb":1.9,"ast":1.4,"fg3m":0.88,"min":4.03,"top3":0.785,"total":14.22,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.74,"min":3.86,"top3":0.826,"total":12.67,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.55,"min":3.23,"top3":0.909,"total":10.92,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.55,"fg3m":0.3,"min":2.64,"top3":0.95,"total":7.78,"players":2253},"late":{"pts":1.23,"reb":0.5,"ast":0.29,"fg3m":0.15,"min":1.5,"top3":0.975,"total":6.92,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"84%"},{"said":"65% at tip-off","before":"64%","now":"63%"},{"said":"85% at halftime","before":"83%","now":"82%"},{"said":"65% at halftime","before":"65%","now":"65%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. With every change in this list together, minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was on this season's 121 games; points 3.5% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes in, minutes land 20% closer and points 3.6% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.3% closer. That was measured with every absence known in advance; before lineups post the phone only has the injury report, so the gain there can be smaller.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.6% closer and rebounds 0.6 to 4% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). The 592 games of last season's second half, which the lessons never saw (the new inputs were picked with those games in view), show the same at every stage from tip-off on: version 16 against version 15, minutes 3 to 12% closer, points up to 2%, rebounds up to 2.2%, assists up to 1.4%.","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. Tested on 585 of last season's games that were not used to set its strength, the final score landed 0.6 to 3.5% closer at every moment from six minutes in to the end of the third quarter, and never further off. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off. A second learning stage that looks at the whole game state got points, rebounds and assists no closer before and early in games, and at most about 1% closer at a few later moments. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 regular-season games across four seasons, through Nov 9. Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
@@ -70,7 +70,7 @@ DB.store.set(ovKey(), o);
 }
 
 const state = {
-dayOffset: 0, date: DB.etDate(0), slate: [], priors: null, injuries: [], avail: {},
+dayOffset: 0, date: DB.etDate(0), today: DB.etDate(0), autoLate: false, slate: [], priors: null, priorsAt: 0, injuries: [], avail: {},
 logs: new Map(), logTeams: new Set(), proj: new Map(), busy: false, progress: null, gradeTries: new Map(), booted: false, bootFail: false,
 team: {}, pickFilter: 'all', sheetPid: null, sheetGame: null, installEvt: null, lastErr: null, lastUpdate: 0,
 teamsDb: null, oddsRows: [], glogs: {}, glogTried: new Set(), openDetails: new Set(), sheetAll: null,
@@ -105,12 +105,49 @@ state.slate = await DB.slate(state.date);
 state.lastUpdate = Date.now();
 }
 async function ensurePriors() {
-if (state.priors) return;
 const s = DB.seasons(state.date);
+if (state.priors) {
+// The season table is read again when the first read came back empty (a failed request: asked again at most once a minute)
+// and when it is more than six hours old (an app kept open all day), but never while a game on screen is being played.
+const thin = Object.keys(state.priors.cur || {}).length < 20;
+const age = Date.now() - state.priorsAt;
+if (!(thin ? age > (window.__PRIORS_RETRY_MS || 60000) : age > DB.PRIORS_MS && !state.slate.some((g) => st(g).phase === 'live'))) return;
+state.priorsAt = Date.now();
+let cur = null;
+try { cur = await DB.currentSeasonPriors(s.cur, DB.etDate(0)); } catch { cur = null; }
+if (cur && Object.keys(cur).length >= 20 && cur !== state.priors.cur) {
+state.priors.cur = cur;
+for (const p of state.proj.values()) p.redo = true; // numbers made with the old table are made again on this refresh
+snapSave();
+}
+return;
+}
 setProgress('Loading player profiles…', 0, 1);
 const [last, cur] = await Promise.all([DB.lastSeasonPriors(s.last), DB.currentSeasonPriors(s.cur, DB.etDate(0))]);
-state.priors = { last, cur };
+state.priors = { last, cur }; state.priorsAt = Date.now();
 snapSave();
+}
+// The Eastern day can change while the app stays open (a phone keeps it in memory overnight). "Today" then moves with it: the
+// board goes to the new day and the season table and the recent games are read again, so tonight's numbers know about last
+// night. While last night's games are still being played the app stays on them, as it does when opened just after midnight;
+// once they are over, the next time the app comes to the front it starts on today.
+const dayDiff = (a, b) => Math.round((Date.parse(a + 'T12:00:00Z') - Date.parse(b + 'T12:00:00Z')) / 86400000);
+function syncDay(resumed) {
+const today = DB.etDate(0);
+const turned = today !== state.today;
+const liveOn = state.slate.some((g) => st(g).phase === 'live');
+const following = state.dayOffset === 0 || state.autoLate; // the app is on "today" (or on last night's late games), not on a day the user picked
+let move = false;
+if (turned) {
+state.today = today;
+if (following && liveOn) { state.autoLate = true; state.dayOffset = dayDiff(state.date, today); return 1; }
+if (following) move = true;
+else state.dayOffset = dayDiff(state.date, today); // a day the user picked stays on screen; the arrows count from the new today
+} else if (resumed && state.autoLate && !liveOn && state.booted && state.slate.length) move = true;
+else return 0;
+if (move) { state.autoLate = false; state.dayOffset = 0; state.date = today; state.slate = []; state.sig.clear(); state.lastGame.clear(); state.moves.clear(); }
+state.proj.clear(); state.priors = null; state.logs.clear(); state.logTeams.clear(); state.lastFull = 0;
+return 2;
 }
 async function ensureLogs(teams) {
 const need = teams.filter((t) => !state.logTeams.has(t));
@@ -223,8 +260,8 @@ function moveOf(gid, pid) { const m = state.moves.get(`${gid}:${pid}`); return m
 function moveHTML(m) { return m ? `<span class="mvflash ${m.d > 0 ? 'up' : 'down'}" style="--age:${((Date.now() - m.at) / 1000).toFixed(1)}s">${m.d > 0 ? '▲' : '▼'} ${m.d > 0 ? '+' : '−'}${Math.abs(m.d).toFixed(1)} <i>${esc(m.why)}</i></span>` : ''; }
 // Each player's points projection at tip-off, kept for the day so live views can show how it has moved.
 const tipKey = () => `tip:${state.date}`;
-let tipCache = null;
-function tipMap() { if (!tipCache) { try { tipCache = DB.store.get(tipKey()) || {}; } catch { tipCache = {}; } } return tipCache; }
+let tipCache = null, tipCacheDay = ''; // the map in memory belongs to one day: looking at another day must never change tonight's
+function tipMap() { if (!tipCache || tipCacheDay !== state.date) { tipCacheDay = state.date; try { tipCache = DB.store.get(tipKey()) || {}; } catch { tipCache = {}; } } return tipCache; }
 function rememberTip(g, s, P) {
 if (!P || s.phase !== 'pre') return;
 const m = tipMap(); let changed = false;
@@ -344,8 +381,8 @@ ${S.n ? `<table class="mtable acc2" style="margin-top:10px"><tr><th>Chance we ga
 // Each day the app grades the last few nights: it re-projects every finished game from tip-off and every 6 game
 // minutes after, with the lineup that was posted that night, compares with the final box score, and adds the
 // misses to what it has learned.
-const PAT_KEY = 'pat:v5:sum', PAT_DATES = 'pat:v5:dates', PAT_FROM = window.__PAT_FROM || '2026-11-10'; // v16: 13 more learned inputs (role anchors, late-game floor picture) and live numbers mean "if he plays", so the phone's own lessons start a fresh tally (the built-in ones cover every game through Nov 9)
-try { ['pat:v1:sum', 'pat:v1:dates', 'pat:v3:sum', 'pat:v3:dates', 'pat:v4:sum', 'pat:v4:dates'].forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
+const PAT_KEY = 'pat:v6:sum', PAT_DATES = 'pat:v6:dates', PAT_FROM = window.__PAT_FROM || '2026-11-12'; // v17: the box counts every made three (one in ten was missing), so the phone's own tally of threes starts again; // v16: 13 more learned inputs (role anchors, late-game floor picture) and live numbers mean "if he plays", so the phone's own lessons start a fresh tally (the built-in ones cover every game through Nov 9)
+try { ['pat:v1:sum', 'pat:v1:dates', 'pat:v3:sum', 'pat:v3:dates', 'pat:v4:sum', 'pat:v4:dates', 'pat:v5:sum', 'pat:v5:dates'].forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 function patSum() { let pk = null; try { pk = DB.store.get(PAT_KEY); } catch { pk = null; } try { return pk && pk.v === 2 ? E.patUnpack(pk) : null; } catch { return null; } }
 let patCache = null;
 function patternsNow() {
@@ -382,7 +419,7 @@ let learning = false;
 // tables is kept from the first load of each day, and a finished game is replayed with the newest copy that was saved before
 // that day's first tip. A day with no such copy is not learned from at all.
 const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
-const SNAP_KEEP = 4, SNAP_BACK = 1; // copies kept (today and the three days before: phone storage is tight, see NOTES); a night's copy may come from that day or the day before
+const SNAP_KEEP = 4, SNAP_BACK = 1, LEARN_BACK = 5; // copies kept after a night's learning (today and the three days before: phone storage is tight, see NOTES); a night's copy may come from that day or the day before; the learning looks five days back
 const snapKey = (d) => `psnap:${d}`;
 let snapDay = ''; // the day whose copy is known to be complete (so a refresh does not read it back every time)
 // A copy is stamped with the server's time, not the phone's: a phone whose clock runs a day slow would otherwise stamp a table
@@ -405,8 +442,9 @@ const r3 = (x) => (x == null || !Number.isFinite(+x) ? null : +(+x).toPrecision(
 const p = {};
 for (const [k, c] of Object.entries(cur)) p[k] = SNAP_F.map((f) => r3(c[f]));
 sn = { at: Date.now() + clockOff, p, t: null, tAt: 0 };
-// (old copies are removed after the nightly learning has looked for them, see snapPrune; here only a backstop)
-for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(SNAP_KEEP + 1))) localStorage.removeItem(k);
+// (old copies are removed after the nightly learning has looked for them, see snapPrune; here only a backstop, which keeps
+// every copy a night inside the learning's look-back can still use: the oldest night is five days back, its copy one more)
+for (const k of Object.keys(localStorage)) if (k.startsWith('psnap:') && k.slice(6) < DB.addDays(today, -(LEARN_BACK + SNAP_BACK))) localStorage.removeItem(k);
 DB.store.set(snapKey(today), sn);
 }
 if (sn && sn.p && !sn.t && state.teamsDb && state.teamsDb.teams && Object.keys(state.teamsDb.teams).length >= 20) {
@@ -448,17 +486,23 @@ async function learnRecent() {
 if (learning || !state.priors) return;
 const today = DB.etDate(0);
 if (learnedDay === today) return;
-// today's season table has to be there: the replay takes names and ids from it (a failed load is tried again on the next refresh)
+// today's season table has to be there: the replay takes names and ids from it (a failed load is asked for again, see ensurePriors)
 if (Object.keys(state.priors.cur || {}).length < 20) return;
 // a night that is still waiting (last night's late games not final yet) is looked at again every 20 minutes, not on every refresh
 if (Date.now() - learnTriedAt < (window.__LEARN_RETRY_MS || 20 * 60000)) return;
-let rec;
-try { rec = DB.store.get(PAT_DATES) || { done: [], games: 0, checked: '' }; } catch { rec = { done: [], games: 0, checked: '' }; }
+const readRec = () => { let r = null; try { r = DB.store.get(PAT_DATES); } catch { r = null; } return r && Array.isArray(r.done) ? r : { done: [], games: 0, checked: '' }; };
+let rec = readRec();
 if (rec.checked === today) { learnedDay = today; return; }
 learning = true; learnTriedAt = Date.now();
 let waiting = false; // last night still has games going: do not call the day checked yet
+// The installed app and a browser tab of the same link share one storage. Only one of them learns at a time (the other finds
+// the day already checked on its next try), so a night is never added to the phone's lessons twice.
+const alone = async (fn) => (navigator.locks && navigator.locks.request ? navigator.locks.request('courtside-learn', { ifAvailable: true }, (lock) => (lock ? fn() : null)) : fn());
 try {
-for (let i = 5; i >= 1; i--) {
+await alone(async () => {
+rec = readRec();
+if (rec.checked === today) { learnedDay = today; return; }
+for (let i = LEARN_BACK; i >= 1; i--) {
 const d = DB.addDays(today, -i);
 if (d < PAT_FROM || rec.done.includes(d)) continue;
 const rows = await DB.slate(d, 3600000);
@@ -504,8 +548,13 @@ for (const j of jobs) {
 try { const res = await runProjection({ grade: [j], priors: snapPriors(sn), teams: sn.t, nsims: 300, patterns: patternsNow() }); E.patAdd(dayAcc, res.acc); n += res.games; } catch (e) { jobFail++; console.warn('learn job', e); }
 }
 if (jobFail && i <= 2) continue; // never save half a night while it can still be redone whole
+// (where the browser has no lock: another copy of the app may have saved this night while this one was replaying it)
+const disk = readRec();
+if (disk.done.includes(d)) { rec = disk; patCache = null; continue; }
 const sum = E.patAdd(patSum() || E.patEmpty(), dayAcc);
-DB.store.set(PAT_KEY, E.patPack(sum));
+// a night counts only once its sums are really in storage (a full phone can refuse the write): otherwise it stays open and is
+// tried again on a later day, like the dated copy
+if (!DB.store.set(PAT_KEY, E.patPack(sum))) { console.warn('learn: storage refused the lessons of', d); continue; }
 rec.games += n;
 }
 rec.done.push(d);
@@ -514,6 +563,7 @@ DB.store.set(PAT_DATES, rec);
 patCache = null;
 }
 if (!waiting) { rec.checked = today; DB.store.set(PAT_DATES, rec); learnedDay = today; snapPrune(); }
+});
 } catch (e) { console.warn('learn', e); }
 finally { learning = false; }
 }
@@ -557,14 +607,15 @@ const s = st(g);
 const old = state.proj.get(g.id);
 const regrade = s.phase === 'final' && ledgerOpen(g.id) && (state.gradeTries.get(g.id) || 0) < 6;
 if (s.phase === 'final' && old && old.proj.state.phase === 'final' && !regrade) continue;
-if (s.phase === 'pre' && old && Date.now() - old.at < 5 * 60000) continue;
+if (s.phase === 'pre' && old && !old.redo && Date.now() - old.at < 5 * 60000) continue;
 try { await projectGame(g); } catch (e) { console.warn('project', g.id, e); }
 render(true);
 }
 if (stale()) return;
 try { await ensureGameLogs(list); } catch (e) { console.warn('game logs', e); }
 // learn from the last few finished nights in the background (once a day), then use it on the next refresh
-setTimeout(() => { learnRecent().then(() => { if (!patCache) state.proj.forEach((x) => { x.at = 0; }); }); }, 4000);
+// (marked for a new projection, not stamped with time zero: the game screen read that stamp as "updated 7:00:00 PM")
+setTimeout(() => { learnRecent().then(() => { if (!patCache) state.proj.forEach((x) => { x.redo = true; }); }); }, 4000);
 state.lastErr = null;
 } catch (e) {
 if (stale()) return;
@@ -900,7 +951,11 @@ const fresh = !wrap;
 if (!wrap) { wrap = document.createElement('div'); wrap.id = 'sheetWrap'; document.body.appendChild(wrap); }
 const ladder = (k, label) => {
 const nowK = k === 'pra' ? (p.now.pts || 0) + (p.now.reb || 0) + (p.now.ast || 0) : p.now[k];
-const rungs = (p.ladders[k] || []).filter((r) => r.t > nowK && r.p >= 0.04).slice(0, 6);
+// six rungs around his number (three he is projected to clear, three above), not the lowest six: a star's rungs would stop far short of his number
+const open = (p.ladders[k] || []).filter((r) => r.t > nowK && r.p >= 0.04);
+const above = open.findIndex((r) => r.t > p.proj[k]);
+const from = Math.max(0, Math.min(open.length - 6, (above < 0 ? open.length : above) - 3));
+const rungs = open.slice(from, from + 6);
 if (!rungs.length) return '';
 const m = p.market && p.market[k];
 const ahead = m ? p.proj[k] - m.line : 0;
@@ -1269,7 +1324,7 @@ else if (act === 'refresh') { settings.refresh = +el.dataset.x; saveSettings(); 
 else if (act === 'sims') { settings.sims = +el.dataset.x; saveSettings(); state.proj.clear(); render(); refreshAll({ force: true }); }
 else if (act === 'minp') { settings.minP = +el.dataset.x; saveSettings(); state.proj.clear(); render(); refreshAll({ force: true }); }
 else if (act === 'day') {
-state.dayOffset += +el.dataset.d; state.date = DB.etDate(state.dayOffset);
+state.autoLate = false; state.dayOffset += +el.dataset.d; state.date = DB.etDate(state.dayOffset);
 state.slate = []; state.proj.clear(); render(); refreshAll({ force: true });
 } else if (act === 'refresh-now') refreshAll({ force: true });
 else if (act === 'install' && state.installEvt) { state.installEvt.prompt(); state.installEvt = null; render(); }
@@ -1295,7 +1350,16 @@ const WATCH_MS = 5000;
 const sigOf = (g) => `${g.status_state}|${g.period}|${g.time}|${g.visitor_team_score}|${g.home_team_score}`;
 let timer;
 async function watchTick() {
-if (document.hidden || state.busy) return;
+if (document.hidden) return;
+if (state.busy) {
+// a long load is running (a new phone reads three weeks of games first): the scores and clocks on the board keep moving meanwhile
+if (state.booted && Date.now() - state.lastUpdate >= 15000) {
+const day = state.date;
+try { const rows = await DB.slate(day, 2500); if (rows.length && day === state.date && state.busy) { state.slate = rows; state.lastUpdate = Date.now(); render(true); } } catch { /* next look */ }
+}
+return;
+}
+if (dayTurn(false)) return;
 const r = route();
 const due = Date.now() - state.lastFull >= settings.refresh * 1000;
 let rows;
@@ -1331,7 +1395,14 @@ function restartTimer() {
 clearInterval(timer);
 timer = setInterval(watchTick, WATCH_MS);
 }
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshAll(); });
+/** Follows the calendar (see syncDay). True when the board was moved or reset and a full refresh has been started. */
+function dayTurn(resumed) {
+const k = syncDay(resumed);
+if (k === 2) { if (state.dayOffset === 0) toast('New day: here are today’s games'); render(); refreshAll({ force: true }); return true; }
+if (k === 1) render();
+return false;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !dayTurn(true)) refreshAll(); });
 
 // ------------------------------------------------------------------ boot
 $('#mascot').innerHTML = MASCOT;
@@ -1346,7 +1417,7 @@ const hr = +new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hou
 if (state.dayOffset === 0 && hr < 5) {
 const y = await DB.slate(DB.etDate(-1));
 const on = y.filter((g) => st(g).phase === 'live').length;
-if (on && state.dayOffset === 0) { state.dayOffset = -1; state.date = DB.etDate(-1); toast(`${on} game${on > 1 ? 's' : ''} from last night still going`); }
+if (on && state.dayOffset === 0) { state.dayOffset = -1; state.date = DB.etDate(-1); state.autoLate = true; toast(`${on} game${on > 1 ? 's' : ''} from last night still going`); }
 }
 } catch { /* open on today */ }
 refreshAll({ force: true });

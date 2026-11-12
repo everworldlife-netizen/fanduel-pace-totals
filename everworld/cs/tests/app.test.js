@@ -14,7 +14,7 @@ const FX = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixt
 const read = (f) => fs.readFileSync(path.join(BUILD, f), 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0;
-const test = async (name, fn) => { try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
+const test = async (name, fn) => { if (process.env.ONLY && !name.includes(process.env.ONLY)) return; try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
 
 // (windows are never closed during the run: closing one in the middle of the app's own work makes the simulated browser
 // throw from that pending work later; the process exit at the end takes them all down)
@@ -198,8 +198,8 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       if (seed) seed(w);
     });
     const next = M.w.DB.addDays(DAY, 1);
-    for (let i = 0; i < (opt.wait || 240); i++) { await sleep(500); const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'); if (rec && rec.checked === next) break; }
-    const rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'), sum = JSON.parse(M.w.localStorage.getItem('pat:v5:sum') || 'null');
+    for (let i = 0; i < (opt.wait || 240); i++) { await sleep(500); const rec = JSON.parse(M.w.localStorage.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next) break; }
+    const rec = JSON.parse(M.w.localStorage.getItem('pat:v6:dates') || 'null'), sum = JSON.parse(M.w.localStorage.getItem('pat:v6:sum') || 'null');
     return { M, rec, sum, graded };
   };
   await test('a dated copy of the season stats and the team table is saved on the first load of the day', async () => {
@@ -265,7 +265,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     late.on = false;
     M.w.document.getElementById('refreshBtn').click();
     let rec = null;
-    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(M.w.localStorage.getItem('pat:v5:dates') || 'null'); if (rec && rec.checked === next) break; }
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(M.w.localStorage.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next) break; }
     assert.ok(rec && rec.checked === next && rec.done.includes(DAY) && rec.games >= 2, `the night was not learned once its last game was final: ${JSON.stringify(rec)}`);
   });
   await test('when the phone refuses to store anything the nightly check still runs only once a day', async () => {
@@ -315,15 +315,15 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const back = (n) => { const d = new Date(real + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
     const B = await boot('pre', null, (w) => {
       const L = w.localStorage;
-      L.setItem(`slate:v5:${back(40)}`, '[]'); L.setItem(`slate:v5:${back(10)}`, '[]');
+      L.setItem(`slate:v6:${back(40)}`, '[]'); L.setItem(`slate:v6:${back(10)}`, '[]'); L.setItem(`slate:v5:${back(4)}`, '[]'); // (v5: saved by the version before)
       L.setItem(`slate:last:${back(3)}`, '[]'); L.setItem(`slate:last:${back(1)}`, '[]');
       L.setItem(`tip:${back(5)}`, '{}'); L.setItem(`tip:${back(1)}`, '{}'); L.setItem(`overrides:${back(9)}`, '{}');
       L.setItem('glines:111', JSON.stringify({ at: Date.now() - 9 * 86400000, c: {} })); L.setItem('glines:222', JSON.stringify({ at: Date.now() - 3600000, c: {} }));
       L.setItem('ledger:v1', '[]'); L.setItem('settings', '{}');
     });
     const has = (k) => B.w.localStorage.getItem(k) != null;
-    for (const k of [`slate:v5:${back(40)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
-    for (const k of [`slate:v5:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
+    for (const k of [`slate:v6:${back(40)}`, `slate:v5:${back(4)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
+    for (const k of [`slate:v6:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
   });
   await test('a number of calendar days from today is right in the hour around a daylight-saving change', async () => {
     const vm = require('vm');
@@ -356,6 +356,303 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.ok(sheet && /PTS\+REB\+AST/.test(sheet.textContent), 'the player sheet has no points + rebounds + assists section');
     assert.deepStrictEqual(banned(visibleText(B.w)), []);
     assert.deepStrictEqual(B.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  // ---- review pass 3 (after publishing version 16): an app that stays open, a full phone, two copies of the app
+  // a movable calendar: the fixture games are final on DAY; the same teams play again on each of the next two days
+  const calendar = (cur, count = {}) => (w) => {
+    w.DB.etDate = (o = 0) => w.DB.addDays(cur.day, o);
+    const later = (fx, n) => ({ ...fx.g, id: fx.g.id + n * 1000000, date: w.DB.addDays(DAY, n), datetime: new Date(Date.parse(fx.g.datetime) + n * 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+    const lastNight = () => FX.map((x, i) => (cur.late && i === 1 ? { ...x.g, status_state: 'in', period: 4, time: 'Q4 2:00', status: 'Q4 2:00', display_status: 'Q4 2:00' } : x.g));
+    w.DB.slate = async (d) => (d === DAY ? lastNight() : d === w.DB.addDays(DAY, 1) ? FX.map((x) => later(x, 1)) : d === w.DB.addDays(DAY, 2) ? FX.map((x) => later(x, 2)) : []);
+    const realCur = w.DB.currentSeasonPriors, realLogs = w.DB.teamLogs;
+    w.DB.currentSeasonPriors = async (...a) => { count.table = (count.table || 0) + 1; return realCur(...a); };
+    w.DB.teamLogs = async (teams, date, ...r) => { (count.logs = count.logs || []).push(date); return realLogs(teams, date, ...r); };
+    w.DB.props = async () => []; w.DB.linesFor = () => null; w.DB.availability = async () => null;
+    w.__PAT_FROM = '2099-01-01'; // (no nightly learning in these tests)
+  };
+  const label = (v) => (v.querySelector('.datebar .label') || {}).textContent;
+  await test('an app left open overnight moves to the new day when it comes back to the front, and reads the season table and the recent games again', async () => {
+    const cur = { day: DAY }, count = {};
+    const A = await boot('final', calendar(cur, count));
+    await sleep(4000);
+    let v = await A.go('#/games', 400);
+    assert.ok(/^Today/.test(label(v)), `the board says ${label(v)}`);
+    assert.strictEqual(count.table, 1);
+    const next = A.w.DB.addDays(DAY, 1);
+    cur.day = next; // midnight has passed; the page was never reloaded
+    A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
+    await sleep(5000);
+    v = await A.go('#/games', 400);
+    const want = new Date(next + 'T12:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    assert.strictEqual(label(v).replace(/\s+/g, ''), ('Today' + want).replace(/\s+/g, ''), 'the board did not move to the new day');
+    assert.ok(/7:00 PM ET/.test(v.textContent), 'tonight\'s games are not on the board');
+    assert.strictEqual(count.table, 2, `the season table was read ${count.table} time(s): tonight's numbers would not know about last night`);
+    assert.ok(count.logs.includes(next), `recent games were not read again for the new day (read for: ${count.logs.join(', ')})`);
+    // one tap on the next-day arrow is tomorrow, one tap back is today again
+    v.querySelector('[data-act="day"][data-d="1"]').click(); await sleep(2500);
+    assert.ok(/^Tomorrow/.test(label(A.w.document.getElementById('view'))), `after one tap forward the board says ${label(A.w.document.getElementById('view'))}`);
+    A.w.document.getElementById('view').querySelector('[data-act="day"][data-d="-1"]').click(); await sleep(2500);
+    assert.ok(/^Today/.test(label(A.w.document.getElementById('view'))));
+    assert.ok(A.w.localStorage.getItem(`psnap:${next}`), 'no dated copy was saved for the new day');
+    assert.deepStrictEqual(banned(visibleText(A.w)), []);
+    assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('an app that stays on screen past midnight moves by itself; while last night\'s games are still going it stays on them, then moves the next time it is opened', async () => {
+    // (a) nothing live: the regular five-second look moves the board without any tap
+    let cur = { day: DAY }, count = {};
+    const A = await boot('final', calendar(cur, count));
+    await sleep(3500);
+    cur.day = A.w.DB.addDays(DAY, 1);
+    await sleep(9000);
+    assert.strictEqual(count.table, 2, 'the open app did not start over on the new day by itself');
+    let v = await A.go('#/games', 400);
+    assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `the open app still shows ${label(v)}`);
+    // (b) one of last night's games is still being played at midnight: the board stays on it and calls the day yesterday
+    cur = { day: DAY, late: true }; count = {};
+    const B = await boot('final', calendar(cur, count));
+    await sleep(3500);
+    cur.day = B.w.DB.addDays(DAY, 1);
+    B.w.document.dispatchEvent(new B.w.Event('visibilitychange'));
+    await sleep(7000);
+    v = await B.go('#/games', 400);
+    assert.ok(/^Yesterday/.test(label(v)), `with a late game still going the board says ${label(v)}`);
+    assert.ok(/Q4 2:00/.test(v.textContent), 'the late game left the board');
+    assert.strictEqual(count.table, 1, 'the season table was swapped in the middle of a game');
+    // the late game ends; the app stays where the user is looking until it is next brought to the front
+    cur.late = false;
+    await sleep(7000);
+    assert.ok(/^Yesterday/.test(label(B.w.document.getElementById('view'))), 'the board jumped away from the game that just ended');
+    B.w.document.dispatchEvent(new B.w.Event('visibilitychange'));
+    await sleep(5000);
+    v = await B.go('#/games', 400);
+    assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `after the late game the board says ${label(v)}`);
+    assert.strictEqual(count.table, 2);
+    assert.deepStrictEqual([...A.errors, ...B.errors].filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('a look at tomorrow\'s slate never changes tonight\'s tip-off numbers', async () => {
+    const A = await boot('pre', (w, state) => {
+      const d1 = w.DB.addDays(DAY, 1), E = w.Engine;
+      const rowOf = (fx) => {
+        if (state.phase === 'pre') return { ...fx.g, status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+        const bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+        return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
+      };
+      const tomorrow = (fx) => ({ ...fx.g, date: d1, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map(rowOf) : d === d1 ? FX.map(tomorrow) : []);
+      const realAvail = w.DB.availability;
+      // tomorrow the visitors' first listed starter is ruled out, so everybody's number is different
+      w.DB.availability = async (g) => {
+        const av = await realAvail(g);
+        if (g.date !== d1 || !av) return av;
+        const tm = g.visitor_team.abbreviation, star = av.in.find((x) => x.team === tm && x.starter);
+        return { ...av, in: av.in.filter((x) => x !== star), out: [...av.out, { name: star.name, why: 'out (rest)', team: tm }], starters: { ...av.starters, [tm]: av.starters[tm].filter((n) => n !== star.name) } };
+      };
+      w.DB.props = async () => [];
+    });
+    await sleep(3000);
+    const tip0 = A.w.localStorage.getItem(`tip:${DAY}`);
+    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 20, 'no tip-off numbers were kept before the game');
+    A.state.phase = 'live';
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(3500);
+    const since = async () => { const v = await A.go('#/scorers', 500); return [...v.querySelectorAll('.card.scorer')].map((c) => `${c.querySelector('.nmrow b').textContent}: ${c.querySelector('.big').textContent}${c.querySelector('.mv') ? ' ' + c.querySelector('.mv').textContent : ''}`); };
+    const before = await since();
+    assert.ok(before.length >= 8 && before.some((x) => /since tip/.test(x)), `the scorers screen shows no moves since tip-off: ${before.slice(0, 3).join(' | ')}`);
+    let v = await A.go('#/games', 300);
+    v.querySelector('[data-act="day"][data-d="1"]').click(); await sleep(4000);
+    A.w.document.getElementById('view').querySelector('[data-act="day"][data-d="-1"]').click(); await sleep(4500);
+    const after = await since();
+    assert.deepStrictEqual(after, before, 'the moves since tip-off changed after a look at tomorrow');
+    assert.strictEqual(A.w.localStorage.getItem(`tip:${DAY}`), tip0, 'tonight\'s saved tip-off numbers were rewritten');
+  });
+  await test('the six rungs on a player sheet sit around his number, for a star too', async () => {
+    const B = await boot('pre', (w) => { w.DB.props = async () => []; });
+    await sleep(3000);
+    const pr = [...FX].map((x) => x.g.id);
+    let best = null;
+    for (const gid of pr) {
+      const v = await B.go(`#/game/${gid}`, 900);
+      for (const btn of v.querySelectorAll('[data-act="player"]')) {
+        btn.click(); await sleep(60);
+        const sheet = B.w.document.getElementById('sheetWrap');
+        if (!sheet) continue;
+        for (const h of sheet.querySelectorAll('h3')) {
+          const m = /^(POINTS|PTS\+REB\+AST)[^→]*→\s*([\d.]+)/.exec(h.textContent.trim());
+          if (!m || !h.nextElementSibling || !h.nextElementSibling.classList.contains('ladder')) continue;
+          const rungs = [...h.nextElementSibling.querySelectorAll('.rung span:first-child')].map((x) => parseInt(x.textContent, 10));
+          const row = { who: btn.textContent.replace(/\s+/g, ' ').slice(0, 30), stat: m[1], proj: +m[2], rungs };
+          if (!best || (row.stat === 'PTS+REB+AST' && row.proj > best.proj)) best = row;
+          assert.ok(rungs.length <= 6, 'more than six rungs');
+          // the rungs reach his number: the highest one shown is above it, unless the ladder itself ends below it
+          const top = row.stat === 'POINTS' ? 45 : 60;
+          assert.ok(Math.max(...rungs) > row.proj || Math.max(...rungs) >= top || rungs.length < 6, `${row.who} ${row.stat}: number ${row.proj}, rungs ${rungs.join(', ')} stop short of it`);
+        }
+        const close = B.w.document.querySelector('#sheetWrap [data-act="close"]'); if (close) close.click();
+        await sleep(20);
+      }
+    }
+    assert.ok(best && best.stat === 'PTS+REB+AST' && best.proj >= 36, `the fixture has no player with a big points + rebounds + assists number to test with (best: ${JSON.stringify(best)})`);
+    assert.ok(best.rungs.some((t) => t <= best.proj) && best.rungs.some((t) => t > best.proj), `the top player's rungs ${best.rungs.join(', ')} do not sit around his number ${best.proj}`);
+  });
+  await test('opened again five days after the games, the night is still learned from the copy saved the day before', async () => {
+    const n = 5, graded = [];
+    const A = await boot('final', (w) => {
+      const today = w.DB.addDays(DAY, n);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(today, o);
+      const tonight = (fx) => ({ ...fx.g, date: today, datetime: new Date(Date.parse(fx.g.datetime) + n * 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === today ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+      w.localStorage.setItem(`psnap:${w.DB.addDays(DAY, -1)}`, copyOf(TIP - 30 * 3600000)); // saved the day before: good for the night
+      w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP + 3600000)); // saved an hour after the first tip: not usable
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) graded.push(1); return post.call(this, m); };
+    });
+    const today = A.w.DB.addDays(DAY, n);
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(A.w.localStorage.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === today) break; }
+    assert.ok(graded.length >= 2 && rec && rec.done.includes(DAY) && rec.games >= 2, `the night was closed with nothing learned: ${JSON.stringify(rec)}, ${graded.length} replays`);
+    assert.deepStrictEqual(Object.keys(A.w.localStorage).filter((k) => k.startsWith('psnap:')).sort(), [`psnap:${today}`], 'old copies were not cleared after the learning');
+  });
+  await test('with two copies of the app open on one phone, last night is added to the phone\'s lessons once', async () => {
+    const hook = (seed) => (w) => {
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+      if (seed) w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+    };
+    const A = await boot('final', hook(true));
+    await sleep(1500);
+    const L = A.w.localStorage;
+    const B = await boot('final', hook(false), (w) => Object.defineProperty(w, 'localStorage', { configurable: true, get: () => L })); // the same storage, as on one phone
+    const next = A.w.DB.addDays(DAY, 1);
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(L.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next && i > 16) break; }
+    await sleep(20000); // the second copy finishes its own replays
+    rec = JSON.parse(L.getItem('pat:v6:dates') || 'null');
+    const sum = JSON.parse(L.getItem('pat:v6:sum') || 'null');
+    assert.ok(rec && rec.games === 2 && sum && sum.acc && sum.acc.pre, `nothing learned: ${JSON.stringify(rec)}`);
+    assert.strictEqual(sum.acc.pre.g, 2, `the phone's table holds ${sum.acc.pre.g} games for a two-game night: the night was added twice`);
+    void B;
+  });
+  await test('on a full phone a night whose lessons cannot be stored stays open and is not counted; saving makes room by dropping the oldest game logs', async () => {
+    // (a) the app: the large write of the night's sums is refused
+    let cap = Infinity; const refused = [];
+    const total = (L) => { let n = 0; for (const k of Object.keys(L)) n += k.length + (L.getItem(k) || '').length; return n; };
+    const hook = (w) => {
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+      w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+    };
+    const A = await boot('final', hook, (w) => {
+      const real = w.Storage.prototype.setItem;
+      w.Storage.prototype.setItem = function (k, v) {
+        const old = this.getItem(k); const after = total(this) - (old == null ? 0 : k.length + old.length) + k.length + String(v).length;
+        if (after > cap) { refused.push(k); throw new w.DOMException('The quota has been exceeded.', 'QuotaExceededError'); }
+        return real.call(this, k, v);
+      };
+    });
+    await sleep(2500);
+    const L = A.w.localStorage, next = A.w.DB.addDays(DAY, 1);
+    cap = total(L) + 150000; // room for the small records, not for the sums (about 330,000 characters)
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(L.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next) break; }
+    assert.ok(refused.includes('pat:v6:sum'), 'the test did not refuse the write of the sums');
+    assert.ok(rec && rec.checked === next, `the day was not checked: ${JSON.stringify(rec)}`);
+    assert.ok(!rec.done.includes(DAY) && rec.games === 0, `the night was marked done and counted although its lessons are not stored: ${JSON.stringify(rec)}`);
+    assert.strictEqual(L.getItem('pat:v6:sum'), null);
+    // (b) the store itself: a value larger than one round of dropped logs frees still lands, and the oldest games go first
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only', storageQuota: 900000 });
+    const w = dom.window;
+    w.fetch = async () => { throw new Error('network is off in tests'); };
+    w.eval(read('data.js'));
+    const today = w.DB.etDate(0), body = 'x'.repeat(8000);
+    for (let i = 0; i < 100; i++) w.localStorage.setItem(`log:v6:${21700000 + i}`, JSON.stringify({ id: 21700000 + i, date: today, pad: body }));
+    assert.ok(total(w.localStorage) > 800000);
+    const ok = w.DB.store.set('pat:v6:sum', { big: 'y'.repeat(600000) });
+    assert.strictEqual(ok, true, 'a large value did not land although dropping game logs would have made room');
+    assert.ok(w.localStorage.getItem('pat:v6:sum').length > 600000);
+    const left = Object.keys(w.localStorage).filter((k) => k.startsWith('log:')).map((k) => +k.split(':')[2]).sort((a, b) => a - b);
+    assert.ok(left.length > 0 && left.length < 100 && left[0] === 21700000 + (100 - left.length), `the newest logs were dropped first (kept ${left.length}, oldest kept ${left[0]})`);
+    assert.strictEqual(w.DB.store.set('too-big', { big: 'z'.repeat(2000000) }), false, 'a value that can never fit was reported as saved');
+  });
+  await test('a season table that fails to load once is asked for again; game logs older than a month are cleared at start; a table older than six hours is read again', async () => {
+    let calls = 0;
+    const A = await boot('pre', (w) => {
+      const real = w.DB.currentSeasonPriors;
+      w.DB.currentSeasonPriors = async (...a) => { calls++; return calls === 1 ? {} : real(...a); };
+      w.DB.props = async () => [];
+      w.__PRIORS_RETRY_MS = 1;
+    });
+    await sleep(3000);
+    assert.strictEqual(A.w.localStorage.getItem(`psnap:${DAY}`), null, 'a copy was saved from an empty season table');
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    assert.ok(calls >= 2, `the season table was asked for ${calls} time(s)`);
+    const sn = JSON.parse(A.w.localStorage.getItem(`psnap:${DAY}`) || 'null');
+    assert.ok(sn && sn.p && Object.keys(sn.p).length >= 200, 'once the table had loaded no dated copy was saved');
+    assert.ok(calls <= 3, `the table kept being asked for after it had loaded (${calls} times)`);
+    // the data module on its own
+    const real = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const back = (n) => { const d = new Date(real + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only' });
+    const w = dom.window;
+    let asked = 0;
+    w.fetch = async (u) => { if (/players\/stats/.test(String(u))) { asked++; return { ok: true, json: async () => [] }; } throw new Error('network is off in tests'); };
+    w.localStorage.setItem('log:v6:1', JSON.stringify({ id: 1, date: back(45) + 'T00:00:00.000Z', rows: {} }));
+    w.localStorage.setItem('log:v6:2', JSON.stringify({ id: 2, date: back(12), rows: {} }));
+    w.eval(read('engine.js'));
+    w.eval(read('data.js'));
+    assert.strictEqual(w.localStorage.getItem('log:v6:1'), null, 'a game log from 45 days ago was kept');
+    assert.ok(w.localStorage.getItem('log:v6:2'), 'a game log from 12 days ago was removed');
+    const season = w.DB.seasons(real).cur, key = `priors:p4:cur:${season}`;
+    w.localStorage.setItem(key, JSON.stringify({ date: real, at: Date.now() - 3600000, data: { a: 1 } }));
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(await w.DB.currentSeasonPriors(season, real))), { a: 1 });
+    assert.strictEqual(asked, 0, 'a table read an hour ago was read again');
+    w.localStorage.setItem(key, JSON.stringify({ date: real, at: Date.now() - 7 * 3600000, data: { a: 1 } }));
+    await w.DB.currentSeasonPriors(season, real);
+    assert.strictEqual(asked, 1, 'a table read seven hours ago was not read again');
+    w.localStorage.setItem(key, JSON.stringify({ date: back(1), at: Date.now() - 600000, data: { a: 1 } }));
+    await w.DB.currentSeasonPriors(season, real);
+    assert.strictEqual(asked, 2, 'yesterday\'s table was re-used from memory for the new day');
+  });
+  await test('during a long first load the scores on the board keep moving, and the time on a game screen is never time zero', async () => {
+    let release = null; const gate = new Promise((r) => { release = r; });
+    const bump = { on: false };
+    const A = await boot('live', (w, state, fxOf) => {
+      const E = w.Engine;
+      const half = (fx) => { const bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation; return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts + (bump.on ? 7 : 0), home_team_score: bx.teams[h].pts }; };
+      w.DB.slate = async (d) => (d === DAY ? FX.map(half) : []);
+      const realLogs = w.DB.teamLogs;
+      w.DB.teamLogs = async (...a) => { await gate; return realLogs(...a); }; // "reading three weeks of games" takes as long as the test says
+      w.DB.props = async () => [];
+    });
+    await sleep(1500);
+    let v = await A.go('#/games', 300);
+    const score0 = v.textContent.replace(/\s+/g, ' ');
+    bump.on = true; // the visitors score seven while the phone is still loading
+    await sleep(22000);
+    v = A.w.document.getElementById('view');
+    const E = A.w.Engine, fx = FX[0], bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), want = bx.teams[fx.g.visitor_team.abbreviation].pts + 7;
+    assert.ok(v.textContent.replace(/\s+/g, '').includes(`${fx.g.visitor_team.abbreviation}${want}`), `the board still shows the old score during the load (wanted ${want}): ${v.textContent.replace(/\s+/g, ' ').slice(0, 200)}`);
+    assert.notStrictEqual(v.textContent.replace(/\s+/g, ' '), score0);
+    release();
+    await sleep(9000);
+    // every "updated" time on the game screens is a real time of day near now, never the stamp of time zero
+    const zero = new Date(0).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    for (let k = 0; k < 4; k++) {
+      for (const x of FX) { v = await A.go(`#/game/${x.g.id}`, 500); const u = v.querySelector('.updated'); assert.ok(u, 'no update line on the game screen'); assert.ok(!u.textContent.includes(`updated ${zero}`), `the game screen says: ${u.textContent}`); }
+      await sleep(2500);
+    }
+    assert.deepStrictEqual(banned(visibleText(A.w)), []);
+    assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
   });
   console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
   process.exit(process.exitCode || 0);

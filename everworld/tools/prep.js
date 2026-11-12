@@ -99,7 +99,7 @@ for (const d of dates) {
 }
 for (const [s, arr] of Object.entries(bySeason)) {
   arr.sort((a, b) => String(a.g.date).localeCompare(String(b.g.date)) || a.g.id - b.g.id);
-  L.writeJSON(path.join(L.DATA, 'derived', `games-${s}.json.gz`), arr);
+  L.writeJSON(path.join(L.DERIVED, `games-${s}.json.gz`), arr);
   console.log(`season ${s}: ${arr.length} games, ${arr[0].g.date} .. ${arr[arr.length - 1].g.date}`);
 }
 console.log(`games ${nGames}, missing plays ${nNoPlays}, missing ESPN box ${nNoEspn}, missing closing line ${nNoLine}`);

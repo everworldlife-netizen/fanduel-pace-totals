@@ -3,9 +3,10 @@
 'use strict';
 const BASE = 'https://pjthpontugjihnjsxxry.supabase.co/functions/v1/gg-winner/db';
 const mem = new Map();
-const VER = 'v5'; // v5: logs carry the scoring timeline for situational tendencies (v4: shot zones, v3: stints + foul times)
+const VER = 'v6'; // v6: the box counts every made three, whatever its wording (v5: scoring timeline for situational tendencies, v4: shot zones, v3: stints + foul times)
 const PVER = 'p4'; // p4: player profiles carry the DataBallr ids, archetype and profile numbers
 const raw = { players: new Map(), teams: new Map(), logs: new Map() }; // full DataBallr rows (memory only)
+const PRIORS_MS = 6 * 3600000; // how long one read of the season table is used before it is read again
 
 // free the space held by older log formats
 try { Object.keys(localStorage).filter((k) => k.startsWith('log:') && !k.startsWith(`log:${VER}:`)).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
@@ -17,23 +18,35 @@ const today = etDate(0);
 for (const k of Object.keys(localStorage)) {
 let m;
 if ((m = k.match(/^slate:last:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -1)) localStorage.removeItem(k); }
-else if ((m = k.match(/^slate:[^:]+:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -25)) localStorage.removeItem(k); }
+else if ((m = k.match(/^slate:[^:]+:(\d{4}-\d\d-\d\d)$/))) { if (!k.startsWith(`slate:${VER}:`) || m[1] < addDays(today, -25)) localStorage.removeItem(k); }
 else if ((m = k.match(/^(?:tip|overrides):(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -2)) localStorage.removeItem(k); }
 else if (k.startsWith('glines:')) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch { v = null; } if (!v || !(v.at > Date.now() - 7 * 86400000)) localStorage.removeItem(k); }
+// game logs of games nothing looks back to any more (recent form reads 21 days back, the nightly learning 5 more): without
+// this the logs pile up for the whole season until storage refuses a write
+else if (k.startsWith(`log:${VER}:`)) { const d = /"date":"(\d{4}-\d\d-\d\d)/.exec((localStorage.getItem(k) || '').slice(0, 120)); if (d && d[1] < addDays(today, -30)) localStorage.removeItem(k); }
 }
 } catch { /* ignore */ }
 
 const store = {
 get(k) { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : null; } catch { return null; } },
+/** Saves a value and says whether it really landed (true) or storage refused it (false). */
 set(k, v) {
-try { localStorage.setItem(k, JSON.stringify(v)); }
-catch {
-// quota: drop the oldest cached game logs and retry once
+let s;
+try { s = JSON.stringify(v); } catch { return false; }
+try { localStorage.setItem(k, s); return true; } catch { /* storage is full: make room below */ }
+// drop cached game logs, oldest games first (their ids rise with the date), 40 at a time, until the value fits; a large value
+// (the phone's own lessons) needs more room than one round frees. Dropped logs are simply read again when a slate needs them.
+for (let round = 0; round < 12; round++) {
+let ks = [];
 try {
-Object.keys(localStorage).filter((x) => x.startsWith('log:') || x.startsWith('glog:')).slice(0, 60).forEach((x) => localStorage.removeItem(x));
-localStorage.setItem(k, JSON.stringify(v));
-} catch { /* give up quietly */ }
+ks = Object.keys(localStorage).filter((x) => x.startsWith('log:') && x !== k).sort((a, b) => (+a.split(':')[2] || 0) - (+b.split(':')[2] || 0)).slice(0, 40);
+if (!ks.length) ks = Object.keys(localStorage).filter((x) => x.startsWith('glog:') && x !== k).slice(0, 80);
+ks.forEach((x) => localStorage.removeItem(x));
+} catch { return false; }
+if (!ks.length) return false;
+try { localStorage.setItem(k, s); return true; } catch { /* still full: next round */ }
 }
+return false;
 },
 };
 
@@ -143,12 +156,15 @@ return slim;
 async function currentSeasonPriors(season, date) {
 const key = `priors:${PVER}:cur:${season}`;
 const cached = store.get(key);
-if (cached && cached.date === date) return cached.data;
+// good for the day it was read on, and for six hours: a table read just after midnight may not hold last night's late games yet,
+// so a later start that day reads it again (a stored table without a time is from an older version: read again once)
+if (cached && cached.date === date && cached.at > Date.now() - PRIORS_MS) return cached.data;
 try {
-const rows = await getJSON(`/v1/nba/players/stats?year=${season}&playoffs=0&limit=1000`, 3600000);
+// a stored table that is out of date is never replaced by a read still held in memory from before (ttl 0: ask the feed)
+const rows = await getJSON(`/v1/nba/players/stats?year=${season}&playoffs=0&limit=1000`, cached ? 0 : 3600000);
 keepRaw(season, rows);
 const slim = window.Engine.slimStats(rows);
-store.set(key, { date, data: slim });
+store.set(key, { date, at: Date.now(), data: slim });
 return slim;
 } catch { return (cached && cached.data) || {}; }
 }
@@ -439,6 +455,6 @@ return Number.isFinite(t) ? t + Math.round((Date.now() - t0) / 2) : null;
 } catch { return null; }
 }
 
-window.DB = { serverNow, livePlays, espnScores, feed, slateSource: () => slateSource, etDate, addDays, seasons, slate, plays, lastSeasonPriors, currentSeasonPriors, injuries, props, teamLogs, clearCache, store,
+window.DB = { PRIORS_MS, serverNow, livePlays, espnScores, feed, slateSource: () => slateSource, etDate, addDays, seasons, slate, plays, lastSeasonPriors, currentSeasonPriors, injuries, props, teamLogs, clearCache, store,
 teamStats, teamAll, gameLines, linesFor, playerLogs, playersLogs, logAll, playerLogsRaw, playerAll, availability, espnInjuries, lineupFor };
 })();
