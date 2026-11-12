@@ -918,7 +918,146 @@ player numbers (`data/runs/P1r-anch5.json` against `P1r-base18.json`, version 15
   -0.3% / 0.0%; assists -0.4% / -0.8% / -0.9% / -0.6% / -0.9% / -0.3% / +0.1% / 0.0%. Before lineups: minutes
   -3.3%, points -1.3%, rebounds -1.0%, assists -0.8%. Nothing worse at any stage.
 
+### Version 17 (Nov 12): third review pass on the published 16, every made three counted, smoother live numbers
+
+Version 16 went live on Nov 11 at 22:24 UTC. Afterwards: an hour-long watch of the published app across a real tip-off
+(WAS at IND, 180 looks, 2,117 player rows: no page errors, no number below what a player has, no banned words), a third
+review pass on the published build (one reviewer finished: 7 findings; two were cut off by a usage limit after an hour
+of work, and their raw measurements were read back from their transcripts), and then an independent review of the
+version 17 changes themselves (2 reviewers + 2 skeptics, all four finished: 8 findings confirmed, 1 refuted).
+
+**1. One made three in ten was missing from the play-by-play box (the big one).** `boxFromPlays` decided "three" from the
+words "three point". The feed writes some threes without them ("makes 25-foot running jump shot", play types Running
+Jump Shot, Running Pullup Jump Shot, Jump Shot Bank, Fade Away, Turnaround; also provisional rows "makes 23-foot shot"),
+always with `score_value` 3. Effect: a player's 3PM count during a game could read one short (so a projected final could
+equal what he already had), every saved game log and every lesson held too few threes, and the lab graded 3PM against
+the same short count, so no test could see it. Points were never affected (they come from `score_value`).
+- Rule now (`TUNE.threeFix`): a made shot worth 3 is a three; a missed shot of 23 feet or more is a three attempt; a missed
+  Running Pullup Jump Shot with no distance is a three attempt (three in four are); a missed Heave Jump Shot is charged to
+  the team only (the official box leaves it off the shooter in every period: 66 of 70 fourth-quarter and overtime heaves
+  over two seasons, checked by the skeptic against `data/glog`).
+- Checked against the saved official box of every player-game (`data/glog`, by game id and name;
+  `scratchpad/box_vs_official.js` in the session, easy to rewrite): 2026-27, 154 games, 3,019 player-games: made threes
+  equal 89.2% → 100.0%, three attempts 73.5% → 96.7%, shot attempts 95.4% → 99.6%, points 99.97% both. 2025-26 (206
+  games sampled): made threes 90.8% → 99.9%. 2024-25: 92.2% → 96.1%, 2023-24: 82.7% → 91.7% (those two seasons'
+  play-by-play is incomplete, see above: points match in only 92.5% and 84.3% of player-games). League totals 2026-27:
+  4,054 made (official 4,054; before 3,646), 11,654 attempts (official 11,621), 27,115 shot attempts (official 27,115).
+- Made threes by season, old → new: 2023-24 29,069 → 32,702 (+12.5%), 2024-25 33,614 → 34,752 (+3.4%), 2025-26
+  31,854 → 34,774 (+9.2%), 2026-27 3,646 → 4,054 (+11.2%).
+- Lab: `data/derived/` was rebuilt with the corrected box (`node tools/prep.js --engine data/engines/v17a/engine.js`, 29 s);
+  the files as they were are in git history before commit 2854dcf and, on this machine, in `data/derived-v16/`.
+  `LAB_DERIVED=<folder>` points every tool at another prepared set; `LAB_TRUTH=<folder>` grades against the final boxes of
+  another set while history and lessons stay those of `LAB_DERIVED`. "Before" numbers below = the published engine
+  (`anch10`) on its own history and lessons, graded against the corrected boxes
+  (`LAB_DERIVED=data/derived-v16 LAB_TRUTH=data/derived`), which is exactly what phones ran on Nov 11.
+- All lessons refitted on the corrected boxes (`tools/exp17.sh`: P2, P1, P3 with engine `v17a`).
+- Phones: saved game logs are rebuilt (`log:v6`), the phone's own tally starts again (`pat:v6`, `PAT_FROM` 2026-11-10).
+
+Results, 3PM average miss, players with 10+ real minutes, published engine → version 17 (`node tools/cmp.js
+data/runs/P2-anch10t.json data/runs/P2-v17b.json`, and `P1-anch10t` → `P1-v17a`):
+
+| stage | 121 games of 2026-27 (final exam) | 592 games of 2025-26 after Jan 17 |
+|---|---|---|
+| before lineups | 0.970 → 0.949 (-2.2%, z -4.6) | 0.962 → 0.944 (-1.8%, z -7.7) |
+| tip-off | 0.966 → 0.943 (-2.5%, z -4.8) | 0.954 → 0.937 (-1.7%, z -7.4) |
+| 6 min | 0.904 → 0.876 (-3.0%) | 0.890 → 0.866 (-2.8%) |
+| end Q1 | 0.837 → 0.804 (-4.0%) | 0.814 → 0.779 (-4.3%) |
+| 18 min | 0.760 → 0.707 (-7.1%) | 0.744 → 0.697 (-6.3%) |
+| half | 0.652 → 0.597 (-8.4%, z -8.2) | 0.664 → 0.601 (-9.4%, z -19.1) |
+| 30 min | 0.558 → 0.482 (-13.7%) | 0.566 → 0.480 (-15.3%) |
+| end Q3 | 0.431 → 0.321 (-25.5%, z -17.7) | 0.433 → 0.318 (-26.7%, z -31.1) |
+| 6:00 left | 0.284 → 0.157 (-44.8%) | 0.284 → 0.144 (-49.2%) |
+| 3:00 left | 0.212 → 0.079 (-63.0%) | 0.218 → 0.071 (-67.5%) |
+
+Points, rebounds, assists, minutes: unchanged within noise on both sets (every stage within ±0.4%, except assists at
+the end of Q3 on the 121 games, +0.8%, z 3.1, which the 592 games do not show: 0.0%). The fixed-population table for the
+in-app report (`H2-baset` = the app before version 15 on its own history, graded on corrected boxes; `P2-v17b`):
+minutes 5.11 → 4.03 at tip-off, 4.43 → 3.86 end Q1, 3.44 → 3.23 half, 2.82 → 2.64 end Q3, 1.61 → 1.50 at 6:00; points
+4.84 → 4.66, 4.13 → 4.07, 3.24 → 3.22, 2.20 → 2.16, 1.24 → 1.24; rebounds 1.98 → 1.90, 1.70 → 1.66, 1.35 → 1.34,
+0.95 → 0.93, 0.50 → 0.50; assists 1.43 → 1.40, 1.21 → 1.20, 0.94 → 0.93, 0.56 → 0.56, 0.28 → 0.29; 3PM 0.98 → 0.94,
+0.84 → 0.80, 0.66 → 0.60, 0.43 → 0.32, 0.28 → 0.16 (2,253 player-games at every stage).
+
+**2. Numbers that moved at fixed game minutes with nothing happening** (measured by the cut-off engine reviewer with
+the same plays one second apart, confirmed and re-tested here). Each fix has a `TUNE` switch; tests in
+`tools/exp17b.sh` and `tools/exp17c.sh` (runs `data/runs/S17-<P1|P2>-<name>.json`; P1 = every second game of the 592,
+lessons before Jan 18; P2 = this season's 121; `node tools/cmp.js data/runs/S17-P1-base.json data/runs/S17-P1-<name>.json`):
+- 27:00: the minutes lessons switched from the halftime ones to the 30-minute ones (minutes moved 1.24 on average, a
+  minute or more for 471 of 825 players). Now a cross-fade, `minXa` 25 to `minXb` 27. Eight windows tried. On P1 every
+  window beat the switch and the earlier the better (24 to 26: -1.2 / -2.0 / -3.0 / -3.9 / -5.1% minutes at 24.5 / 25 /
+  25.5 / 26 / 26.5). On P2 the early ones were WORSE (24 to 25.5: +3.2% at 25.5; 24 to 26: +2.2% at 26; 24.5 to 26.5:
+  +0.5%) and the late one best (25.5 to 27.5: -0.5 / -1.2 / -0.8% at 26 / 26.5 / 27), but that one was +0.7% (z 3.5) at
+  27:00 on P1. 25 to 27 is the one never worse on either: P1 minutes -1.8% (z -8.7), -3.3%, -4.7% at 25.5 / 26 / 26.5
+  (points -0.3 / -0.5 / -1.1%, rebounds -0.5 / -0.9 / -1.2%, assists -0.3 / -0.5 / -0.8%), P2 minutes -0.4 / -0.3 /
+  -0.7% (points -0.1 / +0.2 / +0.3%, all inside noise). Why the sets differ: the mid-game lessons of P1 come from 585
+  complete games, those of P2 from 1,177 (the shipping ones from 1,298); with fewer games the halftime lessons hold up
+  worse once the third quarter is on. An earlier start is NOT a safe change (do not retry without a new idea).
+- 3:00: the live pace reading switched on whole (game total moved 1.3 points in one second, the pace meter read 55 in a
+  0-5 game). Now fades in from 3:00 to 6:00 (`paceFade`). Accuracy the same: points ±0.2%, totals mixed (P1 4.5 min
+  +1.1% for the old way, P2 -1.6%).
+- Opening tip, 15:00, 21:00, 27:00, 33:00: the weights of the shown number (LAND) switched by stage (shown points of every
+  player dropped 0.35 at the tip; ±0.2 at 15:00 and 21:00). Now they blend by game minute between the fitted stages
+  (`landInterp`; 0:00 = the pre-game table; overtime and pre-game unchanged). Same or better at every half stage on both
+  sets (old way +0.12% z 3.2 and +0.24% z 4.0 at 15:00). And the 18-minute points weight is 0.25 instead of 0 (the
+  table read 0.25, 0, 0.25): points -0.06 / -0.07 / -0.03% at 15 / 18 / 20.5 on P1, -0.18% (z -2.9) / -0.44% (z -3.5) /
+  -0.16% on P2.
+- The tip-off projection carried through the first six minutes now uses 400 simulations (`tipSims`, was 150): minutes
+  moved 0.14 at the tip from its noise, 0.12 now; accuracy the same; 30 ms more per live projection in those minutes.
+- Left alone: `flagIn` from 27:00 instead of 30:00 (minutes +0.3 to +0.5% worse); small steps at 3:00, 33:00, 36:00 from
+  older switches (0.05 to 0.10 minutes); a substitution still moves a player's minutes by 3 or 4 in the first quarter
+  (the on-the-floor input; real signal at 6:00, flickers with every substitution; a softer "share of the last few
+  minutes on the floor" input is an untested lead).
+
+**3. Smaller engine items.** A player the user marks OUT during a game got more minutes (Durant, 3 minutes played,
+marked out: shown 11.4 minutes, 9.8 points): `doneFor()` now treats him like a fouled-out player (he keeps what he has;
+his minutes go to teammates), and anyone done for the night (marked out, fouled out, ejected) gets one plain note, no
+chips, no "blowout-proof" or "may sit late" tag (before, the notes still said "helps his picks", "returns"). No edge is
+listed on a book line the player has already passed (stale lines stayed in the feed for minutes: "Line 0.5, has 1,
+100%").
+
+**4. App shell (review pass 3 on version 16, then the review of version 17).** All with tests in `cs/tests/app.test.js`
+(34 checks; each new one fails on the build without its fix):
+- An app left open never noticed the day had changed (yesterday's board as "Today", the next-day arrow skipped tonight,
+  tonight's numbers made without last night's games: back-to-back flags missing, points off by 0.6 to 1.2 on average).
+  `syncDay`/`dayTurn`: on coming back to the front and on the 5-second tick the board moves to the new day and the season
+  table, the recent-game logs and each player's own game logs are read again. While last night's games are live it
+  stays on them ("Yesterday") and moves the next time the app is opened. After a while in the background the decision
+  waits for fresh scores from a real feed (`state.dayCheck`; never the slate kept on the phone), because the slate in
+  memory still shows the game live.
+- Tip-off numbers were kept in one map for every day (a look at tomorrow rewrote tonight's "since tip" lines). Now one
+  map per day, written only from the day on screen, and a late answer for another day no longer re-projects that day.
+- The season table is asked for again after a failed load (at most once a minute) and after six hours (never while a
+  game on screen is live); the stored table carries its time (`PRIORS_MS`).
+- Nightly learning: one copy of the app at a time (Web Locks, `courtside-learn`), the dates record is read again before
+  a night is saved, a night is marked done only when its sums are really stored (`DB.store.set` now returns true/false
+  and frees the oldest game logs in rounds until the value fits), the copy backstop keeps what the five-day look-back
+  needs. Game logs older than 30 days and slates saved by an older version are cleared at start (a daily user's storage
+  no longer fills up: one evening is about 3.0 of Chrome's 5.2 million characters).
+- Ladder rungs on the player sheet are the six around the player's number (a star's stopped far below it). Scores keep
+  moving during a long first load. The update time on a game screen was "7:00:00 PM" when a projection was marked for
+  redo (`at = 0`): now a `redo` flag.
+- Refuted or not defects: "NOT IN YET with STRONG EDGE" (the player had checked in between two looks); a player with a
+  rebound still "NOT IN YET" (the feed publishes substitutions made during a timeout when play resumes; nothing to fix
+  on our side); the heave rule in the fourth quarter (the code is right, see above).
+
+**5. GG Winner 3.10.1.** On Nov 12 from about 00:37 UTC the league's own results site answers our relay with a
+bot-check page (HTTP 403, "Attention Required"). That is their decision; nothing was done to get around it and nothing
+should be. The board (FanDuel lines and live scores, `/api/eb/...`) is a different source and works. What the app does
+now: after a 403, 429, 5xx or a failed request on `/h2h/` it waits 30 s, then 1, 2, 4, 8 and at most 10 minutes
+before asking again (one step per bad moment, however many requests were in flight; it asked every 8 seconds before);
+the gamer profiles keep using the days saved on the phone and the last good read of today, with a plain note; notes
+carry no error codes; the footer says Version 3.10.1. Tests: `gg/tests/app-api.test.js` (5 checks). If the block stays,
+the gamer profiles and the league panel age (new phones get none); the fix would have to come from the league's side or
+from a data source that welcomes this use.
+
 ### Traps found this session
+- (Nov 12) The lab graded 3PM against its own play-by-play box, so a counting error in that box was invisible to every
+  test for the whole project. Whenever the box code changes, check it against an outside official box for every stat
+  (`data/glog/<season>/<nba id>.json.gz`, rows keyed by `bdl_game_id` = our game id; match players by name).
+- (Nov 12) A background lab job is stopped after two hours: split long chains, and make each step skip what already exists.
+- (Nov 12) App tests must wait on a condition, not a fixed pause: with thirty simulated phones alive in one process the
+  first load of a later test can take three times as long.
+- (Nov 12) Two unseen sets can disagree about a setting when their lessons were fitted on different amounts of data (the
+  27:00 cross-fade window). Choose what is never worse on either, and say why they differ.
 
 - Ridge strength `patLam` = 32 means about 800 "ghost observations" per input. Inputs that fire rarely (a new
   starter is about one player a game) get flattened to a third of their real size. Use a lighter pull for them.
@@ -1004,9 +1143,10 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 ## Test suites (run all before publishing)
 
 ```
-node cs/tests/engine.test.js          # engine on two real games (85 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording
-node cs/tests/app.test.js             # boots the real app in a simulated phone browser (22 checks): screens, wording rules, edge record, stale boxes, offline start, dated copies of the season stats and the morning-after replay
+node cs/tests/engine.test.js          # engine on two real games (90 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording, every made three, marked OUT, no steps at 3:00 / 15:00 / 21:00 / 27:00
+node cs/tests/app.test.js             # boots the real app in a simulated phone browser (34 checks, about 8 minutes; ONLY="part of a name" runs one): screens, wording rules, edge record, stale boxes, offline start, dated copies and the morning-after replay, the day turning in an open app, a full phone, two copies open, a long first load
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
+node gg/tests/app-api.test.js         # GG Winner data calls (5 checks): the growing wait when the league's source says no, profiles keep saved results, footer version
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/phonecheck.js              # real browser, real feeds: the dated copies and the morning-after learning (FREE=2500000 squeezes storage like an iPhone)
 node tools/livecheck.js               # both LIVE links (after publishing)

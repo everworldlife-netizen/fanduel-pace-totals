@@ -12,6 +12,7 @@ hf auth whoami >/dev/null 2>&1 || { echo "Not signed in to Hugging Face (run: hf
 node cs/tests/engine.test.js | tail -1
 node cs/tests/app.test.js | tail -1
 node gg/tests/league-live.test.js | tail -1
+node gg/tests/app-api.test.js | tail -1
 for SP in courtside-arcade gg-winner; do
   [ -d "$REL/$SP" ] || continue
   hf upload "everworldlife/$SP" "$REL/$SP" . --repo-type space --commit-message "Release ${REL#release-}"

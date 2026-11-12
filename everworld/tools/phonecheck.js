@@ -22,8 +22,8 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     return page;
   };
-  const state = (page) => page.evaluate(() => { const o = { keys: {}, total: 0 }; for (const k of Object.keys(localStorage)) { if (k.startsWith('zz_fill')) continue; const n = localStorage.getItem(k).length; o.total += n; const g = k.split(':')[0]; o.keys[g] = (o.keys[g] || 0) + n; } o.snaps = Object.keys(localStorage).filter((k) => k.startsWith('psnap:')).map((k) => { const s = JSON.parse(localStorage.getItem(k)); return { k, players: Object.keys(s.p || {}).length, teams: s.t ? Object.keys(s.t.teams || {}).length : 0, chars: localStorage.getItem(k).length }; }); o.dates = JSON.parse(localStorage.getItem('pat:v5:dates') || 'null'); const sum = JSON.parse(localStorage.getItem('pat:v5:sum') || 'null'); o.learned = sum && sum.acc ? Object.fromEntries(Object.entries(sum.acc).map(([g, a]) => [g, a.n ? [a.g, a.n, +(a.pts / a.n).toFixed(2)] : 0])) : null; return o; });
-  const waitChecked = async (page, secs) => { for (let i = 0; i < secs; i++) { await page.waitForTimeout(1000); const d = await page.evaluate(() => JSON.parse(localStorage.getItem('pat:v5:dates') || 'null')); if (d && d.checked) return d; } return null; };
+  const state = (page) => page.evaluate(() => { const o = { keys: {}, total: 0 }; for (const k of Object.keys(localStorage)) { if (k.startsWith('zz_fill')) continue; const n = localStorage.getItem(k).length; o.total += n; const g = k.split(':')[0]; o.keys[g] = (o.keys[g] || 0) + n; } o.snaps = Object.keys(localStorage).filter((k) => k.startsWith('psnap:')).map((k) => { const s = JSON.parse(localStorage.getItem(k)); return { k, players: Object.keys(s.p || {}).length, teams: s.t ? Object.keys(s.t.teams || {}).length : 0, chars: localStorage.getItem(k).length }; }); o.dates = JSON.parse(localStorage.getItem('pat:v6:dates') || 'null'); const sum = JSON.parse(localStorage.getItem('pat:v6:sum') || 'null'); o.learned = sum && sum.acc ? Object.fromEntries(Object.entries(sum.acc).map(([g, a]) => [g, a.n ? [a.g, a.n, +(a.pts / a.n).toFixed(2)] : 0])) : null; return o; });
+  const waitChecked = async (page, secs) => { for (let i = 0; i < secs; i++) { await page.waitForTimeout(1000); const d = await page.evaluate(() => JSON.parse(localStorage.getItem('pat:v6:dates') || 'null')); if (d && d.checked) return d; } return null; };
   // optional: leave only FREE characters of storage (an iPhone holds about 2.5 million)
   const FREE = +(process.env.FREE || 0);
   if (FREE) {
@@ -42,7 +42,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   console.log('VISIT 1 | copies:', JSON.stringify(s1.snaps), '| nights closed:', JSON.stringify(d1), '| learned:', JSON.stringify(s1.learned));
   console.log('        | storage used (characters) by kind:', JSON.stringify(s1.keys), 'total', s1.total);
   // visit 2: pretend the copy had been saved before last night's tips (move today's copy to the day before, stamp it early), reopen
-  const moved = await page.evaluate(() => { const today = Object.keys(localStorage).filter((k) => k.startsWith('psnap:')).sort().pop(); if (!today) return null; const d = new Date(today.slice(6) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); const y = d.toISOString().slice(0, 10); const s = JSON.parse(localStorage.getItem(today)); s.at = s.tAt = Date.parse(y + 'T15:00:00Z'); localStorage.setItem('psnap:' + y, JSON.stringify(s)); localStorage.removeItem('pat:v5:dates'); localStorage.removeItem('pat:v5:sum'); return y; });
+  const moved = await page.evaluate(() => { const today = Object.keys(localStorage).filter((k) => k.startsWith('psnap:')).sort().pop(); if (!today) return null; const d = new Date(today.slice(6) + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - 1); const y = d.toISOString().slice(0, 10); const s = JSON.parse(localStorage.getItem(today)); s.at = s.tAt = Date.parse(y + 'T15:00:00Z'); localStorage.setItem('psnap:' + y, JSON.stringify(s)); localStorage.removeItem('pat:v6:dates'); localStorage.removeItem('pat:v6:sum'); return y; });
   await page.close();
   page = await open();
   await page.waitForTimeout(15000);
@@ -51,7 +51,7 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   console.log('VISIT 2 | copy stamped before the tips of', moved, '| nights closed:', JSON.stringify(d2), '| learned [games, players, points miss] by stage:', JSON.stringify(s2.learned));
   await page.goto(url + '#/settings'); await page.waitForTimeout(1500);
   const txt = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, ' ');
-  console.log('        | settings says how the phone grades itself:', /saved before that game tipped/.test(txt), '| banned words on screen:', (txt.match(/\b(over|under)\b/gi) || []).length, '| version line:', (txt.match(/Version 16[^.]*\)/) || [''])[0]);
+  console.log('        | settings says how the phone grades itself:', /saved before that game tipped/.test(txt), '| banned words on screen:', (txt.match(/\b(over|under)\b/gi) || []).length, '| version line:', (txt.match(/Version \d+[^.]*\)/) || [''])[0]);
   console.log('page errors:', errors.length ? errors.slice(0, 5).join(' ; ') : 'none');
   await browser.close(); srv.close();
 })().catch((e) => { console.log('ERR', e); process.exit(1); });

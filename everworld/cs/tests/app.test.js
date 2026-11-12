@@ -278,8 +278,9 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       w.DB.slate = async (d) => { if (d === DAY) reads.n++; return d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []; };
       w.DB.livePlays = async () => []; w.DB.props = async () => [];
     }, (w) => { w.Storage.prototype.setItem = function () { throw new w.DOMException('The quota has been exceeded.', 'QuotaExceededError'); }; });
-    await sleep(9000);
-    const first = reads.n;
+    // wait until the app has settled (the nightly check and the edge-record sweep each look at last night once, a few seconds after the first load)
+    let first = -1;
+    for (let k = 0, same = 0; k < 40 && same < 4; k++) { await sleep(2500); same = reads.n === first ? same + 1 : 0; first = reads.n; }
     assert.ok(first >= 1, 'last night was never looked at');
     for (let k = 0; k < 3; k++) { M.w.document.getElementById('refreshBtn').click(); await sleep(6000); }
     assert.strictEqual(reads.n, first, `last night was read ${reads.n} times (once is enough)`);
@@ -449,12 +450,12 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       };
       w.DB.props = async () => [];
     });
-    await sleep(3000);
-    const tip0 = A.w.localStorage.getItem(`tip:${DAY}`);
-    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 20, 'no tip-off numbers were kept before the game');
+    let tip0 = null;
+    for (let k = 0, same = 0; k < 40 && same < 3; k++) { await sleep(1500); const t = A.w.localStorage.getItem(`tip:${DAY}`); same = t && t === tip0 ? same + 1 : 0; tip0 = t; }
+    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 40, `tip-off numbers were kept for only ${tip0 ? Object.keys(JSON.parse(tip0)).length : 0} players before the game`);
     A.state.phase = 'live';
     A.w.document.getElementById('refreshBtn').click();
-    await sleep(3500);
+    await sleep(6000);
     const since = async () => { const v = await A.go('#/scorers', 500); return [...v.querySelectorAll('.card.scorer')].map((c) => `${c.querySelector('.nmrow b').textContent}: ${c.querySelector('.big').textContent}${c.querySelector('.mv') ? ' ' + c.querySelector('.mv').textContent : ''}`); };
     const before = await since();
     assert.ok(before.length >= 8 && before.some((x) => /since tip/.test(x)), `the scorers screen shows no moves since tip-off: ${before.slice(0, 3).join(' | ')}`);
@@ -731,12 +732,13 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
         return post.call(this, m);
       };
     });
-    await sleep(3500);
-    const tip0 = A.w.localStorage.getItem(`tip:${DAY}`);
-    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 20, 'no tip-off numbers were kept before the game');
+    // both games projected before tip-off (wait for the tip-off numbers of every player, however busy the machine is)
+    let tip0 = null;
+    for (let k = 0, same = 0; k < 40 && same < 3; k++) { await sleep(1500); const t = A.w.localStorage.getItem(`tip:${DAY}`); same = t && t === tip0 ? same + 1 : 0; tip0 = t; }
+    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 40, `tip-off numbers were kept for only ${tip0 ? Object.keys(JSON.parse(tip0)).length : 0} players before the game`);
     A.state.phase = 'live';
     A.w.document.getElementById('refreshBtn').click();
-    await sleep(4000);
+    await sleep(6000);
     const since = async () => { const v = await A.go('#/scorers', 500); return [...v.querySelectorAll('.card.scorer')].map((c) => `${c.querySelector('.nmrow b').textContent}: ${c.querySelector('.big').textContent}${c.querySelector('.mv') ? ' ' + c.querySelector('.mv').textContent : ''}`); };
     const before = await since();
     assert.ok(before.some((x) => /since tip/.test(x)), `no moves since tip-off on the scorers screen: ${before.slice(0, 3).join(' | ')} || ${A.errors.slice(0, 4).join(' | ').slice(0, 500)}`);
