@@ -1273,6 +1273,43 @@ fixed 14 seconds (it failed once in a full run on a busy machine, never alone).
 itself from `PAT_FROM = 2026-11-10`), so `PAT_KEY` stays `pat:v6` and nothing saved on a phone is thrown away. GG
 Winner is unchanged (3.10.1).
 
+### The books' player lines: the one source the numbers do not use yet (started Nov 13, evening)
+
+Akara, Nov 13: "Significantly improve courtside". Where the numbers stand (see "How close can a number get?"): with the
+REAL minutes known, points would miss by about 4.1 at tip-off against the 4.65 shown; about 85% of the miss is the bounce
+of the ball. What can still be closed is minutes and who plays, and the lab has spent four versions on that (minutes
+miss 5.11 → 4.03). The source that is NOT in the numbers yet is the books' own player lines: they carry late news (who
+starts, minutes limits, returns) hours before lineups post. At the game level the same idea was worth 4 to 8% this
+morning (version 18). For players it cannot be tested on the past: the feed keeps no history of player lines (a
+finished game answers with 0 to 7 leftover rows; the paid BDL tier has opening lines only). So the evidence is being
+recorded from tonight on.
+
+- `node tools/proprec.js` saves, for every game of the day that has not started, every line of every book
+  (`data/props/<date>/<game id>-<HHMM>.json.gz`, the bet-slip links stripped: about 220 KB a snapshot), the game lines and
+  both injury reports as they stand. Nov 13: 9 games, 26,475 lines, 8 books, about 14 players a game with a points line.
+  Snapshots at 22:46 and 22:54 UTC, then before each wave of tips (scheduled: 23:50, 00:52, 02:22, 03:22 UTC).
+- `node tools/propgrade.js <rows dump>` grades after the games: our number against the consensus line (the app's own rule,
+  `E.consensusLines`: the middle line of all books) against the result, mixes of the two, the share of our gap to the line
+  that shows up in the result, plus edges by size of gap, and players we gave 15+ minutes with and without a line. The
+  rows come from `bt2 --stages rep,0 --dump` on the same games with the published engine (first grading: Nov 14, 14:30 UTC).
+- `node tools/appsnap.js` saves what the published app shows for every player right now (numbers rounded to halves);
+  `node tools/research/v19-01-gap.js` sets that against the lines before any result.
+
+First look on Nov 13, BEFORE any result, and with a flaw (below): the app's numbers sat below the lines on average
+(points -0.38 with a spread of 1.58, rebounds -0.33, threes -0.33, assists level; 124 / 118 / 105 / 97 players with a
+line). Seven players had a points line (20.5, 18.5, 12.5, 11.5, 9.5, 9.5, 6.5) and no number at all in the app: players
+with no game for their team this season yet (returns, new arrivals). The line rows carry a player id but no name, and
+the id is the live feed's, not the one of the season tables: putting a number on such a player needs an id directory.
+
+TRAP: the lab's headless browser cannot reach ESPN (the requests are blocked here; on a phone they work), so the app in
+a lab browser has NO ESPN injury report. In the capture above Evan Mobley, Caleb Wilson, Dejounte Murray and Zach Edey
+were still in the rotations although ESPN had them out. Never judge who-plays from a lab browser capture: use the lab's
+replay, which reads the real lists.
+
+Rules for deciding (unchanged method): at least 300 player lines per stat; the share of the line in the number chosen on
+some nights and checked on others; tested per stat and per stage (before lineups, tip-off); line presence as a sign of
+who plays tested against who really played. Nothing is shipped on one night.
+
 ### Traps found this session
 - (Nov 12) The lab graded 3PM against its own play-by-play box, so a counting error in that box was invisible to every
   test for the whole project. Whenever the box code changes, check it against an outside official box for every stat
