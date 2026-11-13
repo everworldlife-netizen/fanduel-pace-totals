@@ -1104,6 +1104,96 @@ carry no error codes; the footer says Version 3.10.1. Tests: `gg/tests/app-api.t
 the gamer profiles and the league panel age (new phones get none); the fix would have to come from the league's side or
 from a data source that welcomes this use.
 
+### Version 18 (Nov 13): a study of the results, a closer final score, an honest win chance
+
+Akara, Nov 13: "Study the results, projections and enhance the app for accuracy." Method as always: every rule chosen
+on one set of unseen games (P1: 592 games of last season's second half), kept only if this season's 121 exam games
+(P2) and the 20 newest games agree. Scripts: `tools/research/v18-01` to `v18-12` (each prints its own table).
+
+**1. Blind test of the published version 17** on the 20 games played since its lessons ended (Nov 10 to 12, built-in
+lessons, `data/runs/B17-blind.json`): tip-off PTS 4.645, REB 1.832, AST 1.329, 3PM 0.904 (version 16: 0.948), MIN 4.24.
+In line with the exam (4.66 / 1.90 / 1.40 / 0.94 / 4.03): nothing had drifted.
+
+**2. What the study found** (`v18-01-bias`, `v18-02-slices`, `v18-05-game`, `v18-07-winprob`, `v18-08-margin`):
+- Player numbers are centred: the plain average misses by less than 0.2 either way for points, rebounds and assists
+  on all three sets. Minutes of players who played run about half a minute high at tip-off, but correcting that
+  does not make the graded miss smaller (see the failures below).
+- The projected game TOTAL ran low before the tip (-4.7 points on P1, -2.7 on P2, -7.4 on the 20 newest) and missed
+  by more than the book's closing total: 15.19 against 14.45 (P1), 14.25 against 13.82 (P2), 15.64 against 13.15.
+  The best share of the book's total is about nine tenths before the tip and at 3:00, 0.2 to 0.4 at 6:00, none from 9:00.
+- For the MARGIN of the rest of a game, the book's spread shared across the time left beats our own estimate at every
+  stage, and our own estimate adds nothing next to it (its weight in a fitted line is -0.16 to +0.25). A lead does
+  not fully hold: the fitted share of the current lead that reaches the final is 0.60 at 3:00, 0.79 at 6:00, 0.81 to
+  0.85 from 9:00 to 30:00, 0.88 at 36:00, 0.92 at 42:00, 0.94 at 45:00.
+- The WIN CHANCE was too timid (I had assumed the opposite): counted simulations swing about 30 points around their
+  average margin where real games swing 11 to 12 before the tip. Said 65% → won 75%; said 85% → won 95% (P1).
+
+**3. What version 18 does** (engine `data/engines/v18b` = `cs/build/engine.js`; switches `mktAnchor: 1, mktTotW: 0.9,
+mktMarU: 1, mktKeep: 0.8, winCal: 1, winSd0: 7.5, winSd1: 4`):
+- Final score: total = nine tenths the book's before the tip, fading to our own by 9:00; margin = (share of the lead
+  kept) x lead + book spread x time left / 48, with the share kept = 0.8 + 0.2 x (minutes played / 48) squared (1
+  before the tip). With no book line: our own total and rest-of-game margin, same give-back. The simulations of each
+  team are shifted by a constant, so player numbers do not move.
+- Win chance = bell curve of (projected final margin) / (7.5 x square root of the share of the game left + 4 points),
+  crossing to the count of simulations between 36:00 and 45:00 (count taken before the shift: the shift made the
+  count worse late, 0.0559 → 0.0583 at 45:00 on P1, because a fraction of a point turns one-point finishes into ties).
+- Shown number (LAND): `pre.pts` 0 → 0.25, `s24.pts` 0.25 → 0.5, rebounds 0 → 0.25 at `s12`, `s18`, `s24`.
+- App: the three notes of the BOOK LINES card say all this in plain words (`booksCard` in `cs/build/app.js`).
+
+Version 17 → version 18 on the three unseen sets (`node tools/research/v18-11-result.js data/runs/M18-<set>.json
+data/runs/C18-<set>.json`; M18 = version 17 rerun on today's data):
+
+| | P1 (592 games) | P2 (121 games) | 20 newest |
+|---|---|---|---|
+| Game total miss, tip-off (book's line) | 15.19 → 14.48 (14.45) | 14.25 → 13.78 (13.82) | 15.64 → 13.35 (13.15) |
+| Game total miss, 3:00 | 15.04 → 14.44 | 13.95 → 13.73 | 15.67 → 13.36 |
+| Final margin miss, tip-off | 11.66 → 11.07 | 11.34 → 10.88 | 11.52 → 11.05 |
+| Final margin miss, 12:00 | 10.37 → 9.83 | 11.83 → 11.09 | 11.90 → 10.86 |
+| Final margin miss, 18:00 | 9.70 → 8.90 | 10.50 → 9.81 | 12.50 → 11.73 |
+| Final margin miss, half | 9.00 → 8.32 | 8.90 → 8.52 | 8.94 → 8.14 |
+| Final margin miss, 36:00 | 6.55 → 6.18 | 6.18 → 6.24 (worse) | 6.80 → 7.01 (worse) |
+| Final margin miss, 42:00 | 4.84 → 4.60 | 4.80 → 4.59 | 4.68 → 4.11 |
+| Win chance, squared miss, tip-off (book) | 0.2086 → 0.1722 (0.1728) | 0.2130 → 0.1824 (0.1839) | 0.1939 → 0.1333 (0.1440) |
+| Win chance, squared miss, 12:00 | 0.1825 → 0.1589 | 0.2090 → 0.1938 | 0.1770 → 0.1196 |
+| Win chance, squared miss, half | 0.1444 → 0.1298 | 0.1600 → 0.1427 | 0.1312 → 0.0907 |
+| Win chance, squared miss, 36:00 | 0.1057 → 0.0983 | 0.1078 → 0.1017 | 0.1092 → 0.0887 |
+| Win chance, squared miss, 42:00 / 45:00 | 0.0717 → 0.0713 / 0.0559 = | 0.0807 → 0.0788 / 0.0428 = | 0.0585 → 0.0554 / 0.0421 = |
+| PTS miss, tip-off | 4.711 → 4.704 (-0.15%) | 4.658 → 4.648 (-0.22%) | 4.645 → 4.623 (-0.48%) |
+| PTS miss, half | 3.332 → 3.327 (-0.14%) | 3.218 → 3.209 (-0.27%) | 3.337 → 3.327 (-0.30%) |
+| REB miss, 12:00 / 18:00 / half | -0.07% / -0.04% / -0.22% | -0.15% / -0.27% / -0.20% | -0.76% / -0.32% / -0.65% |
+| Everything else (AST, 3PM, MIN, other stages) | identical | identical | identical |
+
+How often the favoured side won, tip-off to 36:00 (`v18-12-winbands`): P1 said 65 / 75 / 85% → won 75 / 84 / 95%
+before, 63 / 76 / 83% now; P2 said 65 / 74 / 85% → won 71 / 84 / 94% before, 60 / 68 / 85% now.
+
+In-app report: "before" = `data/runs/H2-baset.json` as in version 17, "now" = `data/runs/P2-v18b.json` (the 121
+exam games, lessons `P2H-v17a`: the lessons were NOT refitted, version 18 changes nothing they see). Tip-off: PTS 4.65,
+REB 1.90, AST 1.40, 3PM 0.94, MIN 4.03, total 13.78. The edge chances read 83% hit for 85% said at tip-off where
+version 17's report read 84%: that is the refreshed season data (83.52 → 83.18), not the engine (same on both).
+
+**4. Tested and NOT built (do not retry without a new idea):**
+- Refill step off (`S18-*` runs): no change in starters' minutes bias.
+- A final correction of the minutes by role, fitted on seen games (`v18-03-calib`): ±0.5% on the miss of everyone who
+  played, no gain under the 10+ minutes grading rule.
+- The book's total or spread inside PLAYER numbers (`v18-10-players`): a player's points still to come scaled by the
+  share the book-anchored team score implies: +0.0 to +0.4% (worse) for the total; for the margin -0.02 to -0.22% on
+  P1 but mixed on P2 (-0.16% to +0.08%); rebounds and assists flat or worse. Their numbers already carry it.
+- Margin rule variants (`v18-09-rules`): a share of our own margin next to the book's (0.1 or 0.2), 1.15 x the
+  spread, the lead kept rising linearly or with the cube: all within 0.02 points of the rule built; the simplest kept.
+- Shown number: rebounds at tip-off and 6:00 (P1 says no, the two newer sets say yes), assists at the half (P1 says
+  0.75, P2 0.4% worse), the lineup-not-posted table (P1 says no change).
+- The book's total after 9:00: no weight helps once the game has shown its pace.
+
+**5. Traps:** a frozen engine folder needs `sitprior.js` next to `engine.js` or this season's replays silently use no
+situational prior (cost an hour: player numbers moved by half a percent on P2 only). `tools/p2.sh` has no end date: for
+the 121-game exam add `--to 2026-11-09` (it picked up 141 games). `bt2.js` has no `--help`: any unknown flag runs a
+full default backtest. The app test "a late game ends while the phone is down" now waits for the board instead of a
+fixed 14 seconds (it failed once in a full run on a busy machine, never alone).
+
+**6. Not done on purpose:** the lessons were not refitted on the 20 new games (0.5% more games; the phone learns them
+itself from `PAT_FROM = 2026-11-10`), so `PAT_KEY` stays `pat:v6` and nothing saved on a phone is thrown away. GG
+Winner is unchanged (3.10.1).
+
 ### Traps found this session
 - (Nov 12) The lab graded 3PM against its own play-by-play box, so a counting error in that box was invisible to every
   test for the whole project. Whenever the box code changes, check it against an outside official box for every stat
