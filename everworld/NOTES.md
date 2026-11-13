@@ -1083,6 +1083,17 @@ listed on a book line the player has already passed (stale lines stayed in the f
   rebound still "NOT IN YET" (the feed publishes substitutions made during a timeout when play resumes; nothing to fix
   on our side); the heave rule in the fourth quarter (the code is right, see above).
 
+**Live watch of the published 17, evening of Nov 12** (`node tools/livewatch.js`, two games across the 7:00 pm tip, 52
+minutes each, a look every 20 s, through the first quarter into the second): TOR at PHI 1,694 player rows, DET at WAS
+1,550. Page errors 0, banned words 0, odd tokens 0, no number below what a player has, nobody on the floor tagged NOT IN
+YET. Between two looks with nothing new for a player: minutes move 0.06 and 0.09 on average, points 0.11 (1,820 pairs),
+no move of 3+ minutes. A check-in or check-out moves minutes 1.2 to 1.4 on average (23 times). Across the tip: minutes
+0.73 and 1.40 on average (largest 3), points 0.14 and 0.65; the larger one was real news (Detroit started Tolu Smith,
+not Paul Reed). 3PM on screen against the made threes in the feed: 1,086 comparisons, never short. By then the feed held
+17 made threes and the old wording rule would have found 12: Walter, Barrett, Simons, Kyshawn George and Trae Young each
+made one worded "running jump shot" or "running pullup jump shot". Nothing was changed. One wording crumb for a later
+release: at the opening tip a starter's move reads "back on the floor" (he was never off it).
+
 **5. GG Winner 3.10.1.** On Nov 12 from about 00:37 UTC the league's own results site answers our relay with a
 bot-check page (HTTP 403, "Attention Required"). That is their decision; nothing was done to get around it and nothing
 should be. The board (FanDuel lines and live scores, `/api/eb/...`) is a different source and works. What the app does
