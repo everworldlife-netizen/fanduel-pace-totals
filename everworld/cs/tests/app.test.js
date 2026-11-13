@@ -34,12 +34,15 @@ async function boot(phase, hook, pre) {
   w.eval(read('data.js'));
   const E = w.Engine, date = FX[0].g.date;
   const state = { phase };
+  // the live moment: halftime, unless a test sets state.cut = { per, clock, label } (say { per: 4, clock: '6:00', label: 'Q4 6:00' })
+  const cut = () => state.cut || { per: 2, clock: '0:00', label: 'Half' };
+  const livePs = (fx) => { const c = cut(), left = E.clockSec(c.clock); return fx.plays.filter((p) => p.period < c.per || (p.period === c.per && E.clockSec(p.clock) >= left)); };
   const rowOf = (fx) => {
     if (state.phase === 'final') return fx.g;
     if (state.phase === 'pre') return { ...fx.g, status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
-    const ps = fx.plays.filter((p) => p.period <= 2);
-    const bx = E.boxFromPlays(ps, 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
-    return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
+    const c = cut(), ps = livePs(fx);
+    const bx = E.boxFromPlays(ps, c.per, c.clock), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+    return { ...fx.g, status_state: 'in', display_status: c.label, status: c.label, period: c.per, time: c.label, visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
   };
   const fxOf = (id) => FX.find((x) => +x.g.id === +id);
   // the data feeds, answered from the fixture
@@ -51,7 +54,7 @@ async function boot(phase, hook, pre) {
     injuries: async () => [], teamStats: async () => FX[0].base.teams, gameLines: async () => [],
     linesFor: (g) => fxOf(g.id).base.market,
     teamLogs: async () => { const seen = new Set(), out = []; for (const x of FX) for (const l of x.base.logs) if (!seen.has(l.id)) { seen.add(l.id); out.push(l); } return out; },
-    livePlays: async (g) => { const fx = fxOf(g.id); return state.phase === 'final' ? fx.plays : fx.plays.filter((p) => p.period <= 2); },
+    livePlays: async (g) => { const fx = fxOf(g.id); return state.phase === 'final' ? fx.plays : livePs(fx); },
     plays: async (id) => fxOf(id).plays,
     availability: async (g) => fxOf(g.id).base.avail,
     lineupFor: async (g) => fxOf(g.id).base.avail,
@@ -59,7 +62,7 @@ async function boot(phase, hook, pre) {
     // book lines two points under each current projection: these become plus edges
     props: async (gid) => {
       const fx = fxOf(gid), out = [];
-      const m = { game: rowOf(fx), plays: state.phase === 'pre' ? [] : fx.plays.filter((p) => p.period <= 2) };
+      const m = { game: rowOf(fx), plays: state.phase === 'pre' ? [] : livePs(fx) };
       const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 300, seed: fx.g.id, patterns: E.patBeta(null) });
       for (const p of P.players.slice(0, 8)) out.push({ player_id: p.pid, prop_type: 'points', line_value: String(Math.max(0.5, Math.floor(p.proj.pts - 3) + 0.5)), vendor: 'testbook', market: { type: 'over_under', over_odds: -110, under_odds: -110 } });
       return out;
@@ -685,24 +688,28 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
     }
   });
-  await test('book lines card: the projected final, the margin and the win chance are explained in plain words, before the tip and at the half', async () => {
-    const lines = (w) => { w.DB.linesFor = (g) => (FX.find((x) => +x.g.id === +g.id) || FX[0]).base.market; };
+  await test('book lines card: the projected final, the margin and the win chance are explained in plain words, each sentence only where it is true', async () => {
     const fx = FX[0], mk = fx.base.market, vAb = fx.g.visitor_team.abbreviation, hAb = fx.g.home_team.abbreviation;
-    const card = async (B) => {
-      let v; for (const t0 = Date.now(); Date.now() - t0 < 30000;) { await sleep(700); v = await B.go(`#/game/${fx.g.id}`, 300); if (/BOOK LINES/.test(v.textContent) && /Win chance: we say/.test(v.textContent)) break; }
-      const c = [...v.querySelectorAll('.card')].find((x) => /Books win %/.test(x.textContent));
-      assert.ok(c, 'no book lines card on the game page');
-      return c.textContent.replace(/\s+/g, ' ');
+    const card = async (B, ready) => {
+      let t = '', page = '';
+      for (const t0 = Date.now(); Date.now() - t0 < 40000;) {
+        await sleep(700); const v = await B.go(`#/game/${fx.g.id}`, 300);
+        const c = [...v.querySelectorAll('.card')].find((x) => /Books win %/.test(x.textContent));
+        t = c ? c.textContent.replace(/\s+/g, ' ') : ''; page = v.textContent.replace(/\s+/g, ' '); if (ready.test(t)) break;
+      }
+      assert.ok(ready.test(t), `the book lines card never showed ${ready}: ${t ? t.slice(0, 300) : 'no card; the page reads: ' + page.slice(0, 500)}`);
+      return t;
     };
     // before the tip: the total leans on the book's, the margin is the book's spread, the chance comes from that margin
-    const B = await boot('pre', lines);
-    let t = await card(B);
+    const B = await boot('pre');
+    let t = await card(B, /Win chance: we say/);
     const own = /Projected total (\d+): our own count says (\d+), the books have (\d+(?:\.\d+)?)/.exec(t);
     assert.ok(own, `total line: ${t.slice(0, 260)}`);
-    assert.ok(Math.abs(+own[1] - (0.9 * mk.total + 0.1 * +own[2])) <= 1.2 && +own[3] === mk.total, `projected total ${own[1]} is not nine tenths the book's ${mk.total} and one tenth ours ${own[2]}`);
-    assert.ok(/Before the tip the books' total is the closer of the two/.test(t) && /From nine minutes in, the pace of the game itself decides/.test(t));
+    // (two rounded numbers on the page: half a point for the total shown, a twentieth for our own count)
+    assert.ok(Math.abs(+own[1] - (0.9 * mk.total + 0.1 * +own[2])) <= 0.56 && +own[3] === mk.total, `projected total ${own[1]} is not nine tenths the book's ${mk.total} and one tenth ours ${own[2]}`);
+    assert.ok(/Before the tip the books' total is the closer of the two/.test(t) && /so the projection leans on theirs\. From nine minutes in, the pace of the game itself decides/.test(t) && !/a little less every minute/.test(t));
     const fav = mk.spreadHome >= 0 ? vAb : hAb;
-    assert.ok(new RegExp(`The projected final is ${fav} by ${Math.abs(mk.spreadHome).toFixed(1)}: the books' spread`).test(t), `margin line: ${t}`);
+    assert.ok(new RegExp(`The projected final is ${fav} by ${Math.abs(mk.spreadHome)}: the books' spread`).test(t), `margin line: ${t}`);
     const win = /Win chance: we say ([A-Z]{3}) (\d+)%, from the projected final margin and how far games really swing from this point\. The books say ([A-Z]{3}) (\d+)%\./.exec(t);
     assert.ok(win && win[1] === fav, `win line: ${t}`);
     assert.ok(Math.abs(+win[2] - 100 * B.w.Engine.normCdf(Math.abs(mk.spreadHome) / 11.5)) <= 1, `pregame chance ${win[2]}% does not come from the spread ${mk.spreadHome}`);
@@ -710,11 +717,27 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     // at the half: the pace of the game decides the total, the margin is the score plus the book's spread for the time left, with the give-back
     B.state.phase = 'live';
     B.w.document.getElementById('refreshBtn').click();
-    for (const t0 = Date.now(); Date.now() - t0 < 30000;) { t = await card(B); if (/from the pace of this game so far/.test(t)) break; }
-    assert.ok(/Projected total \d+, from the pace of this game so far\. The books had [\d.]+ before the tip\./.test(t), `live total line: ${t.slice(0, 260)}`);
+    t = await card(B, /from the pace of this game so far/);
+    assert.ok(/Projected total \d+, from the pace of this game so far\. The books had [\d.]+ before the tip\./.test(t) && !/leans on theirs/.test(t), `live total line: ${t.slice(0, 260)}`);
     assert.ok(/The projected final is (a level game|[A-Z]{3} by [\d.]+): the score now, plus the books' spread for the time left, and a lead usually gives a little back by the end \(we keep 85% of it from here\)/.test(t), `live margin line: ${t}`);
     assert.ok(/Win chance: we say [A-Z]{3} \d+%, from the projected final margin and how far games really swing from this point\. The books said [A-Z]{3} \d+% before the tip\./.test(t), `live win line: ${t}`);
     assert.strictEqual(banned(t).length, 0);
+    // six minutes left: the simulations of the minutes left decide the score and the chance, and the card says so
+    B.state.cut = { per: 4, clock: '6:00', label: 'Q4 6:00' };
+    B.w.document.getElementById('refreshBtn').click();
+    t = await card(B, /from the simulations of the minutes left/);
+    assert.ok(/The projected final is (a level game|[A-Z]{3} by [\d.]+), from the simulations of the minutes left: this late the score and the clock decide\./.test(t) && !/plus the books' spread for the time left/.test(t), `late margin line: ${t}`);
+    assert.ok(/Win chance: we say [A-Z]{3} \d+%, counted from the simulations of the minutes left\. The books said [A-Z]{3} \d+% before the tip\./.test(t) && !/how far games really swing/.test(t), `late win line: ${t}`);
+    // the projected score in the card and the win chance name the same team
+    const late = /The projected final is ([A-Z]{3}) by/.exec(t), lw = /Win chance: we say ([A-Z]{3}) (\d+)%/.exec(t);
+    if (late && +lw[2] > 50) assert.strictEqual(late[1], lw[1], `the card projects ${late[1]} ahead but gives ${lw[1]} ${lw[2]}%`);
+    assert.strictEqual(banned(t).length, 0);
+    // finished: the page shows the final score, and no book lines card (the engine hands back no market for a finished game)
+    B.state.phase = 'final';
+    B.w.document.getElementById('refreshBtn').click();
+    let fin = '';
+    for (const t0 = Date.now(); Date.now() - t0 < 40000;) { await sleep(700); const v = await B.go(`#/game/${fx.g.id}`, 300); fin = v.textContent.replace(/\s+/g, ' '); if (/FINAL/.test(fin) && /Projected final/.test(fin) && !/Books win %/.test(fin)) break; }
+    assert.ok(new RegExp(`Projected final ?${vAb} ${fx.g.visitor_team_score} – ${fx.g.home_team_score} ${hAb}`).test(fin) && !/Books win %|Win chance: we say/.test(fin), `finished game page: ${fin.slice(0, 300)}`);
     assert.deepStrictEqual(B.errors.filter((e) => !/^warn:|network is off|learn|game logs/i.test(e)), []);
   });
   await test('after the day changes in an open app each player\'s own game logs are read again too', async () => {

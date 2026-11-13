@@ -214,22 +214,38 @@ test('team totals: "if he plays" minutes never inflate the game score, and the l
     }
   }
 });
-test('final score: the book\'s total before the tip, its spread for the rest of the game, and a lead that gives a little back', () => {
-  const keepAt = (el) => (el <= 0 ? 1 : Math.min(1, E.TUNE.mktKeep + (1 - E.TUNE.mktKeep) * (el / 48) ** 2));
+// a game state with a forced score (and, for overtime, a forced period and clock): for the close late states no real game gives us
+function forced(fx, el, vs, hs, ot) {
+  const g = fx.g; let per = Math.min(4, Math.floor(el / 12) + 1);
+  const leftS = Math.max(per * 12 - el, 0) * 60; let clock = `${Math.floor(leftS / 60)}:${String(Math.round(leftS % 60)).padStart(2, '0')}`;
+  const ps = fx.plays.filter((p) => p.period < per || (p.period === per && E.clockSec(p.clock) >= leftS));
+  if (ot) { per = 5; clock = ot; }
+  return { game: { ...g, status_state: 'in', period: per, time: `Q${per} ${clock}`, visitor_team_score: vs, home_team_score: hs }, plays: ps };
+}
+const runAt = (fx, m, extra = {}) => E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 300, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, ...extra });
+const ruleAt = (el) => (el <= 0 ? 1 : Math.max(0, Math.min(1, (45 - el) / 9)));
+const keepAt = (el) => (el <= 0 ? 1 : 1 - ruleAt(el) * (1 - Math.min(1, E.TUNE.mktKeep + (1 - E.TUNE.mktKeep) * (el / 48) ** 2)));
+const withTune = (set, fn) => { const old = {}; for (const k of Object.keys(set)) { old[k] = E.TUNE[k]; E.TUNE[k] = set[k]; } try { return fn(); } finally { Object.assign(E.TUNE, old); } };
+test('final score: the book\'s total before the tip, its spread for the rest of the game, a lead that gives a little back, and the simulations late', () => {
   for (const fx of FX) {
     const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, mk = fx.base.market;
-    for (const el of [0, 6, 24, 42]) {
-      const P = run(fx, el), R = P.scoreRule, lead = P.state.vs - P.state.hs;
+    for (const el of [0, 6, 24, 39, 42, 46]) {
+      const P = run(fx, el), R = P.scoreRule, lead = P.state.vs - P.state.hs, rw = ruleAt(el);
       const wT = E.TUNE.mktTotW * (el === 0 ? 1 : Math.max(0, Math.min(1, (9 - el) / 6)));
-      assert.ok(Math.abs(R.total - wT) < 1e-9 && R.margin === E.TUNE.mktMarU && Math.abs(R.keep - keepAt(el)) < 1e-9, `rule at ${el}: ${JSON.stringify(R)}`);
+      assert.ok(Math.abs(R.total - wT) < 1e-9 && Math.abs(R.margin - E.TUNE.mktMarU * rw) < 1e-9 && Math.abs(R.keep - keepAt(el)) < 1e-9 && Math.abs(R.rule - rw) < 1e-9, `rule at ${el}: ${JSON.stringify(R)}`);
       const total = P.projScore[v] + P.projScore[h], margin = P.projScore[v] - P.projScore[h];
       assert.ok(Math.abs(total - ((1 - wT) * R.ownTotal + wT * mk.total)) < 0.05, `total ${total} at ${el} min is not ${(1 - wT).toFixed(2)} ours + ${wT.toFixed(2)} the book's`);
-      assert.ok(Math.abs(margin - (keepAt(el) * lead + mk.spreadHome * (48 - el) / 48)) < 0.05, `margin ${margin} at ${el} min is not the kept lead + the book's spread over the time left`);
+      // the kept lead, then the book's spread for the time left; from 36:00 the simulations' own margin comes back in, alone from 45:00
+      const want = keepAt(el) * lead + rw * mk.spreadHome * (48 - el) / 48 + (1 - rw) * (R.ownMargin - lead);
+      assert.ok(Math.abs(margin - want) < 0.05, `margin ${margin} at ${el} min, expected ${want}`);
+      if (el >= 45) assert.ok(Math.abs(total - R.ownTotal) < 1e-9 && Math.abs(margin - R.ownMargin) < 1e-9, 'from 45:00 the score is the simulations\' own');
       assert.ok(Math.abs(P.market.projTotal - total) < 1e-9 && Math.abs(P.market.projMargin - margin) < 1e-9);
-      // the players' own numbers do not move with the final-score step
-      const off = E.TUNE.mktAnchor; let Q; E.TUNE.mktAnchor = 0; try { Q = run(fx, el); } finally { E.TUNE.mktAnchor = off; }
+      assert.ok(P.projScore[v] >= P.state.vs - 1e-9 && P.projScore[h] >= P.state.hs - 1e-9, 'a projected score below the score now');
+      // with the step off: the players' numbers are the same, the score is our own, and the count of simulations is the same count
+      const Q = withTune({ mktAnchor: 0 }, () => run(fx, el));
       assert.deepStrictEqual(P.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.min]), Q.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.min]));
       assert.ok(Q.scoreRule === null && Math.abs(Q.projScore[v] + Q.projScore[h] - R.ownTotal) < 1e-6 && Math.abs(Q.projScore[v] - Q.projScore[h] - R.ownMargin) < 1e-6, 'with the step off the score is our own');
+      assert.strictEqual(P.winSim, Q.winSim, 'the count of simulations must be taken before the final-score step');
     }
     // no book line for this game: our own total and margin, and the lead still gives a little back
     for (const el of [0, 18]) {
@@ -237,32 +253,74 @@ test('final score: the book\'s total before the tip, its spread for the rest of 
       assert.ok(R && R.total === 0 && R.margin === 0 && P.market === null);
       assert.ok(Math.abs(P.projScore[v] + P.projScore[h] - R.ownTotal) < 0.05 && Math.abs(P.projScore[v] - P.projScore[h] - (R.ownMargin - (1 - keepAt(el)) * lead)) < 0.05, 'no line: own numbers with the give-back');
     }
+    // a pick'em (spread 0) is a spread, not a missing one: before the tip the projected game is level and the chance is 50%
+    const K = run(fx, 0, { market: { ...mk, spreadHome: 0 } });
+    assert.ok(K.scoreRule.margin === E.TUNE.mktMarU && Math.abs(K.projScore[v] - K.projScore[h]) < 0.01 && Math.abs(K.winProb[v] - 0.5) < 0.001, `pick'em: margin ${K.projScore[v] - K.projScore[h]}, chance ${K.winProb[v]}`);
+    // a total with no spread, and a spread with no total: each part works alone
+    const T = run(fx, 0, { market: { ...mk, spreadHome: null } }), S2 = run(fx, 0, { market: { ...mk, total: null } });
+    assert.ok(T.scoreRule.margin === 0 && Math.abs(T.projScore[v] + T.projScore[h] - (0.1 * T.scoreRule.ownTotal + 0.9 * mk.total)) < 0.05 && Math.abs(T.projScore[v] - T.projScore[h] - T.scoreRule.ownMargin) < 0.05);
+    assert.ok(S2.scoreRule.total === 0 && Math.abs(S2.projScore[v] - S2.projScore[h] - mk.spreadHome) < 0.05 && Math.abs(S2.projScore[v] + S2.projScore[h] - S2.scoreRule.ownTotal) < 0.05);
+    // overtime: the clock is the overtime clock, nothing of the rule is left, the score is the simulations' own
+    const O = runAt(fx, forced(fx, 48, 101, 101, '3:00')), RO = O.scoreRule;
+    assert.ok(O.state.elapsed >= 48 && O.state.left > 0 && O.state.left <= 5, `overtime state: elapsed ${O.state.elapsed}, left ${O.state.left}`);
+    assert.ok(RO.rule === 0 && RO.margin === 0 && RO.keep === 1 && RO.total === 0 && Math.abs(O.projScore[v] + O.projScore[h] - RO.ownTotal) < 1e-9 && Math.abs(O.projScore[v] - O.projScore[h] - RO.ownMargin) < 1e-9);
+    assert.ok(O.projScore[v] + O.projScore[h] - 202 < 30, 'overtime projected as if a long stretch were left');
     // a finished game is its final score
     const F = E.projectGame({ ...fx.base, game: fx.g, plays: fx.plays, nsims: 200, seed: 5, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
     assert.ok(F.scoreRule === null && F.projScore[v] === fx.g.visitor_team_score && F.projScore[h] === fx.g.home_team_score);
     assert.strictEqual(F.winProb[v], fx.g.visitor_team_score > fx.g.home_team_score ? 1 : 0);
   }
 });
-test('win chance: from the projected margin and the swing real games have, crossing over to the count of simulations late', () => {
+test('win chance: from the projected margin and the swing real games have, handing back to the count of simulations from 36:00 to 45:00', () => {
   assert.ok(Math.abs(E.normCdf(0) - 0.5) < 1e-7 && Math.abs(E.normCdf(1) - 0.8413447) < 1e-6 && Math.abs(E.normCdf(-1.96) - 0.0249979) < 1e-6 && Math.abs(E.normCdf(3) + E.normCdf(-3) - 1) < 1e-9);
+  const expected = (P, el, v, h) => {
+    const margin = P.projScore[v] - P.projScore[h], wC = ruleAt(el);
+    const curve = E.normCdf(margin / (E.TUNE.winSd0 * Math.sqrt(Math.max(48 - el, 0) / 48) + E.TUNE.winSd1));
+    const p = wC * curve + (1 - wC) * P.winSim;
+    return (p - 0.5) * margin < 0 ? 0.5 : p; // the two reads on opposite sides of level: a coin flip
+  };
   for (const fx of FX) {
     const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, mk = fx.base.market;
-    for (const el of [0, 12, 24, 36, 42, 45]) {
+    for (const el of [0, 12, 24, 36, 39, 42, 44, 45, 46]) {
       const P = run(fx, el), margin = P.projScore[v] - P.projScore[h];
-      const curve = E.normCdf(margin / (E.TUNE.winSd0 * Math.sqrt((48 - el) / 48) + E.TUNE.winSd1));
-      const wC = el === 0 ? 1 : Math.max(0, Math.min(1, (45 - el) / 9));
       assert.ok(P.winSim >= 0 && P.winSim <= 1 && Math.abs(P.winProb[v] + P.winProb[h] - 1) < 1e-12);
-      assert.ok(Math.abs(P.winProb[v] - (wC * curve + (1 - wC) * P.winSim)) < 1e-9, `win chance at ${el} min: ${P.winProb[v]} vs curve ${curve} and count ${P.winSim}`);
-      if (el >= 45) assert.strictEqual(P.winProb[v], P.winSim);
-      if (el <= 36) assert.ok((P.winProb[v] - 0.5) * margin >= 0, 'the side projected ahead is not the side more likely to win');
+      assert.ok(Math.abs(P.winProb[v] - expected(P, el, v, h)) < 1e-9, `win chance at ${el} min: ${P.winProb[v]}, expected ${expected(P, el, v, h)} (count ${P.winSim})`);
+      if (el >= 45 && (P.winSim - 0.5) * margin >= 0) assert.strictEqual(P.winProb[v], P.winSim, 'from 45:00 the chance is the count alone');
+      assert.ok((P.winProb[v] - 0.5) * margin >= 0, 'the side projected ahead is not the side more likely to win');
+      // the count itself is the count of version 17: both switches off give the same number
+      const Q = withTune({ mktAnchor: 0, winCal: 0 }, () => run(fx, el));
+      assert.ok(Q.winProb[v] === Q.winSim && Q.winSim === P.winSim, `count at ${el} min changed: ${P.winSim} against ${Q.winSim}`);
     }
     // before the tip the chance is the book's spread read through the swing of real games (11.5 points): close to the book's own
     const P0 = run(fx, 0), fav = mk.spreadHome >= 0 ? v : h;
     assert.ok(Math.abs(P0.winProb[fav] - E.normCdf(Math.abs(mk.spreadHome) / (E.TUNE.winSd0 + E.TUNE.winSd1))) < 0.005);
     assert.ok(Math.abs(P0.winProb[v] - mk.pAway) < 0.06, `pregame ${P0.winProb[v].toFixed(3)} far from the book's ${mk.pAway.toFixed(3)}`);
-    // switched off: the count of simulations, as before version 18
-    const off = E.TUNE.winCal; let Q; E.TUNE.winCal = 0; try { Q = run(fx, 12); } finally { E.TUNE.winCal = off; }
-    assert.strictEqual(Q.winProb[v], Q.winSim);
+    // close games late, level games, overtime, a heavy favourite on either side: the projected score and the win chance never
+    // name different teams, and from 45:00 and in overtime the chance is the count (or a coin flip when the two disagree)
+    let n = 0;
+    for (const sp of [mk.spreadHome, 12.5, -12.5]) for (const [el, ot] of [[38, null], [43, null], [46, null], [47.5, null], [48, '3:00']]) for (const d of [-1, 0, 2]) {
+      const P = runAt(fx, forced(fx, el, 100 + Math.max(d, 0), 100 + Math.max(-d, 0), ot), { market: { ...mk, spreadHome: sp } });
+      const margin = P.projScore[v] - P.projScore[h];
+      assert.ok((P.winProb[v] - 0.5) * margin >= 0, `spread ${sp}, ${el} min${ot ? ' (overtime)' : ''}, ${P.state.vs}-${P.state.hs}: projected margin ${margin.toFixed(2)} but ${v} ${Math.round(100 * P.winProb[v])}% to win`);
+      assert.ok(Math.abs(P.winProb[v] - expected(P, P.state.elapsed, v, h)) < 1e-9);
+      if (P.state.elapsed >= 45) assert.ok(P.winProb[v] === P.winSim || P.winProb[v] === 0.5);
+      assert.ok(Number.isFinite(margin) && P.projScore[v] >= P.state.vs - 1e-9 && P.projScore[h] >= P.state.hs - 1e-9);
+      n++;
+    }
+    assert.strictEqual(n, 45);
+  }
+});
+test('shown number at the opening tip: no step when no lineup was confirmed (the table used before the tip carries into the game)', () => {
+  for (const fx of FX) {
+    const g = fx.g, tip = { ...g, status_state: 'in', period: 1, time: 'Q1 12:00', visitor_team_score: 0, home_team_score: 0 };
+    const at = (avail) => E.projectGame({ ...fx.base, avail, game: tip, plays: [], nsims: 300, seed: g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    // lineup posted: the pre-game table (a quarter of the middle in the points); nothing posted: the lineup-not-posted table (plain average)
+    const A = at(fx.base.avail), B = at(null);
+    assert.ok(A.lineup.confirmed && !B.lineup.confirmed);
+    let nA = 0, nB = 0;
+    for (const p of A.players) { if (p.mean.pts < 4) continue; assert.ok(Math.abs(p.proj.pts - (0.75 * p.mean.pts + 0.25 * p.mid.pts)) < 1e-9, `${p.name}: lineup posted, shown ${p.proj.pts}`); nA++; }
+    for (const p of B.players) { if (p.mean.pts < 4) continue; assert.ok(Math.abs(p.proj.pts - p.mean.pts) < 1e-9, `${p.name}: no lineup, shown ${p.proj.pts} is not the plain average ${p.mean.pts}`); nB++; }
+    assert.ok(nA >= 10 && nB >= 10);
   }
 });
 test('shown number: the version 18 weights of the middle (points before the tip and at the half, rebounds from 12:00 to the half)', () => {

@@ -2277,7 +2277,9 @@ let wTip = 0; // share of the tip-off projection still in the numbers (1 at the 
 let landNow = LAND[patG] || {};
 if (TUNE.landInterp > 0 && st.phase === 'live' && st.period <= 4) {
 const lo = clamp(Math.floor(el / 6) * 6, 0, 42), hi = Math.min(lo + 6, 42), t = hi > lo ? clamp((el - lo) / 6, 0, 1) : 0;
-const A = (lo === 0 ? LAND.pre : LAND['s' + lo]) || {}, B = LAND['s' + hi] || {};
+// (0:00 = the table used just before the tip: the lineup-not-posted one when no lineup was confirmed, or the shown points of
+// every regular would step down a third of a point at the opening tip now that the two tables differ)
+const A = (lo === 0 ? (lineup.confirmed || !(TUNE.repGroup > 0) ? LAND.pre : LAND.rep) : LAND['s' + lo]) || {}, B = LAND['s' + hi] || {};
 landNow = {};
 for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) landNow[k] = (1 - t) * (A[k] || 0) + t * (B[k] || 0);
 }
@@ -2545,15 +2547,21 @@ for (let i = 0; i < N; i++) { const dWin = st.vs + teamPts[v][i] - (st.hs + team
 //   lead is given back by the end (final margin = 0.8 to 0.95 x the lead + the rest, fitted by stage; the share kept rises with
 //   the square of the game clock). Final margin miss 11.66 -> 11.07 at tip-off, 9.70 -> 8.90 at 18 minutes, 9.00 -> 8.32 at
 //   the half, 6.55 -> 6.18 after three quarters (592 games), and 11.83 -> 11.09 at 12:00, 10.50 -> 9.81 at 18:00 on this
-//   season's 121. With no book line the same give-back is applied to our own estimate.
+//   season's 121. With no book line the same give-back is applied to our own estimate. From 36:00 the rule fades into the
+//   simulations' own margin (see ruleW above).
 // Player numbers are not touched: tested, the book's total and spread add nothing to them (their miss moves by less than
 // 0.2% either way at every stage), and before a game the team total is not their sum.
+// Late in a game the simulations know the score and the clock exactly, and they are what the win chance is counted from. So the
+// margin rule hands back to the simulations' own margin with the same weight as the win chance does (all rule until 36:00, none
+// from 45:00 and in overtime): otherwise a level game with two minutes left could show one team ahead in the projected score and
+// the other ahead in the win chance (found in review: 7 of 500 close late states).
+const ruleW = st.phase === 'pre' ? 1 : clamp((45 - el) / 9, 0, 1);
 let anchor = null;
 if (TUNE.mktAnchor > 0 && st.phase !== 'final' && left > 0 && N > 0) {
 const mv = mean(Array.from(teamPts[v])), mh = mean(Array.from(teamPts[h]));
 const wT = mk && mk.total ? TUNE.mktTotW * (st.phase === 'pre' ? 1 : clamp((9 - el) / 6, 0, 1)) : 0;
-const uM = mk && mk.spreadHome != null ? TUNE.mktMarU : 0;
-const keep = st.phase === 'pre' || el <= 0 ? 1 : Math.min(1, TUNE.mktKeep + (1 - TUNE.mktKeep) * (el / 48) ** 2);
+const uM = (mk && mk.spreadHome != null ? TUNE.mktMarU : 0) * ruleW;
+const keep = st.phase === 'pre' || el <= 0 ? 1 : 1 - ruleW * (1 - Math.min(1, TUNE.mktKeep + (1 - TUNE.mktKeep) * (el / 48) ** 2));
 const ownTotal = st.vs + st.hs + mv + mh, ownMargin = st.vs - st.hs + mv - mh;
 if (wT > 0 || uM > 0 || keep < 1) {
 const total = (1 - wT) * ownTotal + wT * ((mk && mk.total) || ownTotal);
@@ -2563,7 +2571,7 @@ const toCome = Math.max(total - st.vs - st.hs, 0);
 const dv = Math.max((toCome + rest) / 2, 0) - mv, dh = Math.max((toCome - rest) / 2, 0) - mh;
 for (let i = 0; i < N; i++) { teamPts[v][i] = Math.max(teamPts[v][i] + dv, 0); teamPts[h][i] = Math.max(teamPts[h][i] + dh, 0); }
 }
-anchor = { total: wT, margin: uM, keep, ownTotal, ownMargin };
+anchor = { total: wT, margin: uM, keep, rule: ruleW, ownTotal, ownMargin };
 }
 const projScore = { [v]: st.vs + mean(Array.from(teamPts[v])), [h]: st.hs + mean(Array.from(teamPts[h])) };
 // Win chance (version 18). Counting simulations was too timid: their final margins swing about 30 points around the average
@@ -2576,9 +2584,12 @@ const projScore = { [v]: st.vs + mean(Array.from(teamPts[v])), [h]: st.hs + mean
 // the score and the clock exactly), so the two cross over from 36:00 to 45:00; from 45:00 on the chance is the count alone.
 let pWinV = N > 0 ? vWin / N : 0.5;
 if (TUNE.winCal > 0 && st.phase !== 'final' && left > 0 && N > 0) {
-const wC = st.phase === 'pre' ? 1 : clamp((45 - el) / 9, 0, 1);
+const wC = ruleW;
 if (wC > 0) pWinV = wC * normCdf((projScore[v] - projScore[h]) / (TUNE.winSd0 * Math.sqrt(clamp(left / 48, 0, 1)) + TUNE.winSd1)) + (1 - wC) * pWinV;
 }
+// The two reads can still land a hair apart on either side of level (a mean and a count are different things): then the game is
+// a coin flip and says so, so the projected score and the win chance never name different teams.
+if (TUNE.winCal > 0 && st.phase !== 'final' && (pWinV - 0.5) * (projScore[v] - projScore[h]) < 0) pWinV = 0.5;
 return {
 state: st, patG, teamRaw, teamFactor: tF, players: results, projScore, winProb: { [v]: pWinV, [h]: 1 - pWinV }, winSim: N > 0 ? vWin / N : 0.5,
 blowout: { now: isBlowout(st), pBlow, pBig }, possLeft, pace: { season: seasonPace, live: livePace },
