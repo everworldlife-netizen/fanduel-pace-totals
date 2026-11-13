@@ -15,7 +15,7 @@ function make(answer, opts = {}) {
   const calls = [], saved = new Map();
   const clock = { now: 1700000000000 };
   class D extends Date { static now() { return clock.now; } }
-  const ctx = { Date: D, Math, Error, Number, calls, plusOnly: (x) => x, window: { GGLive: opts.GGLive === undefined ? GGLive : opts.GGLive }, S: { settings: { edge: opts.edge || 2, ev: 3 } }, store: { get: (k, d) => (saved.has(k) ? saved.get(k) : d), set: (k, v) => { saved.set(k, v); } }, fetch: async (url) => { calls.push(url); const a = answer(url, calls.length); if (a === 'down') throw new Error('Failed to fetch'); return { ok: a.status >= 200 && a.status < 300, status: a.status, json: async () => a.body || {} }; } };
+  const ctx = { Date: D, Math, Error, Number, calls, plusOnly: (x) => x, window: { GGLive: opts.GGLive === undefined ? GGLive : opts.GGLive }, S: { settings: { edge: opts.edge || 2, ev: 3 } }, store: { get: (k, d) => (saved.has(k) ? saved.get(k) : d), set: (k, v) => { saved.set(k, v); saved.writes = (saved.writes || 0) + 1; } }, JSON, fetch: async (url) => { calls.push(url); const a = answer(url, calls.length); if (a === 'down') throw new Error('Failed to fetch'); return { ok: a.status >= 200 && a.status < 300, status: a.status, json: async () => a.body || {} }; } };
   vm.runInNewContext(`${src.slice(from, to)}; this.api = api; this.LEAGUE = LEAGUE;`, ctx);
   return { api: ctx.api, calls, clock, LEAGUE: ctx.LEAGUE, saved };
 }
@@ -75,6 +75,9 @@ function make(answer, opts = {}) {
     const A = make((url) => ({ status: 200, body: body(url) }));
     const b = await A.api('/api/eb/board?edge=2&ev=0.03');
     assert.ok(b.live[0].eval.markets[0].mean === 116.2 && b.live[0].eval.markets[0].lateKeep === 0.75 && b.live[0].eval.markets[0].serverMean === 121.6, JSON.stringify(b.live[0].eval.markets[0]));
+    // the call stays: the app's own bars are 2 points and 3% (the setting is in percent and must reach the module as 0.03)
+    assert.ok(b.live[0].eval.markets[0].call === 'Over' && b.live[0].eval.markets[0].evOver > 0.03 && b.live[0].eval.markets[0].evOver < 3, JSON.stringify(b.live[0].eval.markets[0]));
+    assert.ok(b.picks.length === 2 && b.picks[0].market.call === 'Over', 'the picks are not rebuilt from the games');
     assert.ok(b.live[1].eval.markets[0].mean === 121.6 && b.live[1].eval.markets[0].lateKeep === undefined, 'a game at halftime was changed');
     const g = await A.api('/api/eb/game/7?edge=2');
     assert.strictEqual(g.eval.markets[0].mean, 116.2);
@@ -83,6 +86,8 @@ function make(answer, opts = {}) {
     await W.api('/api/eb/board?edge=2');
     assert.deepStrictEqual(W.saved.get('gg-phase-w'), [0.68, null, 0.15, 0.47, null]);
     await W.api('/api/eb/game/7'); assert.deepStrictEqual(W.saved.get('gg-phase-w'), [0.68, null, 0.15, 0.47, null]);
+    for (let i = 0; i < 5; i++) await W.api('/api/eb/board?edge=2');
+    assert.strictEqual(W.saved.writes, 1, 'the weights are written again on every refresh though nothing changed');
     // the same body from any other path is left as the server sent it
     for (const p of ['/api/eb/performance?days=7', '/api/eb/graded?days=7', '/api/games', '/api/eb/matchup?a=x&b=y']) assert.strictEqual((await A.api(p)).live[0].eval.markets[0].mean, 121.6, p);
     // the phone's own minimum gap decides whether a late call stays
@@ -94,6 +99,82 @@ function make(answer, opts = {}) {
     assert.strictEqual((await none.api('/api/eb/board?edge=2')).live[0].eval.markets[0].mean, 121.6);
     const broken = make((url) => ({ status: 200, body: body(url) }), { GGLive: { fix() { throw new Error('boom'); } } });
     assert.strictEqual((await broken.api('/api/eb/board?edge=2')).live[0].eval.markets[0].mean, 121.6);
+  });
+  await test('the plain-English research text reads the same corrected numbers as the cards (it keeps its own copy of every answer)', async () => {
+    const samples = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'board-samples.json'), 'utf8'));
+    const answers = { board: samples.boards[2], game: samples.game };
+    const fakeFetch = async (url) => { const body = /\/api\/eb\/board/.test(url) ? answers.board : answers.game; const mk = () => ({ ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(body)), clone: () => mk() }); return mk(); };
+    const win = { fetch: fakeFetch, GGLive, console };
+    const ctx = { window: win, document: { body: null, addEventListener() {} }, queueMicrotask, console, Number, String, Math, JSON, Date, Object, Array, MutationObserver: class { observe() {} disconnect() {} } };
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'research.js'), 'utf8'), ctx);
+    const R = win.GGResearch;
+    await win.fetch('/api/eb/board?edge=2&ev=0.03');
+    await win.fetch('/api/eb/game/1?edge=2&ev=0.03');
+    // what the app's own copy looks like after api()
+    const mine = JSON.parse(JSON.stringify(answers.board)); GGLive.fix(mine, { edgeMin: 2, evMin: 0.03 });
+    const page = JSON.parse(JSON.stringify(answers.game)); GGLive.fix(page, { edgeMin: 2, evMin: 0.03 });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(R._state.board)), mine, 'the research copy of the board is not the corrected board');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(R._state.detail)), page, 'the research copy of the game page is not the corrected page');
+    const late = mine.live.filter((g) => g.eval.markets[0].lateKeep != null);
+    assert.ok(late.length >= 1 && page.eval.markets[0].lateKeep != null, 'the samples have no late game');
+    // the saved page: 79% played, our corrected number is not ahead of the line → no number of ours, no chance, no return in the words
+    const gm = page.eval.markets.find((m) => m.id === 'game');
+    assert.ok(gm.fair <= gm.line && gm.serverFair > gm.line, `sample changed: ${gm.fair} / ${gm.serverFair} / ${gm.line}`);
+    const x = R.explain(R._state.detail.eval.best || R._state.detail.eval.markets[0], R._state.detail.eval, R._state.detail.game, {});
+    const words = [x.verdict, x.headline, ...(x.reasons || []).map((r) => r.text), x.chance, x.sure].join(' ');
+    assert.ok(/NO PLAY/.test(x.verdict) && !/times out of 10|Long-run return|plus edge of|points ahead/i.test(words), `research words for a line we are not ahead of: ${words.slice(0, 300)}`);
+    assert.strictEqual(R.mathBox(R._state.detail.eval.markets[0]), '', 'the math box shows numbers against a line we are not ahead of');
+    const why = R.whyCard(R._state.detail);
+    assert.ok(new RegExp(`Late in the game:.*We keep ${Math.round(gm.lateKeep * 100)}% of the points still expected, which takes the player-history number from ${gm.serverMean} to <b>${gm.mean}</b>`).test(why), why.slice(0, 900));
+    assert.ok(/our number is not ahead of FanDuel’s live line/.test(why) && !new RegExp(`That gives <b>${Math.round(gm.serverFair)}</b>`).test(why), 'the old number is still quoted');
+    // a late game that is still a plus edge: the words quote the corrected number, gap and chance, and the math box says why
+    const g = JSON.parse(JSON.stringify(answers.game)); const m0 = g.eval.markets.find((m) => m.id === 'game');
+    Object.assign(m0, { line: m0.line - 6, call: 'Over', open: true, reason: null, overOdds: -110, underOdds: -110 }); g.eval.best = m0;
+    answers.game = g; await win.fetch('/api/eb/game/1?edge=2&ev=0.03');
+    const d = R._state.detail, dm = d.eval.markets.find((m) => m.id === 'game');
+    assert.ok(dm.call === 'Over' && dm.lateKeep != null && dm.fair < dm.serverFair, JSON.stringify(dm));
+    const y = R.explain(dm, d.eval, d.game, {}); const yw = [y.headline, ...(y.reasons || []).map((r) => r.text), y.chance].join(' ');
+    assert.ok(yw.includes(String(Math.round(dm.fair))) && !/undefined|NaN/.test(yw), yw.slice(0, 300));
+    assert.ok(/Late-game correction<\/span><b>\d+% of the points still expected are kept/.test(R.mathBox(dm)) && R.mathBox(dm).includes(`<b>${Math.round(dm.fair * 10) / 10}</b>`));
+    for (const t of [words, why, yw, R.mathBox(dm)]) assert.ok(!/\b(over|under)\b/i.test(t.replace(/<[^>]+>/g, ' ')), 'a banned word in the research text');
+    // without the module the copy is the server's own (the add-on must never break the app)
+    const win2 = { fetch: fakeFetch, console }; const ctx2 = { ...ctx, window: win2 }; vm.createContext(ctx2);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'research.js'), 'utf8'), ctx2);
+    await win2.fetch('/api/eb/game/1?edge=2&ev=0.03'); assert.strictEqual(win2.GGResearch._state.detail.eval.markets[0].lateKeep, undefined);
+  });
+  await test('Results screen: "Ours" is the number the app shows, from the graded games; the server\'s table is the fall-back, labelled as what it is', async () => {
+    const rs = src.indexOf('// ---------- results ----------'), re = src.indexOf('// ---------- leagues ----------');
+    assert.ok(rs > 0 && re > rs, 'the Results code was not found in app.js');
+    const FXG = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'graded-nov9-13.json'), 'utf8'));
+    const perf = { days: 14, games: 268, markets: [{ market: 'game', n: 44, w: 28, l: 16, p: 0, units: 7.01, winPct: 63.6, roi: 15.9 }], gapBuckets: [], accuracy: [{ market: 'game', checkpoint: 0, n: 49, modelMae: 9.3, lineMae: 9.6 }, { market: 'game', checkpoint: 25, n: 87, modelMae: 7.7, lineMae: 6.8 }, { market: 'game', checkpoint: 75, n: 109, modelMae: 4.9, lineMae: 4.6 }, { market: 'half1', checkpoint: 0, n: 13, modelMae: 6.7, lineMae: 6.9 }], recent: [], tracking: { active: 5, awaitingGrade: 6, lastRun: { at: '2026-11-13T20:43:34.738Z' } } };
+    const run = async ({ graded, weights, module = GGLive }) => {
+      const el = { innerHTML: '', children: [] }; const asked = [];
+      const ctx = { Date, Math, Number, String, JSON, Array, Object, Promise, window: { GGLive: module }, S: { perfDays: 14 }, store: { get: (k, d) => (k === 'gg-phase-w' && weights !== undefined ? weights : d), set() {} },
+        $: () => el, esc: (x) => String(x), n1: (v) => (v != null && Number.isFinite(Number(v)) ? (Math.round(Number(v) * 10) / 10).toFixed(1) : '—'), odds: (o) => String(o), tween: (k, v) => String(v), animate() {},
+        api: async (p) => { asked.push(p); if (/performance/.test(p)) return JSON.parse(JSON.stringify(perf)); if (graded === 'fail') throw new Error('HTTP 500'); return graded; } };
+      vm.createContext(ctx);
+      vm.runInContext(`${src.slice(rs, re)}; this.loadPerformance = loadPerformance;`, ctx);
+      await ctx.loadPerformance(); await ctx.loadPerformance();
+      return { html: el.innerHTML, text: el.innerHTML.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '), asked };
+    };
+    const A = await run({ graded: { graded: FXG.graded }, weights: FXG.phaseWeights });
+    const cells = [...A.html.matchAll(/<tr><td>([^<]+)<\/td><td>(\d+)<\/td><td class="(pos)?">([\d.]+)<\/td><td>([\d.—]+)<\/td><\/tr>/g)].map((m) => [m[1], +m[2], m[4], m[5], m[3] || '']);
+    assert.deepStrictEqual(cells, [
+      ['Game, before the tip (every game)', 268, '9.3', '—', ''], ['Game, before the tip (FanDuel line up early)', 50, '9.3', '9.7', 'pos'],
+      ['Game, about 35% played', 88, '6.8', '6.8', ''], ['Game, about 61% played', 98, '5.5', '5.6', 'pos'], ['Game, about 87% played', 110, '3.6', '4.6', 'pos'], ['1H @ pregame', 13, '6.7', '6.9', 'pos'],
+    ], JSON.stringify(cells));
+    assert.ok(/Ours is the number the app shows \(GG proj\), graded with the rules it uses today/.test(A.text) && /finish 12\.5 points apart on average \(5,386 pairs of meetings\)/.test(A.text));
+    assert.ok(!/NaN|undefined/.test(A.text) && !/\b(over|under)\b/i.test(A.text), A.text.slice(0, 400));
+    assert.strictEqual(A.asked.filter((p) => /graded/.test(p)).length, 1, 'the graded list was asked for again on a refresh inside five minutes');
+    // the list cannot be loaded, is empty or odd, or the module is missing: the server's own table, said to be the model alone
+    for (const o of [{ graded: 'fail' }, { graded: { graded: [] } }, { graded: null }, { graded: { graded: 'x' } }, { graded: { graded: FXG.graded }, module: null }]) {
+      const B = await run(o);
+      assert.ok(/Game @ 25%/.test(B.text) && /7\.7/.test(B.text) && /"ours" is the model alone/.test(B.text) && !/NaN|undefined/.test(B.text), `${JSON.stringify(Object.keys(o))}: ${B.text.slice(0, 300)}`);
+    }
+    // junk saved as the weights: the built-in ones are used
+    const C = await run({ graded: { graded: FXG.graded }, weights: 'junk' });
+    assert.ok(/Game, about 35% played/.test(C.text) && />6\.8</.test(C.html));
   });
   await test('when the league source starts refusing, the gamer profiles keep today\'s results they already had, and the note is in plain words', async () => {
     const dir = path.join(__dirname, '..', 'static');

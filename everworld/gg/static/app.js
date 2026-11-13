@@ -106,7 +106,10 @@
       try {
         window.GGLive.fix(body, { edgeMin: Number(S.settings.edge), evMin: Number(S.settings.ev) / 100 });
         // the share of our raw number the server is using in each stretch of a game, read off the board for the report card
-        if (/^\/api\/eb\/board/.test(path)) store.set('gg-phase-w', window.GGLive.learnWeights(body, store.get('gg-phase-w', null)));
+        if (/^\/api\/eb\/board/.test(path)) {
+          const had = store.get('gg-phase-w', null), now = window.GGLive.learnWeights(body, had);
+          if (JSON.stringify(now) !== JSON.stringify(had)) store.set('gg-phase-w', now); // (saved only when one of them changed)
+        }
       } catch { /* the server's own numbers are shown */ }
     }
     return plusOnly(body);
@@ -231,7 +234,8 @@
     // plus edges only: our number is never set against a line it is not ahead of (v3.10)
     if (/Below the line/i.test(r) || (isNum(m.gap) && m.gap < 0)) return 'Our number is not ahead of this line, so there is no plus edge here. We only play plus edges.';
     if (/Edge under/i.test(r)) return `Too close to call: GG ${n1(m.fair)} and FanDuel’s ${m.line} are only ${n1(Math.abs(m.gap))} points apart. We wait for a bigger gap before calling it a plus edge.`;
-    if (/ratings may be off/i.test(r)) return `Huge gap with FanDuel (${n1(Math.abs(m.rawGap))} points) usually means the ratings are off for this pair, so no call.`;
+    // (the gap the server passed on is its own: quoted from its number, not from the late-game corrected one)
+    if (/ratings may be off/i.test(r)) return `Huge gap with FanDuel (${n1(Math.abs(isNum(m.serverMean) && isNum(m.line) ? m.serverMean - m.line : m.rawGap))} points) usually means the ratings are off for this pair, so no call.`;
     if (/Price/i.test(r)) return `There’s a ${sign(m.gap)} edge, but the price takes away the value.`;
     if (/Low confidence/i.test(r)) return 'Gap is there, but confidence is too low to trust it.';
     if (/early|late/i.test(r)) return f > 0.8 ? 'Final stretch — late calls lose too often, so we sit out.' : 'Too early for this market.';
@@ -321,7 +325,7 @@
         <div class="tile"><div class="k">Edge</div><div class="v ${gm.gap > 0 ? 'pos' : ''}">${edgeTxt(gm.gap)}</div></div>
       </div>
       ${gapbar(`${key}:gb`, gm.gap)}
-      ${live ? moveTag(`${key}:mv`, gm.fair ?? gm.mean, 'scoring picked up', 'scoring slowed') : ''}
+      ${live ? moveTag(`${key}:mv`, gm.serverFair ?? gm.fair ?? gm.mean, 'scoring picked up', 'scoring slowed') : ''}
       ${fdMu && fdMu.lv && fdMu.lv.fade ? `<p class="fade-note">📉 ${esc(fdMu.lv.fade[0].text)}</p>` : ''}
       ${fdMu ? factorsStrip(fdMu) : ''}
       <div class="match-foot">
@@ -1529,7 +1533,10 @@
       let card = null;
       if (window.GGLive) {
         try {
-          const gr = await api(`/api/eb/graded?days=${S.perfDays}`);
+          // (the graded list is large and changes slowly: asked for at most every five minutes, not on every refresh of this screen)
+          const kept = S.gradedKept && S.gradedKept.days === S.perfDays && Date.now() - S.gradedKept.at < 300000 ? S.gradedKept : null;
+          const gr = kept ? kept.data : await api(`/api/eb/graded?days=${S.perfDays}`);
+          if (!kept && gr && Array.isArray(gr.graded)) S.gradedKept = { days: S.perfDays, at: Date.now(), data: gr };
           const sent = p.tracking && p.tracking.lastRun && p.tracking.lastRun.phaseWeights; // (sent only in the runs that re-learn them)
           const c = window.GGLive.reportCard(gr && gr.graded, Array.isArray(sent) ? sent : store.get('gg-phase-w', null));
           if (c && c.rows.length) card = c;

@@ -45,8 +45,9 @@
 
   // How far the number shown usually lands from the final (average miss), measured on the graded games of Nov 9 to 13, 2026 with
   // today's rules: 9.3 before the tip (268 games), 6.8 about a third of the way in (88 readings), 5.5 at about 60% (98), 3.6 at
-  // about 87% (110), and about 2.5 at the horn (overtime is still possible). In between, a straight line.
-  const USUAL = [[0, 9.3], [0.35, 6.8], [0.61, 5.5], [0.87, 3.6], [1, 2.5]];
+  // about 87% (110), and about 3 from there to the horn (2.8 on 19 readings at 94%, 3.3 on 25 at 99%: overtime is still possible).
+  // In between, a straight line.
+  const USUAL = [[0, 9.3], [0.35, 6.8], [0.61, 5.5], [0.87, 3.6], [1, 3.0]];
   /** The usual miss of the number shown at a share of the game played (before the tip when the game is not being played). */
   function usualMiss(f, live) {
     const x = live && num(f) ? clamp(Number(f), 0, 1) : 0;
@@ -67,21 +68,23 @@
    */
   function fixMarket(m, soFar, keep, bars) {
     if (!m || m.lateKeep != null || !(keep < 1) || !num(m.mean) || !num(soFar)) return m;
+    const wGame = bars && num(bars.weight) ? clamp(Number(bars.weight), 0, 1) : 1; // the game's own share, when the market does not carry one
     const mean0 = Number(m.mean), sofar = Number(soFar);
     if (!(mean0 > sofar)) return m;
     const mean = sofar + keep * (mean0 - sofar);
     const hasLine = num(m.line), line = hasLine ? Number(m.line) : null;
     // the share of our raw number in the number shown: the server's, or read back from its two numbers when it is not sent
     let w = 1;
-    if (hasLine) w = num(m.weight) ? clamp(Number(m.weight), 0, 1) : num(m.fair) && Math.abs(mean0 - line) > 0.2 ? clamp((Number(m.fair) - line) / (mean0 - line), 0, 1) : 1;
+    if (hasLine) w = num(m.weight) ? clamp(Number(m.weight), 0, 1) : num(m.fair) && Math.abs(mean0 - line) > 0.2 ? clamp((Number(m.fair) - line) / (mean0 - line), 0, 1) : wGame;
     const fair = hasLine ? w * mean + (1 - w) * line : mean;
     m.serverMean = mean0; m.serverFair = num(m.fair) ? Number(m.fair) : null; m.lateKeep = r3(keep);
-    m.mean = r1(mean); m.fair = r1(fair);
+    // (rounded to a tenth like the server's numbers, and never above them: the correction only takes points away)
+    m.mean = Math.min(r1(mean), mean0); m.fair = m.serverFair != null ? Math.min(r1(fair), m.serverFair) : r1(fair);
     // fewer points still to come means a narrower spread of finals, in step with the share kept
     if (num(m.sd)) m.sd = r1(Math.max(Number(m.sd) * Math.sqrt(keep), 1.2));
     if (!hasLine) return m;
-    m.gap = r1(fair - line); m.rawGap = r1(mean - line);
-    const p = num(m.sd) ? 1 - cdf((line - fair) / (Number(m.sd) * 0.92)) : null; // (the server's own chance formula, on the new numbers)
+    m.gap = r1(m.fair - line); m.rawGap = r1(m.mean - line);
+    const p = num(m.sd) ? 1 - cdf((line - m.fair) / (Number(m.sd) * 0.92)) : null; // (the server's own chance formula, on the new numbers)
     const dO = dec(m.overOdds), dU = dec(m.underOdds);
     m.pOver = p == null ? null : r3(p);
     m.evOver = p != null && dO ? r3(p * (dO - 1) - (1 - p)) : null;
@@ -109,10 +112,11 @@
     const total = a != null && h != null ? a + h : num(game.total) ? Number(game.total) : null;
     for (const m of ev.markets) {
       if (!m || !m.id) continue;
-      if (m.id === 'game') fixMarket(m, total, keep, { edge, ev: evMin });
-      else if (m.id === 'awayTotal') fixMarket(m, a, keep, { edge: edge * 0.75, ev: evMin });
-      else if (m.id === 'homeTotal') fixMarket(m, h, keep, { edge: edge * 0.75, ev: evMin });
-      else if (/^q[1-4]$/.test(m.id) && num(m.soFar)) fixMarket(m, m.soFar, keep, { edge: Math.max(1.5, edge * 0.75), ev: evMin });
+      const weight = ev.modelWeight;
+      if (m.id === 'game') fixMarket(m, total, keep, { edge, ev: evMin, weight });
+      else if (m.id === 'awayTotal') fixMarket(m, a, keep, { edge: edge * 0.75, ev: evMin, weight });
+      else if (m.id === 'homeTotal') fixMarket(m, h, keep, { edge: edge * 0.75, ev: evMin, weight });
+      else if (/^q[1-4]$/.test(m.id) && num(m.soFar)) fixMarket(m, m.soFar, keep, { edge: Math.max(1.5, edge * 0.75), ev: evMin, weight });
     }
     ev.lateKeep = r3(keep);
     ev.best = ev.markets.filter((m) => m && m.call && m.call !== 'Pass').sort((x, y) => (y.score || 0) - (x.score || 0))[0] || null;
@@ -125,17 +129,14 @@
     const live = new Map();
     if (Array.isArray(body.live)) for (const g of body.live) if (g && g.eval) { fixEval(g, g.eval, opts); live.set(String(g.eventId), g); }
     if (body.game && body.eval) fixEval(body.game, body.eval, opts);
-    if (Array.isArray(body.picks)) {
-      // a pick carries its own copy of the game's best market: swap in the corrected one, drop picks that are no longer plus edges
-      const out = [];
-      for (const p of body.picks) {
-        const g = p && live.get(String(p.eventId));
-        if (!g || !g.eval || !g.eval.lateKeep) { out.push(p); continue; }
-        const m = p.market && g.eval.markets.find((x) => x && x.id === p.market.id);
-        if (m && m.call && m.call !== 'Pass') out.push({ ...p, market: m });
-        else if (g.eval.best) out.push({ ...p, market: g.eval.best });
-      }
-      body.picks = out.sort((x, y) => ((y && y.market && y.market.score) || 0) - ((x && x.market && x.market.score) || 0));
+    if (Array.isArray(body.picks) && Array.isArray(body.live)) {
+      // The picks are the strongest plus edges on the board, at most three (the server's own rule). The server sends them as
+      // copies made before the correction, and only its top three: rebuilt here from the games themselves, so the list and the
+      // cards always say the same thing, and a fourth plus edge moves up when a late one is gone.
+      const plus = (g) => (g && g.eval && Array.isArray(g.eval.markets) ? g.eval.markets.filter((m) => m && m.call === 'Over').sort((x, y) => (y.score || 0) - (x.score || 0))[0] : null);
+      body.picks = body.live.map((g) => ({ g, m: plus(g) })).filter((x) => x.m)
+        .sort((x, y) => (y.m.score || 0) - (x.m.score || 0)).slice(0, 3)
+        .map(({ g, m }) => ({ id: g.id, eventId: g.eventId, name: g.name, away: g.away, home: g.home, status: g.status, market: m }));
     }
     return body;
   }
@@ -162,6 +163,11 @@
   function phaseWeight(f, pw) {
     const i = phaseIndex(Number(f), true), v = Array.isArray(pw) ? pw[i] : null;
     return num(v) && Number(v) >= 0 && Number(v) <= 1 ? Number(v) : SERVER.phaseWeights[i];
+  }
+  /** The server's share of our number before the tip (the first of its five weights). */
+  function preWeight(pw) {
+    const v = Array.isArray(pw) ? pw[0] : null;
+    return num(v) && Number(v) >= 0 && Number(v) <= 1 ? Number(v) : SERVER.phaseWeights[0];
   }
   /** Read the weights the server is using right now off a board answer, into a saved list of five (unknown ones stay as they were). */
   function learnWeights(board, saved) {
@@ -192,11 +198,14 @@
       if (fin == null) continue;
       games += 1;
       const exp = g.pregame && num(g.pregame.expected) ? Number(g.pregame.expected) : null;
-      if (exp != null) add('all', 0, exp, null, exp, fin);
+      // before the tip the board shows the pregame number, or its mix with FanDuel's line once FanDuel has one up
+      const c0 = g.checkpoints && g.checkpoints['0'] && g.checkpoints['0'].game, w0 = preWeight(pw);
+      const pre = c0 && num(c0.mean) && num(c0.line) ? { raw: Number(c0.mean), line: Number(c0.line) } : null;
+      if (pre) { const shown = w0 * pre.raw + (1 - w0) * pre.line; add('all', 0, shown, null, pre.raw, fin); add('pre', 0, shown, pre.line, pre.raw, fin); }
+      else if (exp != null) add('all', 0, exp, null, exp, fin);
       for (const [cp, c] of Object.entries(g.checkpoints || {})) {
         const m = c && c.game;
-        if (!m || !num(m.mean) || !num(m.line)) continue;
-        if (cp === '0') { if (exp != null) add('pre', 0, exp, m.line, exp, fin); continue; }
+        if (!m || !num(m.mean) || !num(m.line) || cp === '0') continue;
         if (!num(c.f) || exp == null || !['25', '50', '75'].includes(cp)) continue;
         const f = Number(c.f), raw = Number(m.mean);
         const soFar = clamp(scoreFromRaw(raw, exp, f), 0, raw);
@@ -207,5 +216,5 @@
     return { games, rows };
   }
 
-  return { LATE, SERVER, USUAL, usualMiss, keepLate, lateRaw, fixMarket, fixEval, fix, pointsShare, scoreFromRaw, phaseIndex, phaseWeight, learnWeights, shownLive, reportCard };
+  return { LATE, SERVER, USUAL, usualMiss, keepLate, lateRaw, fixMarket, fixEval, fix, pointsShare, scoreFromRaw, phaseIndex, phaseWeight, preWeight, learnWeights, shownLive, reportCard };
 });

@@ -1346,10 +1346,29 @@ changed (the standing brief publishes to the two Spaces only; a redeploy cannot 
   readings 5.33 → 5.19 (FanDuel 5.58).
 - Report card: the Results table grades the number the app shows, with today's rules, next to FanDuel's line at the same
   moment (`reportCard`; the server's weights are read off the live board and saved under `gg-phase-w`). On the 268 games:
-  before the tip 9.35 (FanDuel 9.70 on 50), about 35% played 6.80 (6.75), about 61% 5.51 (5.63), about 87% 3.61 (4.60).
-  The late rows are in-sample for the one setting until newer games fill the 14 days.
+  before the tip 9.34 on every game, 9.27 against FanDuel's 9.70 on the 50 games with a line up early (there the board shows
+  the mix of the two), about 35% played 6.80 (6.75), about 61% 5.51 (5.63), about 87% 3.61 (4.60).
+  The late rows are in-sample for the one setting until newer games fill the 14 days. The graded list (about 210 KB) is
+  asked for at most every five minutes.
 - "±N" next to every GG proj on the board: the measured usual miss from that point of a game (9 before the tip, 7 a third
   in, 5 to 6 in the middle, 4 late, 3 at the end), with a legend line.
+- The picks list is rebuilt on the phone from the games themselves (the strongest plus edges, at most three), so the list
+  and the cards always agree; the server sends copies made before the correction, and only its own top three.
+
+**Independent review before publishing** (one reviewer, 200,000 random cases on the module: no throw, no odd value, no call
+added). One blocker and four small things, all fixed and tested:
+1. BLOCKER: `research.js` (the plain-English text on pick cards and the game page) keeps its OWN copy of every board and game
+   answer by wrapping `fetch`, so it still read the server's uncorrected numbers: a card could say "Below line" next to
+   words quoting a chance and a return for that line. It now applies the same correction to its copy (same bars), and its
+   "How we got our number" card has a "Late in the game" step. Any future change to the numbers must go through BOTH copies.
+2. The "scoring picked up / slowed" tag followed the corrected number, so the correction's own drift read as scoring: it
+   follows the server's number now.
+3. A reason that quotes the server's gap ("Huge gap with FanDuel") quotes the server's number, not the corrected one.
+4. Picks: see above (a fourth plus edge could be missing from the list while its card showed it).
+5. The "before the tip" rows of the report card graded the pregame number where the board shows its mix with FanDuel's line.
+Also: the number shown is never above the server's after rounding; a missing weight falls back to the game's own; the
+weights are saved only when they change. Seventeen deliberately broken copies (`run.js` in the session scratchpad) each fail
+at least one check of `gg/tests/gg-live.test.js` (10 checks) or `gg/tests/app-api.test.js` (8 checks).
 
 **Tried and NOT built**
 - New weights by stretch fitted on these readings (`gg-06-livefix`): they jump from fit to fit (0 / 1 / 0 / 0.5 / 0.65
@@ -1444,8 +1463,8 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 node cs/tests/engine.test.js          # engine on two real games (90 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording, every made three, marked OUT, no steps at 3:00 / 15:00 / 21:00 / 27:00
 node cs/tests/app.test.js             # boots the real app in a simulated phone browser (34 checks, about 8 minutes; ONLY="part of a name" runs one): screens, wording rules, edge record, stale boxes, offline start, dated copies and the morning-after replay, the day turning in an open app, a full phone, two copies open, a long first load
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
-node gg/tests/app-api.test.js         # GG Winner data calls (6 checks): the growing wait when the league's source says no, the late-game correction on board and game answers, profiles keep saved results
-node gg/tests/gg-live.test.js         # GG League number shown during play (9 checks): the late-game correction, calls never added, picks, the report card and the usual miss on 268 real graded games
+node gg/tests/app-api.test.js         # GG Winner data calls (8 checks): the growing wait when the league's source says no, the late-game correction on board and game answers, the research text reading the same numbers, the Results table, profiles keep saved results
+node gg/tests/gg-live.test.js         # GG League number shown during play (10 checks): the late-game correction, calls never added, picks, real board answers, the report card and the usual miss on 268 real graded games
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/phonecheck.js              # real browser, real feeds: the dated copies and the morning-after learning (FREE=2500000 squeezes storage like an iPhone)
 node tools/livecheck.js               # both LIVE links (after publishing)
