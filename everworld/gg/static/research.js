@@ -224,9 +224,14 @@
     const blend = /FanDuel opener/i.test(pre.blendNote || '');
     const steps = [];
     if (isNum(pre.model)) steps.push(`<li><b>Player history:</b> ${esc(g.away.player)} and ${esc(g.home.player)}’s past games point to about <b>${whole(pre.model)}</b> total.</li>`);
-    if (blend && isNum(g.opening)) steps.push(`<li><b>FanDuel’s first line:</b> FanDuel opened at ${g.opening}. We meet it halfway, so our starting number is <b>${whole(pre.expected)}</b>.</li>`);
+    // How much FanDuel's first line counts in the starting number is in the server's note ("ratings 25% / FanDuel opener 75%"):
+    // none of it when both gamers have plenty of games, three quarters when one of them is new. (v3.11.1: this step used to say
+    // "we meet it halfway" in every game, which was never the case.)
+    const fdShare = (() => { const x = /FanDuel opener\s+(\d+)%/i.exec(pre.blendNote || ''); return x ? Number(x[1]) : null; })();
+    if (blend && isNum(g.opening) && fdShare > 0) steps.push(`<li><b>FanDuel’s first line:</b> FanDuel opened at ${g.opening}. We have few games on one of these gamers, so that line counts for ${fdShare}% of our starting number: <b>${whole(pre.expected)}</b>.</li>`);
+    else if (blend && isNum(g.opening) && fdShare === 0 && isNum(pre.expected)) steps.push(`<li><b>FanDuel’s first line:</b> FanDuel opened at ${g.opening}. With this much history on both gamers we start from our own number, <b>${whole(pre.expected)}</b>.</li>`);
     else if (isNum(pre.expected) && !isNum(pre.model)) steps.push(`<li><b>Starting number:</b> about <b>${whole(pre.expected)}</b> before tip-off.</li>`);
-    if (pre.pair && pre.pair.n >= 3) steps.push(`<li><b>Head to head:</b> they’ve met ${pre.pair.n} times lately (about ${whole(pre.pair.avgTotal)} total). That nudged our number ${pre.pair.adj >= 0 ? 'up' : 'down'} ${pts(pre.pair.adj)}.</li>`);
+    if (pre.pair && pre.pair.n >= 3) steps.push(`<li><b>Head to head:</b> they’ve met ${pre.pair.n} times lately (about ${whole(pre.pair.avgTotal)} total). ${Math.abs(Number(pre.pair.adj) || 0) < 0.05 ? 'That did not move our number.' : `That nudged our number ${pre.pair.adj >= 0 ? 'up' : 'down'} ${pts(pre.pair.adj)}.`}</li>`);
     if (live && isNum(ev.rate?.pacePer20)) steps.push(`<li><b>How it’s going:</b> at today’s scoring speed they finish near ${whole(ev.rate.pacePer20)}. We let the start of the game count only a little, because hot and cold starts usually even out.</li>`);
     if (live && gm.lateKeep != null && isNum(gm.serverMean) && isNum(gm.mean)) steps.push(`<li><b>Late in the game:</b> the clock reading runs a little behind near the end, so fewer points are left than it suggests. We keep ${Math.round(gm.lateKeep * 100)}% of the points still expected, which takes the player-history number from ${one(gm.serverMean)} to <b>${one(gm.mean)}</b>.</li>`);
     const v2 = gm.rawGap !== undefined;

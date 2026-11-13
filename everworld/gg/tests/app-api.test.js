@@ -128,6 +128,13 @@ function make(answer, opts = {}) {
     const why = R.whyCard(R._state.detail);
     assert.ok(new RegExp(`Late in the game:.*We keep ${Math.round(gm.lateKeep * 100)}% of the points still expected, which takes the player-history number from ${gm.serverMean} to <b>${gm.mean}</b>`).test(why), why.slice(0, 900));
     assert.ok(/our number is not ahead of FanDuel’s live line/.test(why) && !new RegExp(`That gives <b>${Math.round(gm.serverFair)}</b>`).test(why), 'the old number is still quoted');
+    // the starting-number step says how much FanDuel's first line really counts (the server's note), never "halfway"
+    const wc = (blendNote, pair) => { const d2 = JSON.parse(JSON.stringify(R._state.detail)); d2.game.opening = 96.5; d2.eval.pregame = { ...d2.eval.pregame, model: 108.2, expected: blendNote.includes('75%') ? 99.4 : 108.2, blendNote, pair }; return R.whyCard(d2).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '); };
+    const all = wc('ratings 100% / FanDuel opener 0%', { n: 8, avgTotal: 110, adj: 0 }), few = wc('ratings 25% / FanDuel opener 75%', { n: 4, avgTotal: 101, adj: -1.2 });
+    assert.ok(/FanDuel opened at 96\.5\. With this much history on both gamers we start from our own number, 108\./.test(all) && !/halfway/.test(all + few), all.slice(0, 500));
+    assert.ok(/FanDuel opened at 96\.5\. We have few games on one of these gamers, so that line counts for 75% of our starting number: 99\./.test(few), few.slice(0, 500));
+    assert.ok(/they’ve met 8 times lately \(about 110 total\)\. That did not move our number\./.test(all) && /That nudged our number down 1\.2 points\./.test(few));
+    assert.ok(!/FanDuel’s first line/.test(wc('player ratings', null)), 'a first-line step with no line in the starting number');
     // a late game that is still a plus edge: the words quote the corrected number, gap and chance, and the math box says why
     const g = JSON.parse(JSON.stringify(answers.game)); const m0 = g.eval.markets.find((m) => m.id === 'game');
     Object.assign(m0, { line: m0.line - 6, call: 'Over', open: true, reason: null, overOdds: -110, underOdds: -110 }); g.eval.best = m0;
