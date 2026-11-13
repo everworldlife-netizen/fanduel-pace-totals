@@ -16,6 +16,13 @@ const etDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_Y
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 412, height: 840 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
   const page = await ctx.newPage();
+  // This container's browser cannot reach ESPN (the injury report and the posted lineups); a phone can. Hand those requests to
+  // node, which can, so the app here sees what a phone sees.
+  let espn = 0;
+  await page.route(/(site\.api|site\.web\.api|sports\.core\.api)\.espn\.com/, async (route) => {
+    try { const r = await fetch(route.request().url(), { headers: { Accept: 'application/json', 'User-Agent': L.UA } }); espn++; await route.fulfill({ status: r.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: await r.text() }); }
+    catch { await route.abort(); }
+  });
   const base = 'https://everworldlife-courtside-arcade.static.hf.space/';
   await page.goto(base + '#/games', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => document.querySelectorAll('#view a[href^="#/game/"]').length > 0, null, { timeout: 150000 });
@@ -38,5 +45,5 @@ const etDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_Y
   }
   await browser.close();
   L.writeJSON(L.ensure(path.join(L.DATA, 'props', date, `app-${hhmm}.json.gz`)), { at: now.toISOString(), rows: out });
-  console.log(`${out.length} players saved → data/props/${date}/app-${hhmm}.json.gz`);
+  console.log(`${out.length} players saved → data/props/${date}/app-${hhmm}.json.gz (${espn} ESPN answers passed through)`);
 })().catch((e) => { console.error(e.message); process.exit(1); });

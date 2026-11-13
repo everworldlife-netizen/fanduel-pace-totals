@@ -1295,16 +1295,25 @@ recorded from tonight on.
 - `node tools/appsnap.js` saves what the published app shows for every player right now (numbers rounded to halves);
   `node tools/research/v19-01-gap.js` sets that against the lines before any result.
 
-First look on Nov 13, BEFORE any result, and with a flaw (below): the app's numbers sat below the lines on average
-(points -0.38 with a spread of 1.58, rebounds -0.33, threes -0.33, assists level; 124 / 118 / 105 / 97 players with a
-line). Seven players had a points line (20.5, 18.5, 12.5, 11.5, 9.5, 9.5, 6.5) and no number at all in the app: players
-with no game for their team this season yet (returns, new arrivals). The line rows carry a player id but no name, and
-the id is the live feed's, not the one of the season tables: putting a number on such a player needs an id directory.
+First look on Nov 13 at 22:56 UTC (two hours before the first tip, no lineup posted, BEFORE any result; capture
+`app-2256`): the app's numbers sat a little below the lines on average: points -0.17 with a spread of 1.30 (130 players
+with a line), rebounds -0.23 (124), threes -0.32 (110), assists level (101). One player had a points line (9.5) and no
+number in the app: Jalen Suggs, out since Oct 25. Twelve players had 18+ minutes from the app and no line at any book,
+among them Pelle Larsson (29 minutes from us, "doubtful" on ESPN's report), Jordan Poole (26), Luguentz Dort (24) and
+Georges Niang (22). Who of these plays tonight is the first test of "a line means the books expect him to play, no line
+for a regular means they do not".
 
 TRAP: the lab's headless browser cannot reach ESPN (the requests are blocked here; on a phone they work), so the app in
-a lab browser has NO ESPN injury report. In the capture above Evan Mobley, Caleb Wilson, Dejounte Murray and Zach Edey
-were still in the rotations although ESPN had them out. Never judge who-plays from a lab browser capture: use the lab's
-replay, which reads the real lists.
+a lab browser has NO ESPN injury report and no posted lineups. A first capture made that way showed seven players with
+lines and no number and had Evan Mobley, Caleb Wilson, Dejounte Murray and Zach Edey in the rotations although ESPN had
+them out: all of it an artefact. `tools/appsnap.js` now hands the ESPN requests to node, so the app in the lab browser
+sees what a phone sees. `tools/livecheck.js`, `livewatch.js` and `phoneshots.js` do NOT do this yet: do not judge who
+plays from them.
+
+ALSO (found while reading the replay code): the lab's "before lineups" stage assumes a PERFECT injury report (every
+inactive regular listed out). Real reports are not perfect, so the phone's numbers before lineups post are further off
+than the lab's 4.83 points and 4.77 minutes; how much is not measured. The saved app captures plus the results will
+measure it from tonight on (`appsnap.js` at each snapshot time).
 
 Rules for deciding (unchanged method): at least 300 player lines per stat; the share of the line in the number chosen on
 some nights and checked on others; tested per stat and per stage (before lineups, tip-off); line presence as a sign of
