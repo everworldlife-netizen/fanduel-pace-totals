@@ -1276,6 +1276,98 @@ Winner is unchanged (3.10.1).
 
 ## GG Winner
 
+### Version 3.11.0 (Nov 13): where the GG League numbers stand, the late-game correction, an honest report card
+
+Akara, Nov 13: "Enhance gg winner. My projections were off. I want significant improvements." Scripts:
+`tools/research/gg-01` to `gg-08` (each prints its own table).
+
+**How the data server works** (a Supabase function, `gg-winner`, project `pjthpontugjihnjsxxry`; its code ships
+minified in `gg/static/server/gg.mjs`: read it with `node tools/eb/pretty.js gg/static/server/gg.mjs out.mjs`). It was NOT
+changed (the standing brief publishes to the two Spaces only; a redeploy cannot be tested here).
+- Before the tip: gamer ratings → `pregame.expected` (ratings alone when both gamers have 15+ games, else a quarter
+  ratings and three quarters FanDuel's opener).
+- Share of the game played `f`: from the wall clock since the tip (a fixed curve, 26.3 minutes for a game), nudged by the
+  score and by which quarter markets FanDuel has open. There is no game clock in the feed.
+- Raw number = score + rate x share of points still to come; the rate barely moves with the score (prior worth 6 games).
+- Number shown ("GG proj", `fair`) = weight x raw + (1 - weight) x FanDuel's line. Five weights by stretch (before the tip,
+  first quarter, 25 to 75%, 75 to 90%, last tenth): 0.68 / 0.45 / 0.15 / 0.47 / 0.9 on Nov 13. The server re-learns the
+  1st, 3rd and 4th from its last 7 days of graded games; the 2nd and 5th never change.
+- It grades every FanDuel-listed game (about 50 to 70 a day) at checkpoints (pregame, 25%, 50%, 75%) and keeps 14 days:
+  `/api/eb/graded?days=14`. Its store (`public.gg_kv`) also holds every league result it has seen (`doc:history`, 5,683
+  games Oct 16 to Nov 13, none for Nov 5 to 7). The 1,120 games after the app's bundled seed were copied out with a
+  checksum per chunk: `data/eb/finals-server-part{1..4}.json` (the walk-forward tools read them).
+- The league's results site still refuses the relay (403, checked once on Nov 13; not retried). The server's own reads get
+  through part of the time (128 league games for Nov 13 by 15:35 UTC), so its ratings are fresh; the PHONE's own profiles
+  are not (they only come through the relay).
+
+**What was measured**
+- Before the tip (268 graded games, Nov 9 to 13): our number misses by 9.35, the league average alone by 11.32, FanDuel's
+  line by 9.70 (the 50 games with a line up before the tip; ours 9.35 there). On the 251 graded games found in the league
+  history the phone's own ratings (walk-forward) miss by 9.64: the server's number is the better one.
+- How close can a pregame number get (`gg-02-floor`, 6,366 games): the same two gamers meeting again within a week finish
+  12.5 points apart on average (5,386 pairs of meetings). Half the squared difference is what no number can reach:
+  spread 11.19 → best possible miss 8.93 (8.60 with the same teams). With the ten or so meetings a pair has, the average
+  itself cannot be known better than about ±4, which puts the practical floor at 9.2 to 9.3. We are there.
+- Phone ratings, walk-forward (`gg-04-pregame`): 9.29 on 3,216 games (Oct 22 to Nov 4), 9.50 on 906 games (Nov 9 to 13),
+  league average 11.46 / 11.81. Real total = 3.4 + 0.971 x our number: stretched right. Nothing usable by day (the
+  second half of a day follows the first with slope -0.48 over 14 days), small things by situation: first game of a
+  gamer's day -1.3 (262 games), a rest of 70 to 240 minutes -3.0 (53), a gamer with fewer than 5 known games -3.5 (58),
+  how the last game ran against our number carries over with slope 0.12 (9.271 → 9.227). None was built: under 1% each,
+  and the pregame number is the server's.
+- With an exact clock (`gg-05-quarters`, 773 games with quarter scores, fit on 463, checked on 310): the server's formula
+  misses by 8.20 / 6.60 / 4.67 after one, two, three quarters; a fitted line 8.20 / 6.66 / 4.68. Nothing to gain there.
+- During real games the clock is the weak point (`gg-03-live`, 296 readings with the score worked back out):
+
+| share played | readings | raw | FanDuel | shown | bias of shown |
+|---|---|---|---|---|---|
+| 0.20 to 0.35 | 47 | 8.55 | 7.27 | 7.35 | +0.66 |
+| 0.35 to 0.50 | 44 | 6.79 | 6.43 | 6.44 | +0.08 |
+| 0.50 to 0.62 | 54 | 5.73 | 5.91 | 5.78 | +0.31 |
+| 0.62 to 0.75 | 50 | 4.86 | 4.84 | 4.71 | -0.56 |
+| 0.75 to 0.90 | 57 | 5.70 | 4.15 | 4.07 | +1.80 |
+| 0.90 to 1.00 | 44 | 4.03 | 5.23 | 3.87 | +0.38 |
+
+  All readings: raw 5.93, FanDuel 5.58, shown 5.33. Late in a game the raw number expects points that never come (real
+  as a share of expected: 0.94 at 70 to 80%, 0.77 at 80 to 90%, 0.56 in the last tenth): the clock reading runs behind.
+  In the last tenth FanDuel's line is often a paused, old one.
+- The calls: 28-16 (64%, +7.0 units) on Nov 9 to 13; before the tip 9-3. First-half calls (4) are never graded: the
+  half scores come from the league's timeline, which is refused.
+- The Results screen graded the server's RAW number as "Ours" (7.7 against FanDuel's 6.8 at the 25% checkpoint, 4.9
+  against 4.6 at 75%), not the number on the board. That table is the likeliest reason the numbers looked off.
+
+**What version 3.11.0 does** (all on the phone: `gg/static/gg-live.js`, wired into `api()` in `app.js`)
+- Late-game correction: from 70% of a game on, the raw number keeps only a share of its "points still to come": 1 at
+  70%, falling in a straight line to 0.5 at the horn (`LATE = { from: 0.7, k: 0.5 }`). The number shown, gap, spread,
+  chance, return, team totals, the quarter being played, the best plus edge and the picks follow. A server call stays
+  only if the corrected number clears the phone's own bars; none is added. Overtime is left alone.
+  Proof (`gg-07-late`): each day with the setting fitted on the other four days, the last third of a game (141 readings):
+  4.167 → 3.874 (-7.0%); fitted settings 0.60 to 0.75, so 0.5 is the careful end. With 0.5: last 30% (125 readings)
+  4.07 → 3.73, closer on each of the five days (paired z -2.9); last tenth 3.87 → 3.10; 75 to 90% bias +1.8 → +0.2; all
+  readings 5.33 → 5.19 (FanDuel 5.58).
+- Report card: the Results table grades the number the app shows, with today's rules, next to FanDuel's line at the same
+  moment (`reportCard`; the server's weights are read off the live board and saved under `gg-phase-w`). On the 268 games:
+  before the tip 9.35 (FanDuel 9.70 on 50), about 35% played 6.80 (6.75), about 61% 5.51 (5.63), about 87% 3.61 (4.60).
+  The late rows are in-sample for the one setting until newer games fill the 14 days.
+- "±N" next to every GG proj on the board: the measured usual miss from that point of a game (9 before the tip, 7 a third
+  in, 5 to 6 in the middle, 4 late, 3 at the end), with a legend line.
+
+**Tried and NOT built**
+- New weights by stretch fitted on these readings (`gg-06-livefix`): they jump from fit to fit (0 / 1 / 0 / 0.5 / 0.65
+  against 0.1 / 0.1 / 0.7 / 0.1 / 0.9) and, each day with the other days' weights, land 1.8% FURTHER off than the server's.
+- One steady share before the last tenth (`gg-08-mix`): 5.219 against 5.188 for the late fix with the server's shares.
+- Pregame extras listed above; a mix with FanDuel's pregame line (0.75 ours: 9.29 against 9.35 on 50 games: noise).
+
+**Next leads for GG Winner**
+1. The spread the server states is too wide through three quarters (its 8-in-10 band holds 89 to 94% of finals) and too
+   narrow in the last 15% (70 to 75%): the chances shown are too timid mid-game. Needs more graded readings to fit.
+2. Overtime late: when FanDuel's market is OPEN with a line far above the score in the last minute, it is pricing an extra
+   period. The graded record does not keep whether the market was open, so it could not be tested.
+3. The middle of the game (50 to 75%): the server's share of our number is 0.15, the readings suggest about 0.5
+   (5.51 → 5.37), not stable yet across days.
+4. A recorder of the live board (score, line, our number every minute) would give thousands of readings a week instead
+   of three per game.
+5. First-half calls cannot be graded while the league's timeline is refused.
+
 ### Real-league live totals model (`gg/static/league-live.js`, v3.10)
 
 Test: `node tools/ggbt.js --model <league-live.js> --seasons 2024,2025 --out data/ll/x.json`, compare with
@@ -1352,7 +1444,8 @@ did not finish). The late-game blend against FanDuel's live line for GG League g
 node cs/tests/engine.test.js          # engine on two real games (90 checks): sanity, plus-edges-only, lineup, load and anchor inputs, short-handed and opening-tip cases, "if he plays" learning, learning sums, wording, every made three, marked OUT, no steps at 3:00 / 15:00 / 21:00 / 27:00
 node cs/tests/app.test.js             # boots the real app in a simulated phone browser (34 checks, about 8 minutes; ONLY="part of a name" runs one): screens, wording rules, edge record, stale boxes, offline start, dated copies and the morning-after replay, the day turning in an open app, a full phone, two copies open, a long first load
 node gg/tests/league-live.test.js     # real-league model (15 checks): clocks, horn, overtime, first-seen lines, plus-edges-only in every state
-node gg/tests/app-api.test.js         # GG Winner data calls (5 checks): the growing wait when the league's source says no, profiles keep saved results, footer version
+node gg/tests/app-api.test.js         # GG Winner data calls (6 checks): the growing wait when the league's source says no, the late-game correction on board and game answers, profiles keep saved results
+node gg/tests/gg-live.test.js         # GG League number shown during play (9 checks): the late-game correction, calls never added, picks, the report card and the usual miss on 268 real graded games
 node tools/livecheck.js --local cs    # working copy in a phone-sized browser with tonight's real games (also --local gg)
 node tools/phonecheck.js              # real browser, real feeds: the dated copies and the morning-after learning (FREE=2500000 squeezes storage like an iPhone)
 node tools/livecheck.js               # both LIVE links (after publishing)
