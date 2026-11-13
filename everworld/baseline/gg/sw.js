@@ -1,6 +1,6 @@
 /* GG Winner service worker: app shell offline, live data always from the network. */
-const VERSION = 'gg-winner-v3.10.1';
-const SHELL = ['/', '/index.html', '/styles.css', '/research.js', '/league-live.js', '/profiles.js', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const VERSION = 'gg-winner-v3.11.1';
+const SHELL = ['/', '/index.html', '/styles.css', '/research.js', '/league-live.js', '/gg-live.js', '/profiles.js', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

@@ -35,11 +35,25 @@ what matters most.
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 19:30 UTC, Nov 13)
+### Where the build stands at this commit (updated 22:30 UTC, Nov 13)
 
-**PUBLISHED on Nov 13, 2026 at about 19:20 UTC (2:20 pm Eastern): Courtside 18 (`ca-shell-v18`, Space commit `9f5f0be`).
-GG Winner is unchanged: 3.10.1 (`gg-winner-v3.10.1`, Space commit `1f60c9e`, Nov 12).** Full story: "Version 18 (Nov 13)"
-further down.
+**PUBLISHED on Nov 13, 2026: Courtside 18 at about 19:20 UTC (`ca-shell-v18`, Space commit `9f5f0be`) and GG Winner 3.11.1
+at about 22:15 UTC (`gg-winner-v3.11.1`, Space commit `3d28807`; 3.11.0 went out at 22:05, commit `5df65ba`).** Full
+stories: "Version 18 (Nov 13)" for Courtside, "Version 3.11.0 (Nov 13)" in the GG Winner part.
+
+- What GG Winner 3.11 is (Akara: "Enhance gg winner. My projections were off. I want significant improvements."): the
+  study shows the numbers are at the limit of the game before the tip (miss 9.35, FanDuel 9.70, the same two gamers finish
+  12.5 points apart from one meeting to the next); the one real defect was late in games, where the number ran high: fixed
+  on the phone (`gg/static/gg-live.js`; last third of a game 4.17 → 3.87, last tenth 3.87 → 3.10). The Results table now
+  grades the number the app shows (it graded the server's raw number, which made "Ours" look worse than FanDuel), and
+  every GG proj carries its usual miss. 3.11.1 corrects one older sentence ("We meet it halfway" about FanDuel's first
+  line, which was never the case).
+- `gg/static` = GG Winner 3.11.1 (footer "Version 3.11.1 (Nov 13, 2026)"); `baseline/gg` = the live files;
+  `release-2026-11-13-gg/` = 3.11.0 and `release-2026-11-13-gg1/` = 3.11.1 as uploaded (app.js, gg-live.js, index.html,
+  research.js, sw.js). The data server (Supabase function) was not changed.
+- GG Winner tests: `league-live` 15, `app-api` 8, `gg-live` 10; seventeen deliberately broken copies each fail.
+  Verified on the live link: 5 files byte for byte, all 6 screens at Pixel 9a size, the late-game page and the Results
+  table read on real games.
 
 - What version 18 is (Akara: "Study the results, projections and enhance the app for accuracy."): a closer projected
   final score (the book's total before the tip, the book's spread for the rest of the game, an early lead gives a fifth
@@ -1245,6 +1259,10 @@ missing total or spread, pick'em, no line, no NaN, worker result clones). Five f
    scratchpad: count after the shift, pick'em as no spread, no hand-back after 45:00, no give-back, no coin-flip rule,
    tip step, wrong total fade, margin rule not faded, wrong curve, old table) each fail at least one check.
 
+(Trap added Nov 13, evening: in a hand-typed chain `node test.js | tail -1 && git commit` the test's failure is hidden
+by `tail`: one commit went out with a failing check for five minutes. `tools/publish.sh` is safe (`set -o pipefail`);
+by hand, run the test on its own line and look at `echo $?`.)
+
 **5. Traps:** a frozen engine folder needs `sitprior.js` next to `engine.js` or this season's replays silently use no
 situational prior (cost an hour: player numbers moved by half a percent on P2 only). `tools/p2.sh` has no end date: for
 the 121-game exam add `--to 2026-11-09` (it picked up 141 games). `bt2.js` has no `--help`: any unknown flag runs a
@@ -1375,6 +1393,11 @@ at least one check of `gg/tests/gg-live.test.js` (10 checks) or `gg/tests/app-ap
   against 0.1 / 0.1 / 0.7 / 0.1 / 0.9) and, each day with the other days' weights, land 1.8% FURTHER off than the server's.
 - One steady share before the last tenth (`gg-08-mix`): 5.219 against 5.188 for the late fix with the server's shares.
 - Pregame extras listed above; a mix with FanDuel's pregame line (0.75 ours: 9.29 against 9.35 on 50 games: noise).
+
+**3.11.1 (same evening):** the research card's step "FanDuel's first line ... We meet it halfway" was shown in every game;
+the server gives the opener none of the say when both gamers have 15+ games and three quarters when one is new. The step
+now reads the share from the server's own note (`blendNote`), and a head-to-head nudge of zero says "did not move our
+number". Found by reading the live 3.11.0 game page.
 
 **Next leads for GG Winner**
 1. The spread the server states is too wide through three quarters (its 8-in-10 band holds 89 to 94% of finals) and too

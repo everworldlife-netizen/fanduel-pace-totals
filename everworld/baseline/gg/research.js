@@ -1,6 +1,7 @@
 /* GG Winner: plain-English research (add-on, v1, Nov 6 2026).
    Load it BEFORE app.js:  <script src="/research.js"></script>
-   It changes no numbers. It keeps a copy of the data app.js already loads
+   It changes no numbers of its own: it keeps a copy of the data app.js already loads (with the same late-game
+   correction app.js applies, from gg-live.js)
    and rewrites the explanations in plain words: what the pick is, our number
    vs FanDuel's line, and the two or three reasons behind it.
    To undo it, remove the script tag. */
@@ -15,10 +16,14 @@
       const url = typeof input === 'string' ? input : (input && input.url) || '';
       if (res.ok && /\/api\/eb\/(board|game\/)/.test(url)) {
         const data = await res.clone().json();
-        if (/\/api\/eb\/board/.test(url)) R.board = data;
-        else R.detail = data;
         const m = /[?&]edge=([\d.]+)/.exec(url);
         if (m) R.edge = Number(m[1]);
+        // the same late-game correction the app makes to its own copy (gg-live.js), with the same bars, so the words here and
+        // the numbers on the cards always come from the same numbers
+        const v = /[?&]ev=([\d.]+)/.exec(url);
+        if (window.GGLive) { try { window.GGLive.fix(data, { edgeMin: R.edge, evMin: v ? Number(v[1]) : undefined }); } catch { /* keep the server's numbers */ } }
+        if (/\/api\/eb\/board/.test(url)) R.board = data;
+        else R.detail = data;
       }
     } catch { /* never break the app */ }
     return res;
@@ -76,7 +81,8 @@
     } else if (/suspended/i.test(r)) {
       out.headline = `FanDuel has paused betting on this for a moment. We expect about <b>${whole(mean)}</b> and the line was ${line}.`;
     } else if (/ratings may be off/i.test(r)) {
-      out.headline = `No bet. Player history says about <b>${whole(model)}</b> but FanDuel’s line is ${line}. A gap that big usually means our numbers on this pair are off, so we sit this one out.`;
+      // (the server sat this one out on ITS number: quoted as it was, before the late-game correction)
+      out.headline = `No bet. Player history says about <b>${whole(isNum(m.serverMean) ? m.serverMean : model)}</b> but FanDuel’s line is ${line}. A gap that big usually means our numbers on this pair are off, so we sit this one out.`;
     } else if (/Below the line/i.test(r) || (mean != null && mean < line)) {
       out.headline = 'No play. Our number is not ahead of this line, and we only play plus edges, where our number is ahead of the line.';
     } else if (/Gap under|Edge under/i.test(r) || (m.gap != null && Math.abs(m.gap) < edge)) {
@@ -201,7 +207,8 @@
       <span>FanDuel’s own chance it beats the line</span><b>${pc(m.fdOver)}</b>
       <span>Our chance it beats the line</span><b>${pc(m.pOver)}</b>
       <span>Our number (what we expect)</span><b>${one(m.fair)}</b>${m.rawGap !== undefined ? `
-      <span>Player history alone</span><b>${one(m.mean)}</b>
+      <span>Player history alone</span><b>${one(m.mean)}</b>${m.lateKeep != null ? `
+      <span>Late-game correction</span><b>${Math.round(m.lateKeep * 100)}% of the points still expected are kept</b>` : ''}
       <span>How much we trust history vs FanDuel</span><b>${m.weight != null ? `${Math.round(m.weight * 100)}% / ${100 - Math.round(m.weight * 100)}%` : '—'}</b>` : ''}
       <span>Long-run return per $100</span><b>${ev(m.evOver)}</b>
       <span>Normal swing either way</span><b>about ${whole(m.sd)} points</b>
@@ -217,10 +224,16 @@
     const blend = /FanDuel opener/i.test(pre.blendNote || '');
     const steps = [];
     if (isNum(pre.model)) steps.push(`<li><b>Player history:</b> ${esc(g.away.player)} and ${esc(g.home.player)}’s past games point to about <b>${whole(pre.model)}</b> total.</li>`);
-    if (blend && isNum(g.opening)) steps.push(`<li><b>FanDuel’s first line:</b> FanDuel opened at ${g.opening}. We meet it halfway, so our starting number is <b>${whole(pre.expected)}</b>.</li>`);
+    // How much FanDuel's first line counts in the starting number is in the server's note ("ratings 25% / FanDuel opener 75%"):
+    // none of it when both gamers have plenty of games, three quarters when one of them is new. (v3.11.1: this step used to say
+    // "we meet it halfway" in every game, which was never the case.)
+    const fdShare = (() => { const x = /FanDuel opener\s+(\d+)%/i.exec(pre.blendNote || ''); return x ? Number(x[1]) : null; })();
+    if (blend && isNum(g.opening) && fdShare > 0) steps.push(`<li><b>FanDuel’s first line:</b> FanDuel opened at ${g.opening}. We have few games on one of these gamers, so that line counts for ${fdShare}% of our starting number: <b>${whole(pre.expected)}</b>.</li>`);
+    else if (blend && isNum(g.opening) && fdShare === 0 && isNum(pre.expected)) steps.push(`<li><b>FanDuel’s first line:</b> FanDuel opened at ${g.opening}. With this much history on both gamers we start from our own number, <b>${whole(pre.expected)}</b>.</li>`);
     else if (isNum(pre.expected) && !isNum(pre.model)) steps.push(`<li><b>Starting number:</b> about <b>${whole(pre.expected)}</b> before tip-off.</li>`);
-    if (pre.pair && pre.pair.n >= 3) steps.push(`<li><b>Head to head:</b> they’ve met ${pre.pair.n} times lately (about ${whole(pre.pair.avgTotal)} total). That nudged our number ${pre.pair.adj >= 0 ? 'up' : 'down'} ${pts(pre.pair.adj)}.</li>`);
+    if (pre.pair && pre.pair.n >= 3) steps.push(`<li><b>Head to head:</b> they’ve met ${pre.pair.n} times lately (about ${whole(pre.pair.avgTotal)} total). ${Math.abs(Number(pre.pair.adj) || 0) < 0.05 ? 'That did not move our number.' : `That nudged our number ${pre.pair.adj >= 0 ? 'up' : 'down'} ${pts(pre.pair.adj)}.`}</li>`);
     if (live && isNum(ev.rate?.pacePer20)) steps.push(`<li><b>How it’s going:</b> at today’s scoring speed they finish near ${whole(ev.rate.pacePer20)}. We let the start of the game count only a little, because hot and cold starts usually even out.</li>`);
+    if (live && gm.lateKeep != null && isNum(gm.serverMean) && isNum(gm.mean)) steps.push(`<li><b>Late in the game:</b> the clock reading runs a little behind near the end, so fewer points are left than it suggests. We keep ${Math.round(gm.lateKeep * 100)}% of the points still expected, which takes the player-history number from ${one(gm.serverMean)} to <b>${one(gm.mean)}</b>.</li>`);
     const v2 = gm.rawGap !== undefined;
     const ours = v2 && isNum(gm.fair) ? gm.fair : gm.mean;
     const w = v2 && gm.weight != null ? Math.round(gm.weight * 100) : mw;
