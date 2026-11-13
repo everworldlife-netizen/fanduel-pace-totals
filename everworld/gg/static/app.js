@@ -101,6 +101,14 @@
       throw e;
     }
     if (league) { LEAGUE.fails = 0; LEAGUE.until = 0; LEAGUE.status = 0; }
+    // GG League games being played: the late-game correction of our number (gg-live.js), before anything is drawn from it
+    if (window.GGLive && /^\/api\/eb\/(board|game\/)/.test(path)) {
+      try {
+        window.GGLive.fix(body, { edgeMin: Number(S.settings.edge), evMin: Number(S.settings.ev) / 100 });
+        // the share of our raw number the server is using in each stretch of a game, read off the board for the report card
+        if (/^\/api\/eb\/board/.test(path)) store.set('gg-phase-w', window.GGLive.learnWeights(body, store.get('gg-phase-w', null)));
+      } catch { /* the server's own numbers are shown */ }
+    }
     return plusOnly(body);
   }
   const qparams = () => `edge=${encodeURIComponent(S.settings.edge)}&ev=${encodeURIComponent(S.settings.ev / 100)}`;
@@ -285,6 +293,8 @@
     </article>`;
   }
 
+  // "±5" next to our number: how far it usually lands from the final from this point of a game (average miss, measured: gg-live.js)
+  const usual = (ev, live, shown) => (window.GGLive && isNum(shown) && ev && ev.progress && !ev.progress.overtime ? `<small class="usual">±${Math.round(window.GGLive.usualMiss(ev.progress.f, live))}</small>` : '');
   function matchCard(g) {
     const ev = g.eval;
     const gm = ev.markets.find((m) => m.id === 'game') || {};
@@ -307,7 +317,7 @@
       </div>
       <div class="stat3">
         <div class="tile"><div class="k">FanDuel</div><div class="v">${gm.line ?? '—'}<small>${gm.line != null ? odds(gm.overOdds) : ''}</small></div></div>
-        <div class="tile hl"><div class="k">GG proj</div><div class="v">${tween(`${key}:p`, gm.fair ?? gm.mean)}</div></div>
+        <div class="tile hl"><div class="k">GG proj</div><div class="v">${tween(`${key}:p`, gm.fair ?? gm.mean)}${usual(ev, live, gm.fair ?? gm.mean)}</div></div>
         <div class="tile"><div class="k">Edge</div><div class="v ${gm.gap > 0 ? 'pos' : ''}">${edgeTxt(gm.gap)}</div></div>
       </div>
       ${gapbar(`${key}:gb`, gm.gap)}
@@ -1227,6 +1237,7 @@
         <span>FanDuel’s chance it beats the line</span><b>${pct(m.fdOver)}</b>
         <span>GG chance it beats the line</span><b>${pct(m.pOver)}</b>
         <span>Player history alone / gap</span><b>${n1(m.mean)} / ${edgeTxt(m.rawGap)}</b>
+        ${m.lateKeep != null ? `<span>Late-game correction</span><b>${Math.round(m.lateKeep * 100)}% of the points still expected</b>` : ''}
         <span>Trust model vs FanDuel</span><b>${m.weight != null ? `${Math.round(m.weight * 100)}% / ${100 - Math.round(m.weight * 100)}%` : '—'}</b>
         <span>Long-run return per $100</span><b>${evPct(m.evOver)}</b>
         <span>Spread of outcomes</span><b>± ${n1(m.sd)}</b>
@@ -1294,6 +1305,7 @@
       <div class="hud-head tight"><div><p class="eyebrow">MODEL INPUTS</p><h2>Why this number</h2></div><span class="chip ${ev.confidence.level === 'HIGH' ? 'hot' : ev.confidence.level === 'LOW' ? 'warn' : ''}">${ev.confidence.level} · ${ev.confidence.score}</span></div>
       <div class="row"><span>GG projection</span><b>${n1(gm.fair ?? gm.mean)}</b></div>
       <div class="row"><span>Model number (player history)</span><b>${n1(gm.mean)}</b></div>
+      ${gm.lateKeep != null ? `<div class="row"><span>Late-game correction</span><b>keeps ${Math.round(gm.lateKeep * 100)}% of the points still expected</b></div>` : ''}
       <div class="row"><span>Pregame number</span><b>${n1(pre.expected)}</b></div>
       <div class="row"><span>Built from</span><b>${esc(pre.blendNote)}</b></div>
       <div class="row"><span>Ratings split</span><b>${n1(pre.away)} + ${n1(pre.home)}</b></div>
@@ -1512,7 +1524,25 @@
         const w = m.winPct ?? 0;
         return `<div class="bar-row"><span class="lbl">${esc(labelOf(m))}</span><div class="trk"><i class="${m.units < 0 ? 'neg' : ''}" style="width:0" data-anim="perf:${esc(labelOf(m))}" data-prop="bar" data-left="0" data-width="${w}"></i></div><span class="num">${m.w}-${m.l} · ${m.units >= 0 ? '+' : ''}${m.units}u</span></div>`;
       }).join('');
-      const acc = p.accuracy.map((a) => `<tr><td>${a.market === 'game' ? 'Game' : '1H'} @ ${a.checkpoint === 0 ? 'pregame' : `${a.checkpoint}%`}</td><td>${a.n}</td><td class="${a.modelMae <= a.lineMae ? 'pos' : ''}">${a.modelMae}</td><td>${a.lineMae}</td></tr>`).join('');
+      // "Ours" is the number the app shows (GG proj). The server's own table grades its raw number (player history + score), which
+      // the app never shows alone, so the game rows are worked out here from the graded games with today's rules (gg-live.js).
+      let card = null;
+      if (window.GGLive) {
+        try {
+          const gr = await api(`/api/eb/graded?days=${S.perfDays}`);
+          const sent = p.tracking && p.tracking.lastRun && p.tracking.lastRun.phaseWeights; // (sent only in the runs that re-learn them)
+          const c = window.GGLive.reportCard(gr && gr.graded, Array.isArray(sent) ? sent : store.get('gg-phase-w', null));
+          if (c && c.rows.length) card = c;
+        } catch { /* the server's table is shown instead */ }
+      }
+      const accRow = (label, n, ours, fd) => `<tr><td>${label}</td><td>${n}</td><td class="${fd != null && ours <= fd ? 'pos' : ''}">${n1(ours)}</td><td>${fd != null ? n1(fd) : '—'}</td></tr>`;
+      const cardLabel = (r) => (r.key === 'all' ? 'Game, before the tip (every game)' : r.key === 'pre' ? 'Game, before the tip (FanDuel line up early)' : `Game, about ${Math.round(r.f * 100)}% played`);
+      const acc = card
+        ? card.rows.map((r) => accRow(cardLabel(r), r.n, r.ours, r.fanduel)).join('') + p.accuracy.filter((a) => a.market !== 'game').map((a) => accRow(`1H @ ${a.checkpoint === 0 ? 'pregame' : `${a.checkpoint}%`}`, a.n, a.modelMae, a.lineMae)).join('')
+        : p.accuracy.map((a) => accRow(`${a.market === 'game' ? 'Game' : '1H'} @ ${a.checkpoint === 0 ? 'pregame' : `${a.checkpoint}%`}`, a.n, a.modelMae, a.lineMae)).join('');
+      const accNote = card
+        ? 'Ours is the number the app shows (GG proj), graded with the rules it uses today. FanDuel is its line at the same moment. The same two gamers, meeting again within a week, finish 12.5 points apart on average (5,386 pairs of meetings): the closest any number can come before the tip is a miss of about 9.'
+        : 'Here "ours" is the model alone (player history and the score so far), before it is mixed with FanDuel’s line into the number the app shows.';
       const recent = p.recent.slice(0, 20).map((s) => `<div class="res"><span class="badge ${s.result}">${s.result}</span>
         <div><b>${esc(String(s.name || '').replace(/^[^(]*\(([^)]+)\)[^(]*\(([^)]+)\).*$/, '$1 vs $2'))}</b><div class="meta">${esc(s.label)} · ${/^o/i.test(String(s.side || '')) ? 'above' : /^u/i.test(String(s.side || '')) ? 'below' : 'line'} ${s.line} (${odds(s.odds)}) · ${esc(String(s.note || '').replace(/\bunder\b/gi, 'below').replace(/\bover\b/gi, 'above'))}</div></div>
         <div class="val">${s.actual ?? '—'}<div class="meta">${s.units > 0 ? '+' : ''}${s.units ?? 0}u</div></div></div>`).join('');
@@ -1527,7 +1557,7 @@
         ${p.games ? '' : '<div class="tip" style="margin-top:12px">The tracker grades every FanDuel eBasketball game automatically, every 2 minutes on Netlify. Results show up about 30 minutes after the first tracked games finish.</div>'}
         ${p.markets.length ? `<p class="section-title">By market</p><div class="card pad bars">${barRows(p.markets, (m) => labels[m.market] || m.market)}</div>` : ''}
         ${p.gapBuckets.length ? `<p class="section-title">By size of gap · raise your minimum if the small bucket loses</p><div class="card pad bars">${barRows(p.gapBuckets, (m) => `${m.bucket} pts`)}</div>` : ''}
-        ${acc ? `<p class="section-title">Average miss vs the final (lower is better)</p><div class="card pad"><table class="tbl"><thead><tr><th>Market</th><th>Games</th><th>Ours</th><th>FanDuel</th></tr></thead><tbody>${acc}</tbody></table></div>` : ''}
+        ${acc ? `<p class="section-title">Average miss vs the final (lower is better)</p><div class="card pad"><table class="tbl"><thead><tr><th>Market</th><th>Games</th><th>Ours</th><th>FanDuel</th></tr></thead><tbody>${acc}</tbody></table><p class="muted small" id="accNote" style="margin:10px 0 0">${accNote}</p></div>` : ''}
         ${recent ? `<p class="section-title">Latest graded calls</p><div class="res-list">${recent}</div>` : ''}
         <p class="footnote">${tr ? `Tracking ${tr.active} live · ${tr.awaitingGrade} awaiting official finals · last run ${tr.lastRun ? new Date(tr.lastRun.at).toLocaleTimeString() : '—'}` : 'Tracker hasn’t run yet — it starts with the first Netlify scheduled run.'}</p>`;
       animate($('perfOut'));
