@@ -201,7 +201,9 @@ test('team totals: "if he plays" minutes never inflate the game score, and the l
       const P = run(fx, el);
       for (const [tm, nowPts] of [[v, P.state.vs], [h, P.state.hs]]) {
         assert.ok(P.teamRaw && Number.isFinite(P.teamRaw[tm]), 'no raw team number');
-        assert.ok(Math.abs(P.projScore[tm] - (nowPts + P.teamRaw[tm] * P.teamFactor)) < 0.05, 'team score is not points so far + the checked sum of players');
+        // (our own team number, before the final-score step that leans on the book's line: see the next test)
+        const own = (P.scoreRule.ownTotal + (tm === v ? 1 : -1) * P.scoreRule.ownMargin) / 2;
+        assert.ok(Math.abs(own - (nowPts + P.teamRaw[tm] * P.teamFactor)) < 0.05, 'our own team score is not points so far + the checked sum of players');
         assert.ok(P.teamFactor >= 0.85 && P.teamFactor <= 1.15, `team check ${P.teamFactor} outside its cap`);
       }
       if (el === 0) {
@@ -210,6 +212,69 @@ test('team totals: "if he plays" minutes never inflate the game score, and the l
         assert.ok(Math.abs(P.projScore[v] - tv) < 0.16 * tv && Math.abs(P.projScore[h] - th) < 0.16 * th, `tip-off team totals ${P.projScore[v].toFixed(1)}/${P.projScore[h].toFixed(1)} far from the line's ${tv}/${th}`);
       }
     }
+  }
+});
+test('final score: the book\'s total before the tip, its spread for the rest of the game, and a lead that gives a little back', () => {
+  const keepAt = (el) => (el <= 0 ? 1 : Math.min(1, E.TUNE.mktKeep + (1 - E.TUNE.mktKeep) * (el / 48) ** 2));
+  for (const fx of FX) {
+    const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, mk = fx.base.market;
+    for (const el of [0, 6, 24, 42]) {
+      const P = run(fx, el), R = P.scoreRule, lead = P.state.vs - P.state.hs;
+      const wT = E.TUNE.mktTotW * (el === 0 ? 1 : Math.max(0, Math.min(1, (9 - el) / 6)));
+      assert.ok(Math.abs(R.total - wT) < 1e-9 && R.margin === E.TUNE.mktMarU && Math.abs(R.keep - keepAt(el)) < 1e-9, `rule at ${el}: ${JSON.stringify(R)}`);
+      const total = P.projScore[v] + P.projScore[h], margin = P.projScore[v] - P.projScore[h];
+      assert.ok(Math.abs(total - ((1 - wT) * R.ownTotal + wT * mk.total)) < 0.05, `total ${total} at ${el} min is not ${(1 - wT).toFixed(2)} ours + ${wT.toFixed(2)} the book's`);
+      assert.ok(Math.abs(margin - (keepAt(el) * lead + mk.spreadHome * (48 - el) / 48)) < 0.05, `margin ${margin} at ${el} min is not the kept lead + the book's spread over the time left`);
+      assert.ok(Math.abs(P.market.projTotal - total) < 1e-9 && Math.abs(P.market.projMargin - margin) < 1e-9);
+      // the players' own numbers do not move with the final-score step
+      const off = E.TUNE.mktAnchor; let Q; E.TUNE.mktAnchor = 0; try { Q = run(fx, el); } finally { E.TUNE.mktAnchor = off; }
+      assert.deepStrictEqual(P.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.min]), Q.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.min]));
+      assert.ok(Q.scoreRule === null && Math.abs(Q.projScore[v] + Q.projScore[h] - R.ownTotal) < 1e-6 && Math.abs(Q.projScore[v] - Q.projScore[h] - R.ownMargin) < 1e-6, 'with the step off the score is our own');
+    }
+    // no book line for this game: our own total and margin, and the lead still gives a little back
+    for (const el of [0, 18]) {
+      const P = run(fx, el, { market: null }), R = P.scoreRule, lead = P.state.vs - P.state.hs;
+      assert.ok(R && R.total === 0 && R.margin === 0 && P.market === null);
+      assert.ok(Math.abs(P.projScore[v] + P.projScore[h] - R.ownTotal) < 0.05 && Math.abs(P.projScore[v] - P.projScore[h] - (R.ownMargin - (1 - keepAt(el)) * lead)) < 0.05, 'no line: own numbers with the give-back');
+    }
+    // a finished game is its final score
+    const F = E.projectGame({ ...fx.base, game: fx.g, plays: fx.plays, nsims: 200, seed: 5, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    assert.ok(F.scoreRule === null && F.projScore[v] === fx.g.visitor_team_score && F.projScore[h] === fx.g.home_team_score);
+    assert.strictEqual(F.winProb[v], fx.g.visitor_team_score > fx.g.home_team_score ? 1 : 0);
+  }
+});
+test('win chance: from the projected margin and the swing real games have, crossing over to the count of simulations late', () => {
+  assert.ok(Math.abs(E.normCdf(0) - 0.5) < 1e-7 && Math.abs(E.normCdf(1) - 0.8413447) < 1e-6 && Math.abs(E.normCdf(-1.96) - 0.0249979) < 1e-6 && Math.abs(E.normCdf(3) + E.normCdf(-3) - 1) < 1e-9);
+  for (const fx of FX) {
+    const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, mk = fx.base.market;
+    for (const el of [0, 12, 24, 36, 42, 45]) {
+      const P = run(fx, el), margin = P.projScore[v] - P.projScore[h];
+      const curve = E.normCdf(margin / (E.TUNE.winSd0 * Math.sqrt((48 - el) / 48) + E.TUNE.winSd1));
+      const wC = el === 0 ? 1 : Math.max(0, Math.min(1, (45 - el) / 9));
+      assert.ok(P.winSim >= 0 && P.winSim <= 1 && Math.abs(P.winProb[v] + P.winProb[h] - 1) < 1e-12);
+      assert.ok(Math.abs(P.winProb[v] - (wC * curve + (1 - wC) * P.winSim)) < 1e-9, `win chance at ${el} min: ${P.winProb[v]} vs curve ${curve} and count ${P.winSim}`);
+      if (el >= 45) assert.strictEqual(P.winProb[v], P.winSim);
+      if (el <= 36) assert.ok((P.winProb[v] - 0.5) * margin >= 0, 'the side projected ahead is not the side more likely to win');
+    }
+    // before the tip the chance is the book's spread read through the swing of real games (11.5 points): close to the book's own
+    const P0 = run(fx, 0), fav = mk.spreadHome >= 0 ? v : h;
+    assert.ok(Math.abs(P0.winProb[fav] - E.normCdf(Math.abs(mk.spreadHome) / (E.TUNE.winSd0 + E.TUNE.winSd1))) < 0.005);
+    assert.ok(Math.abs(P0.winProb[v] - mk.pAway) < 0.06, `pregame ${P0.winProb[v].toFixed(3)} far from the book's ${mk.pAway.toFixed(3)}`);
+    // switched off: the count of simulations, as before version 18
+    const off = E.TUNE.winCal; let Q; E.TUNE.winCal = 0; try { Q = run(fx, 12); } finally { E.TUNE.winCal = off; }
+    assert.strictEqual(Q.winProb[v], Q.winSim);
+  }
+});
+test('shown number: the version 18 weights of the middle (points before the tip and at the half, rebounds from 12:00 to the half)', () => {
+  const fx = FX[0];
+  const want = { 0: { pts: 0.25, reb: 0, ast: 0 }, 12: { pts: 0.25, reb: 0.25, ast: 0.25 }, 18: { pts: 0.25, reb: 0.25, ast: 0.5 }, 24: { pts: 0.5, reb: 0.25, ast: 1 }, 9: { pts: 0.25, reb: 0.125, ast: 0.125 } };
+  for (const [el, W] of Object.entries(want)) {
+    const P = run(fx, +el); let n = 0;
+    for (const p of P.players) for (const k of ['pts', 'reb', 'ast']) {
+      const exp = Math.max(p.now[k], (1 - W[k]) * p.mean[k] + W[k] * p.mid[k]);
+      assert.ok(Math.abs(p.proj[k] - (W[k] > 0 ? exp : p.mean[k])) < 1e-9, `${p.name} ${k} at ${el} min: shown ${p.proj[k]}, expected ${exp} (average ${p.mean[k]}, middle ${p.mid[k]})`); n++;
+    }
+    assert.ok(n > 40);
   }
 });
 test('learning sums add up and solve (ridge), and the shipped lessons have one number per input', () => {

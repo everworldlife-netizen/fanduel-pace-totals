@@ -676,12 +676,46 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       if (firstLookFails) feed.stuck = true;
       hid.on = false; A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
       if (firstLookFails) { await sleep(2500); v = await A.go('#/games', 300); assert.ok(!/7:00 PM ET/.test(v.textContent), 'the board moved on scores that never came from a feed'); feed.stuck = false; }
-      await sleep(firstLookFails ? 14000 : 7000);
-      v = await A.go('#/games', 400);
+      // (waits for the board itself, up to 45 s: the retry after a failed look comes with the next 15-second refresh, and a fixed
+      // pause missed it when the machine was busy)
+      for (const t0 = Date.now(); Date.now() - t0 < 45000;) { await sleep(1000); v = await A.go('#/games', 300); if (/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent)) break; }
       assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `${firstLookFails ? 'first look failed: ' : ''}next day the board says ${label(v)} and tonight's games are ${/7:00 PM ET/.test(v.textContent) ? '' : 'not '}shown`);
+      for (const t0 = Date.now(); Date.now() - t0 < 15000 && count.table < 2;) await sleep(500);
       assert.strictEqual(count.table, 2, 'the season table was not read again for the new day');
       assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
     }
+  });
+  await test('book lines card: the projected final, the margin and the win chance are explained in plain words, before the tip and at the half', async () => {
+    const lines = (w) => { w.DB.linesFor = (g) => (FX.find((x) => +x.g.id === +g.id) || FX[0]).base.market; };
+    const fx = FX[0], mk = fx.base.market, vAb = fx.g.visitor_team.abbreviation, hAb = fx.g.home_team.abbreviation;
+    const card = async (B) => {
+      let v; for (const t0 = Date.now(); Date.now() - t0 < 30000;) { await sleep(700); v = await B.go(`#/game/${fx.g.id}`, 300); if (/BOOK LINES/.test(v.textContent) && /Win chance: we say/.test(v.textContent)) break; }
+      const c = [...v.querySelectorAll('.card')].find((x) => /Books win %/.test(x.textContent));
+      assert.ok(c, 'no book lines card on the game page');
+      return c.textContent.replace(/\s+/g, ' ');
+    };
+    // before the tip: the total leans on the book's, the margin is the book's spread, the chance comes from that margin
+    const B = await boot('pre', lines);
+    let t = await card(B);
+    const own = /Projected total (\d+): our own count says (\d+), the books have (\d+(?:\.\d+)?)/.exec(t);
+    assert.ok(own, `total line: ${t.slice(0, 260)}`);
+    assert.ok(Math.abs(+own[1] - (0.9 * mk.total + 0.1 * +own[2])) <= 1.2 && +own[3] === mk.total, `projected total ${own[1]} is not nine tenths the book's ${mk.total} and one tenth ours ${own[2]}`);
+    assert.ok(/Before the tip the books' total is the closer of the two/.test(t) && /From nine minutes in, the pace of the game itself decides/.test(t));
+    const fav = mk.spreadHome >= 0 ? vAb : hAb;
+    assert.ok(new RegExp(`The projected final is ${fav} by ${Math.abs(mk.spreadHome).toFixed(1)}: the books' spread`).test(t), `margin line: ${t}`);
+    const win = /Win chance: we say ([A-Z]{3}) (\d+)%, from the projected final margin and how far games really swing from this point\. The books say ([A-Z]{3}) (\d+)%\./.exec(t);
+    assert.ok(win && win[1] === fav, `win line: ${t}`);
+    assert.ok(Math.abs(+win[2] - 100 * B.w.Engine.normCdf(Math.abs(mk.spreadHome) / 11.5)) <= 1, `pregame chance ${win[2]}% does not come from the spread ${mk.spreadHome}`);
+    assert.strictEqual(banned(t).length, 0);
+    // at the half: the pace of the game decides the total, the margin is the score plus the book's spread for the time left, with the give-back
+    B.state.phase = 'live';
+    B.w.document.getElementById('refreshBtn').click();
+    for (const t0 = Date.now(); Date.now() - t0 < 30000;) { t = await card(B); if (/from the pace of this game so far/.test(t)) break; }
+    assert.ok(/Projected total \d+, from the pace of this game so far\. The books had [\d.]+ before the tip\./.test(t), `live total line: ${t.slice(0, 260)}`);
+    assert.ok(/The projected final is (a level game|[A-Z]{3} by [\d.]+): the score now, plus the books' spread for the time left, and a lead usually gives a little back by the end \(we keep 85% of it from here\)/.test(t), `live margin line: ${t}`);
+    assert.ok(/Win chance: we say [A-Z]{3} \d+%, from the projected final margin and how far games really swing from this point\. The books said [A-Z]{3} \d+% before the tip\./.test(t), `live win line: ${t}`);
+    assert.strictEqual(banned(t).length, 0);
+    assert.deepStrictEqual(B.errors.filter((e) => !/^warn:|network is off|learn|game logs/i.test(e)), []);
   });
   await test('after the day changes in an open app each player\'s own game logs are read again too', async () => {
     const cur = { day: DAY }, count = {}, asked = {};

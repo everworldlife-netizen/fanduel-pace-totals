@@ -691,6 +691,16 @@ const fav = M.pAway != null ? (M.pAway >= 0.5 ? s.v : s.h) : null;
 const favP = M.pAway != null ? (M.pAway >= 0.5 ? M.pAway : 1 - M.pAway) : null;
 const modelFav = P.winProb[s.v] >= 0.5 ? s.v : s.h;
 const rng = (r) => (r && r[0] !== r[1] ? ` (books ${r[0]} to ${r[1]})` : '');
+// how the projected final score and the win chance are built (version 18): said in plain words, with what was measured
+const A = M.anchor, pre = s.phase === 'pre', pm = M.projMargin;
+const li = (icon, text) => `<li class="info"><span aria-hidden="true">${icon}</span><span>${text}</span></li>`;
+const totalLine = M.total == null ? '' : li('🧮', A && A.total > 0
+? `Projected total <b>${Math.round(M.projTotal)}</b>: our own count says <b>${Math.round(A.ownTotal)}</b>, the books have <b>${M.total}</b>${rng(M.totalRange)}. ${pre ? 'Before the tip' : 'This early in a game'} the books' total is the closer of the two (it misses by 14.5 points, ours by 15.2, on 592 games), so the projection leans on theirs${pre ? '' : ', a little less every minute'}. From nine minutes in, the pace of the game itself decides. Their total also moves our pace from ${Math.round(M.paceModel)} to ${Math.round(P.pace.season)} possessions.`
+: `Projected total <b>${Math.round(M.projTotal)}</b>, from the pace of this game so far. The books had <b>${M.total}</b>${rng(M.totalRange)} before the tip.`);
+const ahead = Math.abs(pm) < 0.5 ? 'a level game' : `${pm > 0 ? s.v : s.h} by ${Math.abs(pm).toFixed(Math.abs(pm) < 9.95 ? 1 : 0)}`;
+const spreadLine = M.spreadHome == null ? '' : li('📐', `Books have ${spreadLabel(s, M.spreadHome)}${rng(M.spreadRange)}. ${A && A.margin > 0 ? `The projected final is <b>${ahead}</b>: ${pre ? `the books' spread, which lands closer than our own margin (11.1 points off against 11.7)` : `the score now, plus the books' spread for the time left${A.keep < 0.995 ? `, and a lead usually gives a little back by the end (we keep ${Math.round(A.keep * 100)}% of it from here)` : ''}`}. ` : ''}It also feeds the blowout and starters-sit chances.`);
+const lateCount = !pre && P.state.elapsed >= 45;
+const winLine = !fav ? '' : li('⚖️', `Win chance: we say <b>${modelFav} ${pct(P.winProb[modelFav])}</b>${lateCount ? ', counted from the simulations of the last minutes' : ', from the projected final margin and how far games really swing from this point'}. The books ${pre ? 'say' : 'said'} <b>${fav} ${pct(favP)}</b>${pre ? '' : ' before the tip'}.`);
 return `<div class="section-title">📒 BOOK LINES</div><div class="card">
 <div class="grid3">
 <div class="kv"><small>Spread</small><b>${spreadLabel(s, M.spreadHome)}</b></div>
@@ -698,9 +708,9 @@ return `<div class="section-title">📒 BOOK LINES</div><div class="card">
 <div class="kv"><small>Books win %</small><b>${fav ? `${fav} ${pct(favP)}` : '–'}</b></div>
 </div>
 <ul class="why" style="margin-top:10px">
-${M.total != null ? `<li class="info"><span aria-hidden="true">🧮</span><span>Our projected total is <b>${Math.round(M.projTotal)}</b> vs the books' <b>${M.total}</b>${rng(M.totalRange)}. Their total moves our pace from ${Math.round(M.paceModel)} to ${Math.round(P.pace.season)} possessions.</span></li>` : ''}
-${M.spreadHome != null ? `<li class="info"><span aria-hidden="true">📐</span><span>Books have ${spreadLabel(s, M.spreadHome)}${rng(M.spreadRange)}. That feeds the blowout and starters-sit chances.</span></li>` : ''}
-${fav ? `<li class="info"><span aria-hidden="true">⚖️</span><span>Win chance: we say <b>${modelFav} ${pct(P.winProb[modelFav])}</b>, the books say <b>${fav} ${pct(favP)}</b>.</span></li>` : ''}
+${totalLine}
+${spreadLine}
+${winLine}
 </ul>
 <div class="small muted" style="font-weight:700;margin-top:6px">${M.books} books via DataBallr${s.phase !== 'pre' ? ' · pregame lines' : ''}${M.updated ? ` · as of ${new Date(M.updated).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}</div>
 </div>`;

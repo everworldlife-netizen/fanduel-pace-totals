@@ -291,6 +291,9 @@ function score(E, proj, it, A, dump) {
   pg[9] = Math.abs(pt - (fv + fh));
   // for tuning the team check: the signed miss of the game total, and our points still to come before any check
   pg[17] = pt - (fv + fh); pg[18] = proj.teamRaw ? (proj.teamRaw[v] || 0) + (proj.teamRaw[h] || 0) : 0; pg[19] = proj.teamFactor || 1;
+  // for the study of Nov 13: our projected margin (visitor minus home) and our chance for the visitor, to set against the book's spread and the result
+  pg[20] = proj.projScore[v] - proj.projScore[h]; pg[21] = proj.winProb ? proj.winProb[v] : 0.5;
+  pg[22] = (proj.state.vs || 0) - (proj.state.hs || 0); pg[23] = (proj.state.vs || 0) + (proj.state.hs || 0); // the score when the projection was made
   if (it.market && it.market.total) { A.tot.mktN++; A.tot.mktAbs += Math.abs(it.market.total - (fv + fh)); A.tot.absWithMkt += Math.abs(pt - (fv + fh)); }
   A.team.n += 2; A.team.abs += Math.abs(proj.projScore[v] - fv) + Math.abs(proj.projScore[h] - fh); A.team.bias += proj.projScore[v] - fv + proj.projScore[h] - fh;
 }
