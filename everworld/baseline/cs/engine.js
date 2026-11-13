@@ -122,6 +122,8 @@ patHalf: 0, // minutes lessons between halftime and 30 minutes in: 0 = nearest s
 // oracle at every stage, so what is left is minutes. The minutes numbers were too spread out everywhere (real = a + b x number
 // with b 0.70 to 0.90) and the learned layer could only multiply, not pull a number toward what a role normally plays.
 tipBlend: 1, // the first six minutes of a game: minutes are the tip-off projection fading out and the live one fading in (the 6-minute lessons were learned at 6:00; used whole from the opening tip they moved minutes 1.2 on average in the first second and were worse than the tip-off number until about 4:30)
+mktAnchor: 1, mktTotW: 0.9, mktMarU: 1, mktKeep: 0.8, // v18: the projected final score. Share of the book's total before the tip (fading out from 3 to 9 minutes in), share of the book's spread in the margin of the rest of the game (0 = our own numbers only), and the share of an early lead that holds to the end (rising to all of it with the square of the clock)
+winCal: 1, winSd0: 7.5, winSd1: 4, // v18: win chance from the projected final margin and the swing real games have from this minute on (sd = winSd0 x sqrt(share of the game left) + winSd1), crossing over to the count of simulations from 36:00 to 45:00 (0 = count of simulations only)
 threeFix: 1, // v17: a made shot worth three is a three whatever its wording; missed long shots by distance (0 = the wording only, which missed one three in ten)
 outDone: 1, // v17: a player the user marks OUT during a game gets no more minutes (he was still projected for some), and they go to his teammates
 minXa: 25, minXb: 27, // v17: minutes lessons after halftime cross-fade from the halftime ones to the 30-minute ones between these game minutes (equal = the old switch at 27:00). Eight windows tried on 296 unseen games of 2025-26 and this season's 121: 25 to 27 is the one never worse on either (minutes 1.8 / 3.3 / 4.7% closer at 25:30 / 26:00 / 26:30 on the first set, 0.4 / 0.3 / 0.7% on the second); starting at 24 or 24.5 was 1 to 3% worse on this season's games, ending at 27.5 or 28 was 0.7 to 2% worse at 27:00 on last season's
@@ -244,6 +246,8 @@ for (const [x, y] of stints || []) if (t >= x && t < y) return true;
 return false;
 }
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+/** Share of a bell curve below x standard deviations (Abramowitz and Stegun 26.2.17, good to 7 decimals). */
+const normCdf = (x) => { const t = 1 / (1 + 0.2316419 * Math.abs(x)); const p = 0.3989422804 * Math.exp(-x * x / 2) * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429)))); return x > 0 ? 1 - p : p; };
 
 /** Parse a DataBallr live-games row into a clean game state. */
 function gameState(g) {
@@ -749,7 +753,12 @@ const PAT_SHIFT = ['track', 'shooting', 'uReal', 'luck', 'recent', 'fadeHist'];
 // which stepped the shown points at 15:00 and 21:00; with 0.25 points land 0.03 to 0.07% closer between 15:00 and 21:00 on 296
 // unseen games of last season and 0.15 to 0.44% closer on this season's 121. During a game the weights now also blend by game
 // minute between stages, see landNow.)
-const LAND = { pre: { fg3m: 1 }, s6: { pts: 0.25, fg3m: 1 }, s12: { pts: 0.25, ast: 0.25, fg3m: 1 }, s18: { pts: 0.25, ast: 0.5, fg3m: 1 }, s24: { pts: 0.25, ast: 1, fg3m: 1 },
+// (Version 18 refit, on box scores that count every three. Weights chosen on 592 unseen games of last season and kept only where
+// this season's 121 and the 20 newest games agree: points before the tip 0 -> 0.25 (miss 0.15% / 0.22% / 0.49% smaller on the
+// three sets), points at the half 0.25 -> 0.5 (0.14% / 0.28% / 0.30%), rebounds 0 -> 0.25 at 12:00, 18:00 and the half
+// (0.04 to 0.22% / 0.15 to 0.27% / 0.32 to 0.76%). Left alone because the sets disagree: rebounds before the tip and at 6:00,
+// assists at the half, and the lineup-not-posted table.)
+const LAND = { pre: { pts: 0.25, fg3m: 1 }, s6: { pts: 0.25, fg3m: 1 }, s12: { pts: 0.25, reb: 0.25, ast: 0.25, fg3m: 1 }, s18: { pts: 0.25, reb: 0.25, ast: 0.5, fg3m: 1 }, s24: { pts: 0.5, reb: 0.25, ast: 1, fg3m: 1 },
 s30: { pts: 0.75, reb: 0.25, ast: 1, fg3m: 1 }, s36: { pts: 1, reb: 1, ast: 1, fg3m: 1 }, s42: { pts: 1, reb: 1, ast: 1, fg3m: 1, min: 1 }, rep: { fg3m: 1 } };
 function patGroup(st, lineupPosted) { if (st.phase === 'pre') return lineupPosted === false && TUNE.repGroup > 0 ? 'rep' : 'pre'; const k = clamp(Math.round(st.elapsed / 6), 1, 7); return 's' + k * 6; }
 /** One feature row per graded stat for a player at this moment (all scaled to about -2..2). */
@@ -2268,7 +2277,9 @@ let wTip = 0; // share of the tip-off projection still in the numbers (1 at the 
 let landNow = LAND[patG] || {};
 if (TUNE.landInterp > 0 && st.phase === 'live' && st.period <= 4) {
 const lo = clamp(Math.floor(el / 6) * 6, 0, 42), hi = Math.min(lo + 6, 42), t = hi > lo ? clamp((el - lo) / 6, 0, 1) : 0;
-const A = (lo === 0 ? LAND.pre : LAND['s' + lo]) || {}, B = LAND['s' + hi] || {};
+// (0:00 = the table used just before the tip: the lineup-not-posted one when no lineup was confirmed, or the shown points of
+// every regular would step down a third of a point at the opening tip now that the two tables differ)
+const A = (lo === 0 ? (lineup.confirmed || !(TUNE.repGroup > 0) ? LAND.pre : LAND.rep) : LAND['s' + lo]) || {}, B = LAND['s' + hi] || {};
 landNow = {};
 for (const k of new Set([...Object.keys(A), ...Object.keys(B)])) landNow[k] = (1 - t) * (A[k] || 0) + t * (B[k] || 0);
 }
@@ -2523,14 +2534,67 @@ teamRaw[tm] = sRaw / N;
 }
 let vWin = 0;
 // (a simulation that ends level means overtime: half a win each. Before, hundredths of a point of deep-bench filler decided
-// every level finish, so a tied game with seconds left could read 77% or 30%)
+// every level finish, so a tied game with seconds left could read 77% or 30%. Counted before the final-score step below: late in
+// a game its shift of a fraction of a point turns one-point finishes into level ones and made this count worse, 0.0559 -> 0.0583
+// at 45:00 on 592 unseen games.)
 for (let i = 0; i < N; i++) { const dWin = st.vs + teamPts[v][i] - (st.hs + teamPts[h][i]); vWin += Math.abs(dWin) < 0.5 ? 0.5 : dWin > 0 ? 1 : 0; }
+// The final score (version 18). Measured on 592 + 121 + 20 games the lessons never saw:
+// - total: before the tip the book's total misses by 14.5 where ours missed by 15.2 (ours ran 3 to 7 points low: the league's
+//   scoring level moves between seasons). So the total leans on the book's until play has shown its own pace: nine tenths
+//   before the tip and for the first three minutes, none from nine minutes in.
+// - margin: for the REST of the game the book's spread, spread over the time left, beat our own estimate at every stage, and our
+//   own estimate added nothing to it. And a lead does not fully hold: games drift back toward even, so about a fifth of an early
+//   lead is given back by the end (final margin = 0.8 to 0.95 x the lead + the rest, fitted by stage; the share kept rises with
+//   the square of the game clock). Final margin miss 11.66 -> 11.07 at tip-off, 9.70 -> 8.90 at 18 minutes, 9.00 -> 8.32 at
+//   the half, 6.55 -> 6.18 after three quarters (592 games), and 11.83 -> 11.09 at 12:00, 10.50 -> 9.81 at 18:00 on this
+//   season's 121. With no book line the same give-back is applied to our own estimate. From 36:00 the rule fades into the
+//   simulations' own margin (see ruleW above).
+// Player numbers are not touched: tested, the book's total and spread add nothing to them (their miss moves by less than
+// 0.2% either way at every stage), and before a game the team total is not their sum.
+// Late in a game the simulations know the score and the clock exactly, and they are what the win chance is counted from. So the
+// margin rule hands back to the simulations' own margin with the same weight as the win chance does (all rule until 36:00, none
+// from 45:00 and in overtime): otherwise a level game with two minutes left could show one team ahead in the projected score and
+// the other ahead in the win chance (found in review: 7 of 500 close late states).
+const ruleW = st.phase === 'pre' ? 1 : clamp((45 - el) / 9, 0, 1);
+let anchor = null;
+if (TUNE.mktAnchor > 0 && st.phase !== 'final' && left > 0 && N > 0) {
+const mv = mean(Array.from(teamPts[v])), mh = mean(Array.from(teamPts[h]));
+const wT = mk && mk.total ? TUNE.mktTotW * (st.phase === 'pre' ? 1 : clamp((9 - el) / 6, 0, 1)) : 0;
+const uM = (mk && mk.spreadHome != null ? TUNE.mktMarU : 0) * ruleW;
+const keep = st.phase === 'pre' || el <= 0 ? 1 : 1 - ruleW * (1 - Math.min(1, TUNE.mktKeep + (1 - TUNE.mktKeep) * (el / 48) ** 2));
+const ownTotal = st.vs + st.hs + mv + mh, ownMargin = st.vs - st.hs + mv - mh;
+if (wT > 0 || uM > 0 || keep < 1) {
+const total = (1 - wT) * ownTotal + wT * ((mk && mk.total) || ownTotal);
+const rest = (1 - uM) * (mv - mh) + uM * ((mk && mk.spreadHome) || 0) * clamp(left / 48, 0, 1) - (1 - keep) * (st.vs - st.hs);
+const toCome = Math.max(total - st.vs - st.hs, 0);
+// each simulation keeps its own swing around the new averages
+const dv = Math.max((toCome + rest) / 2, 0) - mv, dh = Math.max((toCome - rest) / 2, 0) - mh;
+for (let i = 0; i < N; i++) { teamPts[v][i] = Math.max(teamPts[v][i] + dv, 0); teamPts[h][i] = Math.max(teamPts[h][i] + dh, 0); }
+}
+anchor = { total: wT, margin: uM, keep, rule: ruleW, ownTotal, ownMargin };
+}
 const projScore = { [v]: st.vs + mean(Array.from(teamPts[v])), [h]: st.hs + mean(Array.from(teamPts[h])) };
+// Win chance (version 18). Counting simulations was too timid: their final margins swing about 30 points around the average
+// where real games swing 11 to 12 before the tip and less as the clock runs, so a team we called 64% to win really won 74% of
+// the time and one we called 85% won 95% (592 unseen games). The chance now comes from the projected final margin and the
+// swing games really have from this minute on (7.5 x the square root of the share of the game left, plus 4 points), fitted on
+// those 592 games. Squared miss of the win chance (lower is better), 592 games then this season's 121: 0.209 -> 0.172 and
+// 0.213 -> 0.182 at tip-off (the books' own chance: 0.173 and 0.184), 0.183 -> 0.159 and 0.209 -> 0.194 after a quarter,
+// 0.144 -> 0.130 and 0.160 -> 0.143 at the half. In the last minutes the count of simulations is the better read (it knows
+// the score and the clock exactly), so the two cross over from 36:00 to 45:00; from 45:00 on the chance is the count alone.
+let pWinV = N > 0 ? vWin / N : 0.5;
+if (TUNE.winCal > 0 && st.phase !== 'final' && left > 0 && N > 0) {
+const wC = ruleW;
+if (wC > 0) pWinV = wC * normCdf((projScore[v] - projScore[h]) / (TUNE.winSd0 * Math.sqrt(clamp(left / 48, 0, 1)) + TUNE.winSd1)) + (1 - wC) * pWinV;
+}
+// The two reads can still land a hair apart on either side of level (a mean and a count are different things): then the game is
+// a coin flip and says so, so the projected score and the win chance never name different teams.
+if (TUNE.winCal > 0 && st.phase !== 'final' && (pWinV - 0.5) * (projScore[v] - projScore[h]) < 0) pWinV = 0.5;
 return {
-state: st, patG, teamRaw, teamFactor: tF, players: results, projScore, winProb: { [v]: vWin / N, [h]: 1 - vWin / N },
+state: st, patG, teamRaw, teamFactor: tF, players: results, projScore, winProb: { [v]: pWinV, [h]: 1 - pWinV }, winSim: N > 0 ? vWin / N : 0.5,
 blowout: { now: isBlowout(st), pBlow, pBig }, possLeft, pace: { season: seasonPace, live: livePace },
-context: ctx, habits, injuries: out, absent, b2b, sims: N, fillDebug, env, lineup, lgZone: lgZ, alerts,
-market: mk ? { ...mk, paceMkt, paceModel, marginModel, projTotal: projScore[v] + projScore[h], projMargin: projScore[v] - projScore[h] } : null,
+context: ctx, habits, injuries: out, absent, b2b, sims: N, fillDebug, env, lineup, lgZone: lgZ, alerts, scoreRule: anchor,
+market: mk ? { ...mk, paceMkt, paceModel, marginModel, projTotal: projScore[v] + projScore[h], projMargin: projScore[v] - projScore[h], anchor } : null,
 teamsDb, league: lgT,
 };
 }
@@ -2673,4 +2737,4 @@ k.tier = t.tier; k.tierWhy = t.why; k.blowProof = !!p.blowProof; k.chips = (p.ch
 return picks.sort((a, b) => (TIER_RANK[a.tier] - TIER_RANK[b.tier]) || (b.edge ?? 0) - (a.edge ?? 0) || b.prob - a.prob);
 }
 
-/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, }; });
+/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, normCdf, }; });

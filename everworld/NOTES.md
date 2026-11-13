@@ -2,7 +2,7 @@
 
 Memory between sessions. Read this before trying anything; add to it at the end of every session.
 
-Last updated: 2026-11-12 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
+Last updated: 2026-11-13 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
 
 ## START HERE (Nov 11, 2026): state of the work, written so any new session can pick it up
 
@@ -35,10 +35,31 @@ what matters most.
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 09:10 UTC, Nov 12)
+### Where the build stands at this commit (updated 19:30 UTC, Nov 13)
 
-**PUBLISHED on Nov 12, 2026 at 08:57 UTC (3:57 am Eastern): Courtside 17 (`ca-shell-v17`, Space commit `55a0ecb`) and
-GG Winner 3.10.1 (`gg-winner-v3.10.1`, Space commit `1f60c9e`).** Full story: "Version 17 (Nov 12)" further down.
+**PUBLISHED on Nov 13, 2026 at about 19:20 UTC (2:20 pm Eastern): Courtside 18 (`ca-shell-v18`, Space commit `9f5f0be`).
+GG Winner is unchanged: 3.10.1 (`gg-winner-v3.10.1`, Space commit `1f60c9e`, Nov 12).** Full story: "Version 18 (Nov 13)"
+further down.
+
+- What version 18 is (Akara: "Study the results, projections and enhance the app for accuracy."): a closer projected
+  final score (the book's total before the tip, the book's spread for the rest of the game, an early lead gives a fifth
+  back), an honest win chance (said 75% → won 76% on 592 unseen games; before: 84%), and a slightly closer shown number
+  for points (tip-off, half) and rebounds (12:00 to the half). Player numbers are otherwise untouched; the lessons are
+  the same (`H4-v17a`, `PAT_KEY` still `pat:v6`: nothing saved on a phone is thrown away).
+- `cs/build` = Courtside 18 (Settings shows "Version 18 (Nov 13, 2026)"); `gg/static` = GG Winner 3.10.1; `baseline/` =
+  the live files; `release-2026-11-13/` = exactly what was uploaded (Courtside: app.js, engine.js, sw.js).
+- Verified after publishing: 3 files byte for byte (`mkrelease.js --verify`), both live links load tonight's 9 games with
+  no page errors, all 14 screens pass at Pixel 9a size (`phoneshots.js --live`), the BOOK LINES card on the live link
+  reads right on real games (margin = the spread to the decimal, score and win bar agree), version line as above.
+- Tests: engine 94 checks, app 35, GG Winner 15 + 5, all passing in one run; ten deliberately broken engines each fail.
+- Frozen engines (tracked): `data/engines/v18c/` = THE PUBLISHED ENGINE = `cs/build/engine.js`; `v17b/` = version 17.
+- Runs kept in git: `data/runs/M18-{P1,P2,B}.json` (version 17 on today's data), `D18-{P1,P2,B}.json` (version 18),
+  `P2-v18c.json` (the exam behind the in-app report).
+
+The state on Nov 12 (version 17), kept for the record:
+
+PUBLISHED on Nov 12, 2026 at 08:57 UTC (3:57 am Eastern): Courtside 17 (`ca-shell-v17`, Space commit `55a0ecb`) and
+GG Winner 3.10.1 (`gg-winner-v3.10.1`, Space commit `1f60c9e`). Full story: "Version 17 (Nov 12)" further down.
 
 - What version 17 is: every made three is counted (one in ten was missing from the play-by-play box; 3PM lands 2.5% closer
   at tip-off, 8% at halftime, 25% after three quarters, 45% with six minutes left on this season's 121 unseen games;
@@ -176,6 +197,8 @@ Six minutes in is now closer than tip-off, as it should be (it was worse before:
   review area can run; that last area runs right after publishing.
 - 22:24: PUBLISHED both Spaces with `tools/publish.sh` (tests, one commit per Space); verified live by 22:32.
   Next: the fourth review area on the published build; anything it finds is a follow-up release.
+- Nov 13, 17:00 to 19:30 UTC: blind test of version 17 on the 20 newest games, the study (`tools/research/v18-*`), the
+  build, an independent review (5 findings fixed), **Courtside 18 published at about 19:20 UTC** (Space commit `9f5f0be`).
 
 ### How to set up on a new computer
 
@@ -199,6 +222,11 @@ node tools/fetch.js 2023-10-24 2026-11-10      # then, to add newer games: fetch
 Tests, the release build and publishing do NOT need the cache.
 
 ### Publishing from a session, and how version 16 went out (Nov 11)
+
+Version 18 went out the same way on Nov 13 (`tools/publish.sh release-2026-11-13`, Courtside only: a Space with no changed
+file has no folder in the release and is skipped). Update steps for Akara's Pixel: open the link in Chrome (or the installed
+app) with a connection, pull down to refresh or close it from the recent apps and open it again; Courtside Settings must
+show "Version 18 (Nov 13, 2026)". Nothing saved on the phone is rebuilt this time.
 
 Version 17 went out the same way on Nov 12: `tools/publish.sh release-2026-11-12`, then `node tools/phoneshots.js --live`.
 Update steps for Akara's Pixel: open the link in Chrome (or the installed app) with a connection, pull down to refresh or
@@ -237,6 +265,17 @@ review pass has to finish and every confirmed finding has to be fixed and retest
    the exam (`p2.sh`) is rerun too.
 
 ### The next round after that (best leads, in order)
+
+00. (Added Nov 13, after version 18.) (a) The game-level numbers now sit at the level of the book's own line before the
+   tip (total 14.48 against 14.45, win chance 0.1722 against 0.1728 on 592 games): the next gain there needs news the
+   closing line does not have (late scratches after the line closed, live). (b) The win chance from 36:00 to 45:00 is a
+   blend of a curve and a count: a count that is right early too (simulated margins that swing like real games) would
+   replace both, but it means retuning the spread of the team simulations and refitting; test on P1/P2 first. (c) The
+   margin gain at 42:00 and 45:00 was given up for consistency (4.60 → 4.69, 3.49 → 3.62 on 592 games): a count of
+   simulations taken on the shifted scores with whole-point ties handled properly would get it back. (d) A nightly
+   recorder of the book's player lines (they vanish from the feed after a game), so shown edges can be regraded in the
+   lab and not only on Akara's phone. (e) Rebounds at tip-off and 6:00 in the shown number: the two newer sets say a
+   quarter of the middle helps (0.1 to 0.7%), last season's set says no: decide when 150+ new games are in.
 
 0. (Added Nov 12.) (a) The shown number for threes (LAND `fg3m: 1` at every stage) was fitted on the old, short counts:
    refit it on the corrected boxes (`tools/fitland.js` on a P1 row dump, check on P2). (b) A softer on-the-floor input

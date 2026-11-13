@@ -1,0 +1,33 @@
+{
+ "date": "2026-11-13",
+ "spaces": [
+  {
+   "name": "courtside-arcade",
+   "live": "https://everworldlife-courtside-arcade.static.hf.space/",
+   "upload": "https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main",
+   "files": [
+    {
+     "path": "app.js",
+     "bytes": 119217,
+     "sha256": "40f9dc0b85dfb72282602ebc7dbba4007e98d736c0191c1522860a841024b27d"
+    },
+    {
+     "path": "engine.js",
+     "bytes": 241129,
+     "sha256": "5c4b639d868e224aa9bcac1666af220dafa32d99055122a9a3ed9747135a4f51"
+    },
+    {
+     "path": "sw.js",
+     "bytes": 1441,
+     "sha256": "033daeeb695be37a40a02478ed2c25628d55220e694a922b6e4f62a00fe87306"
+    }
+   ]
+  },
+  {
+   "name": "gg-winner",
+   "live": "https://everworldlife-gg-winner.static.hf.space/",
+   "upload": "https://huggingface.co/spaces/everworldlife/gg-winner/upload/main",
+   "files": []
+  }
+ ]
+}
