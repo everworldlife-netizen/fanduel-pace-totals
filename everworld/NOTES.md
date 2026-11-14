@@ -1387,6 +1387,51 @@ Built tonight for (3), OFF as shipped (nothing changes in the live app until it 
 Recording from Nov 14 on: snapshots through the whole day (the first in the morning), not only the last hours, so the
 lab can also answer "how early are a team's lines up" and "what did a phone see at noon".
 
+**Night 1 graded (Nov 13, nine games; written Nov 14, 10 am ET). One night: directions, not proofs.**
+`tools/nightly.sh 2026-11-13` (new: fetch, prep, who played, replay, lines table over every recorded night; SKIP_FETCH=1
+grades again without the feeds). Eight games replayed: UTA at HOU fails the complete-box check (the play-by-play misses
+one substitution: Ace Bailey 25.1 minutes against ESPN's 35), so it is left out of the number tables like every such
+game; who-played counts use ESPN's official minutes and keep all nine.
+
+1. THE LEVEL OF THE LINE (the lever that matters: picks are made on players with a line). Tip-off stage, the published
+   engine, closing lines (7 to 9 minutes before each tip, one game 37), players who played 10+ minutes:
+
+   | stat | lines | our miss | book's miss | half and half | gain of half and half ± one standard error |
+   |---|---|---|---|---|---|
+   | points | 120 | 5.632 | 5.467 | 5.516 | +0.115 ± 0.062 (z 1.9) |
+   | rebounds | 117 | 1.849 | 1.765 | 1.770 | +0.079 ± 0.030 (z 2.7) |
+   | assists | 93 | 1.558 | 1.554 | 1.544 | +0.014 ± 0.024 (z 0.6) |
+   | threes | 102 | 1.162 | 1.186 | 1.169 | −0.006 ± 0.024 (z −0.3) |
+
+   Before lineups the same picture (points +0.097 ± 0.064, rebounds +0.071 ± 0.033). The closing line was closer than
+   our number on points (2.9%) and rebounds (4.5%), level on assists, and ours was closer on threes (2%). Of our gap to
+   the line, the share that showed up in the results: points −0.39, rebounds 0.25, assists −0.10, threes −0.14: on this
+   night, where we disagreed with the books, the books were right. It was a rough night for every number (points miss
+   5.22 at tip-off against 4.65 to 4.70 on the exams).
+2. PLUS EDGES against the closing line, graded for the first time (the lab never had lines before): the result beat the
+   line on 48.7% ± 3.6 of 197 plus edges (every stat, pushes left out); on the wider ones (our number 12%+ ahead) 47.8%
+   ± 5.2 of 92. A coin, on one night. If three or four nights say the same, the honest pre-game number is mostly the
+   line, and pre-game plus edges become few. That is a product decision for Akara, to be put to him with the numbers.
+3. WHO PLAYS. Last look before each tip: of players the app gave 15+ minutes, 134 of 134 with a line played; of 16
+   with no line 5 never played (Jovic, Peavy, Walker, K. Brown, J. Richardson: none on ESPN's list) and 11 played.
+   Minutes: with a line the app is right or a touch low (20.6 given → 20.8; 29.3 → 30.2; 15.5 → 18.4 on 12 players); with
+   no line it is high (8.8 → 5.8 on 35 players; 13.6 → 9.3 on 36; 19.3 → 11.1 on 7), but those who DO get in play about
+   what the app says. Two hours before the tips "no line" says little (15 of 17 played) and lined players on ESPN's list
+   as Day-To-Day are the risk (4 of 6 played; lined and not on the list: 96 of 96).
+   The engine switch, on the eight games (tip-off, points miss of players who played 10+ / minutes miss / players given
+   10+ minutes who never played): off 5.221 / 4.57 / 17; no-line minutes ×0.65: 5.351 / 5.05 / 4; lined ×1.03: 5.202 /
+   4.49 / 17; both: 5.372 / 5.00 / 4; ×0.8 and ×1.05: 5.286 / 4.73 / 10; taking no-line players out (`--lineout 15`):
+   5.365 / 4.38 / 14. Cutting the minutes of players with no line makes the numbers WORSE (the ones who play get their
+   minutes, and "no line" cannot tell them from the five who sit). NOT BUILT. What is left of it is a flag on the card
+   ("no book has a line on him tonight"), not a change to a number. `lineYesK` 1.03 is inside the noise.
+4. ESPN's note wording, two hours before the tips (10 Day-To-Day players): doubtful 0 of 1 played, questionable 5 of 7,
+   probable 1 of 2 (Klay Thompson was a late scratch). Too few to say anything.
+5. Not shown by the app and played 15+ minutes: Jalen Suggs (21, had a line), Nikola Topic (16).
+
+Next: nights 2 to 4 the same way (`tools/nightly.sh <date>` each morning). Decide the share of the line per stat on
+some nights, check it on the others, at least 300 lines per stat. Build the mix only then, inside the number (so the
+plus edges shrink with it), and tell Akara what it does to the picks before it ships.
+
 ### Traps found this session
 - (Nov 12) The lab graded 3PM against its own play-by-play box, so a counting error in that box was invisible to every
   test for the whole project. Whenever the box code changes, check it against an outside official box for every stat

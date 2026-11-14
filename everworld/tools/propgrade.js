@@ -26,7 +26,7 @@ const linesFor = (gid) => {
   const tip = list[0].game && list[0].game.datetime ? Date.parse(list[0].game.datetime) : Infinity;
   const before = list.filter((s) => Date.parse(s.at) < tip);
   const pick = SNAP === 'first' ? list[0] : (before.length ? before[before.length - 1] : list[list.length - 1]);
-  return { at: pick.at, minsBefore: Math.round((tip - Date.parse(pick.at)) / 60000), lines: E.consensusLines(pick.rows), snaps: list.length };
+  return { at: pick.at, date: (pick.game && pick.game.date) || String(pick.at).slice(0, 10), minsBefore: Math.round((tip - Date.parse(pick.at)) / 60000), lines: E.consensusLines(pick.rows), snaps: list.length };
 };
 const rows = files.flatMap((f) => L.readJSON(path.resolve(f))).filter((r) => (STAGE === 'rep' ? r.g === 'rep' : r.el === 0 && r.g !== 'rep'));
 const games = [...new Set(rows.map((r) => r.id))];
@@ -41,7 +41,7 @@ for (const r of rows) {
   const has = STATS.some(([k]) => G.lines[`${r.pid}:${k}`]);
   if (!r.un && r.pr) played.push({ nm: r.nm, tm: r.tm, projMin: r.pr[0], realMin: r.ac ? r.ac[0] : 0, has });
   if (r.un || !r.pr || !r.ac) continue;
-  for (const [k, ix, lab] of STATS) { const c = G.lines[`${r.pid}:${k}`]; if (!c) continue; S.push({ k: lab, nm: r.nm, tm: r.tm, ours: r.pr[ix], avg: r.mn ? r.mn[ix] : r.pr[ix], line: c.line, fair: c.fairOver, books: c.books, act: r.ac[ix], min: r.ac[0], projMin: r.pr[0] }); }
+  for (const [k, ix, lab] of STATS) { const c = G.lines[`${r.pid}:${k}`]; if (!c) continue; S.push({ k: lab, night: G.date, nm: r.nm, tm: r.tm, ours: r.pr[ix], avg: r.mn ? r.mn[ix] : r.pr[ix], line: c.line, fair: c.fairOver, books: c.books, act: r.ac[ix], min: r.ac[0], projMin: r.pr[0] }); }
 }
 const fmt = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '—');
 console.log(`\nAverage miss, players who really played ${MINP}+ minutes (a line is a half-point number: its miss is never 0)`);
@@ -51,6 +51,24 @@ for (const [, , lab] of STATS) {
   const m = (f) => mean(R.map((x) => Math.abs(f(x) - x.act)));
   let sxy = 0, sxx = 0; for (const x of R) { sxy += (x.ours - x.line) * (x.act - x.line); sxx += (x.ours - x.line) ** 2; }
   console.log(`${lab.padEnd(4)} | ${String(R.length).padStart(5)} | ${fmt(m((x) => x.ours), 3)}  | ${fmt(m((x) => x.line), 3)}  | ${fmt(m((x) => 0.75 * x.ours + 0.25 * x.line), 3)}    | ${fmt(m((x) => 0.5 * x.ours + 0.5 * x.line), 3)}    | ${fmt(m((x) => 0.25 * x.ours + 0.75 * x.line), 3)}    | ${fmt(mean(R.map((x) => x.ours - x.act)))} / ${fmt(mean(R.map((x) => x.line - x.act)))}     | ${fmt(sxx > 0 ? sxy / sxx : NaN)} (1 = our gap was all real, 0 = the book was right)`);
+}
+// how sure: the gain of a mix over our own number, player by player (paired), with its standard error; and night by night
+const se = (a) => { const m = mean(a); return Math.sqrt(a.reduce((x, y) => x + (y - m) ** 2, 0) / Math.max(a.length - 1, 1) / a.length); };
+const nights = [...new Set(S.map((x) => x.night))].sort();
+console.log(`\nHow sure (${nights.length} night${nights.length > 1 ? 's' : ''}: ${nights.join(', ')}): our miss minus the miss of a mix, per player; ± is one standard error (a gain under 2 of them is not yet a finding)`);
+console.log('stat | lines | half book: gain ± se (z)     | all book: gain ± se (z)      | by night, half book (lines: gain)');
+for (const [, , lab] of STATS) {
+  const R = S.filter((x) => x.k === lab && x.min >= MINP); if (R.length < 5) continue;
+  const d = (w) => R.map((x) => Math.abs(x.ours - x.act) - Math.abs((1 - w) * x.ours + w * x.line - x.act));
+  const cell = (w) => { const a = d(w), m = mean(a), e = se(a); return `${m >= 0 ? '+' : ''}${fmt(m, 3)} ± ${fmt(e, 3)} (${fmt(m / e, 1)})`.padEnd(26); };
+  const by = nights.map((n) => { const a = R.filter((x) => x.night === n).map((x) => Math.abs(x.ours - x.act) - Math.abs(0.5 * x.ours + 0.5 * x.line - x.act)); return `${n.slice(5)} ${a.length}: ${a.length ? (mean(a) >= 0 ? '+' : '') + fmt(mean(a), 3) : '—'}`; });
+  console.log(`${lab.padEnd(4)} | ${String(R.length).padStart(5)} | ${cell(0.5)} | ${cell(1)} | ${by.join(' | ')}`);
+}
+{
+  const R = S.filter((x) => x.ours > x.line && x.act !== x.line), win = R.filter((x) => x.act > x.line).length;
+  const big = R.filter((x) => (x.ours - x.line) / Math.max(x.line, 1) >= 0.12), winB = big.filter((x) => x.act > x.line).length;
+  const pc = (w, n) => (n ? `${fmt((100 * w) / n, 1)}% ± ${fmt(100 * Math.sqrt(0.25 / n), 1)} (${n})` : '—');
+  console.log(`All plus edges, every stat (pushes left out): the result beat the line ${pc(win, R.length)}; the wider ones (our number 12%+ ahead of the line): ${pc(winB, big.length)}. Even money is 50%; a book's price needs about 52.4%.`);
 }
 console.log('\nHow far our number sits from the line, and who was closer when the two disagreed');
 for (const [, , lab] of STATS) {

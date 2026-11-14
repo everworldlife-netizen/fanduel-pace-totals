@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /* Who really played, against what was known before the tip (recorded by tools/proprec.js and tools/appsnap.js).
- *   node tools/availgrade.js [--date YYYY-MM-DD ...] [--min 15] [--quiet]
+ *   node tools/availgrade.js [--date YYYY-MM-DD ...] [--min 15] [--lead <minutes before the tip>] [--quiet]
  * Needs the finished games' play-by-play on disk (node tools/fetch.js <date> <date>). For every finished game of the date:
  *   A. ESPN's injury list as it stood at the last snapshot before the tip: the status field the app reads today, and the
  *      wording of the note it does not read ("listed as doubtful", "ruled out for Friday's game"), against who played.
@@ -17,7 +17,7 @@ const E = require(path.join(L.ROOT, 'cs/build/engine.js'));
 const argv = process.argv.slice(2);
 const dates = argv.map((a, i) => (a === '--date' ? argv[i + 1] : null)).filter(Boolean);
 const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const MINP = +arg('--min', 15), QUIET = argv.includes('--quiet');
+const MINP = +arg('--min', 15), QUIET = argv.includes('--quiet'), LEAD = +arg('--lead', 0) * 60000; // --lead 120: what was known two hours before each tip
 if (!dates.length) { const d = new Date(Date.now() - 30 * 3600000); dates.push(d.toISOString().slice(0, 10)); }
 const norm = E.norm;
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -53,6 +53,10 @@ function noteIsForGame(row, tipMs) {
 module.exports = { noteVerdict, noteIsForGame };
 if (require.main !== module) return;
 
+// game id -> ESPN event id, from the prepared season files (after tools/prep.js)
+const espnIds = new Map();
+for (const season of [...new Set(dates.map((d) => L.seasons(d).cur))]) { const f = path.join(L.DERIVED, `games-${season}.json.gz`); if (L.exists(f)) for (const it of L.readJSON(f)) if (it.espnId) espnIds.set(it.g.id, it.espnId); }
+const espnIdOf = (id) => espnIds.get(id) || null;
 const T = { bucket: {}, status: {}, note: {}, ghosts: [], missing: [], line: { yes: [0, 0], no: [0, 0] }, lineBy: {}, games: 0, noTruth: 0 };
 const add = (o, k, played) => { const r = (o[k] = o[k] || [0, 0, []]); r[played ? 0 : 1]++; return r; };
 for (const date of dates) {
@@ -71,9 +75,18 @@ for (const date of dates) {
     const log = E.logEntry({ ...g0, status_state: 'final' }, L.readJSON(pp));
     const mins = new Map(); // normalized name -> minutes played
     for (const r of Object.values(log.rows)) if (r.team === v || r.team === h) mins.set(`${r.team}:${norm(r.name)}`, r.min || 0);
+    const sumOf = espnIdOf(g0.id) ? path.join(L.DATA, 'espn', 'sum', `${espnIdOf(g0.id)}.json.gz`) : null;
+    if (sumOf && L.exists(sumOf)) {
+      // ESPN's official minutes where the box is on disk (the play-by-play misses a substitution now and then)
+      for (const t of (L.readJSON(sumOf).boxscore || {}).players || []) {
+        const st = (t.statistics || [])[0]; if (!st) continue;
+        const tm = L.espnAbbr(t.team && t.team.abbreviation), iM = (st.names || st.labels || []).indexOf('MIN');
+        for (const a of st.athletes || []) { const m = a.stats && a.stats.length && iM >= 0 ? +a.stats[iM] || 0 : 0; const k = `${tm}:${norm((a.athlete && a.athlete.displayName) || '')}`; if (mins.has(k) || m > 0) mins.set(k, a.didNotPlay ? 0 : m); }
+      }
+    }
     const playedMin = (tm, nm) => mins.get(`${tm}:${norm(nm)}`) || 0;
     const full = { [g0.visitor_team.full_name]: v, [g0.home_team.full_name]: h };
-    const before = (list) => { const b = list.filter((s) => Date.parse(s.at) < tip); return b.length ? b[b.length - 1] : null; };
+    const before = (list) => { const b = list.filter((s) => Date.parse(s.at) < tip - LEAD); return b.length ? b[b.length - 1] : null; };
     if (!QUIET) console.log(`\n${v} at ${h} (tip ${new Date(tip).toISOString().slice(11, 16)} UTC, ${etDay(tip)})`);
 
     // A. the injury list
@@ -93,7 +106,7 @@ for (const date of dates) {
 
     // B. the app's rows, C. the lines
     const A = before(apps);
-    const lineSnaps = files.map((f) => /^(\d+)-(\d{4})\.json\.gz$/.exec(f)).filter((m) => m && +m[1] === g0.id).map((m) => L.readJSON(path.join(dir, m[0]))).filter((s) => s && Date.parse(s.at) < tip && Array.isArray(s.rows) && s.rows.length).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+    const lineSnaps = files.map((f) => /^(\d+)-(\d{4})\.json\.gz$/.exec(f)).filter((m) => m && +m[1] === g0.id).map((m) => L.readJSON(path.join(dir, m[0]))).filter((s) => s && Date.parse(s.at) < tip - LEAD && Array.isArray(s.rows) && s.rows.length).sort((a, b) => String(a.at).localeCompare(String(b.at)));
     const C = lineSnaps.length ? E.consensusLines(lineSnaps[lineSnaps.length - 1].rows) : null;
     const hasLine = (pid) => !!C && ['pts', 'reb', 'ast', 'fg3m'].some((k) => C[`${pid}:${k}`]);
     if (A) {
@@ -120,7 +133,7 @@ for (const date of dates) {
 }
 
 const pct = (a, b) => (a + b ? Math.round((100 * a) / (a + b)) + '%' : '—');
-console.log(`\n==== ${dates.join(', ')}: ${T.games} finished games graded${T.noTruth ? `, ${T.noTruth} not finished or not fetched` : ''} ====`);
+console.log(`\n==== ${dates.join(', ')}${LEAD ? ` (what was known ${LEAD / 60000}+ minutes before each tip)` : ''}: ${T.games} finished games graded${T.noTruth ? `, ${T.noTruth} not finished or not fetched` : ''} ====`);
 console.log('\nA. ESPN\'s injury list before the tip, by the status field (what the app reads today)');
 for (const [k, [p, n]] of Object.entries(T.status).sort()) console.log(`  ${k.padEnd(12)} ${String(p + n).padStart(3)} listed: played ${p}, did not play ${n} (played ${pct(p, n)})`);
 console.log('\n   …and split by what the note says about this game (what the app does not read yet)');
