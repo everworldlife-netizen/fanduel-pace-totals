@@ -1,0 +1,4 @@
+pass 1 (minutes): 1177 games, 92s
+pass 2 (stats): 190s
+pass 3 (calibration): 288s
+lessons from 1177 games → data/lessons/K2-base.json
