@@ -125,6 +125,7 @@ tipBlend: 1, // the first six minutes of a game: minutes are the tip-off project
 mktAnchor: 1, mktTotW: 0.9, mktMarU: 1, mktKeep: 0.8, // v18: the projected final score. Share of the book's total before the tip (fading out from 3 to 9 minutes in), share of the book's spread in the margin of the rest of the game (0 = our own numbers only), and the share of an early lead that holds to the end (rising to all of it with the square of the clock)
 winCal: 1, winSd0: 7.5, winSd1: 4, // v18: win chance from the projected final margin and the swing real games have from this minute on (sd = winSd0 x sqrt(share of the game left) + winSd1), crossing over to the count of simulations from 36:00 to 45:00 (0 = count of simulations only)
 lineNoK: 1, lineYesK: 1, lineTeamMin: 6, // v19 candidate, OFF (1 = no change): minutes of a player with no line at any book while lineTeamMin of his teammates have one (see lineK); needs o.lines
+sureQ: 0.92, // v19: the stated chance behind the 9-in-10 number shown on every card (0.92 stated came true 90.4 to 95.7% at every stage on 592 unseen games)
 threeFix: 1, // v17: a made shot worth three is a three whatever its wording; missed long shots by distance (0 = the wording only, which missed one three in ten)
 outDone: 1, // v17: a player the user marks OUT during a game gets no more minutes (he was still projected for some), and they go to his teammates
 minXa: 25, minXb: 27, // v17: minutes lessons after halftime cross-fade from the halftime ones to the 30-minute ones between these game minutes (equal = the old switch at 27:00). Eight windows tried on 296 unseen games of 2025-26 and this season's 121: 25 to 27 is the one never worse on either (minutes 1.8 / 3.3 / 4.7% closer at 25:30 / 26:00 / 26:30 on the first set, 0.4 / 0.3 / 0.7% on the second); starting at 24 or 24.5 was 1 to 3% worse on this season's games, ending at 27.5 or 28 was 0.7 to 2% worse at 27:00 on last season's
@@ -2457,14 +2458,19 @@ laddersRaw[k] = steps.map((t) => ({ t, p: probAtLeast(sims[k], t) }));
 ladders[k] = cal[k] ? laddersRaw[k].map((x) => ({ t: x.t, p: x.t <= statOf(r, k) ? x.p : calP(cal[k], x.p) })) : laddersRaw[k];
 }
 // the likely range: about 8 games in 10 land between these two numbers (from the calibrated chances, so it is as wide as results really run)
-const range = {}, mid = {};
+const range = {}, mid = {}, sure = {};
 for (const k of ['pts', 'reb', 'ast', 'fg3m', 'pra']) {
 const srt = Array.from(sims[k]).sort((x, y) => x - y);
 { let m = 0, c = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m += srt[q]; c++; } mid[k] = c ? m / c : avg[k]; }
 const base = k === 'pra' ? r.pts + r.reb + r.ast : r[k];
 let lo = base, hi = base, j = 0;
-for (let t = base + 1; t <= srt[N - 1]; t++) { while (j < N && srt[j] < t) j++; const pc = cal[k] ? calP(cal[k], (N - j) / N) : (N - j) / N; if (pc >= 0.9) lo = t; if (pc >= 0.1) hi = t; else break; }
+let su = base;
+for (let t = base + 1; t <= srt[N - 1]; t++) { while (j < N && srt[j] < t) j++; const pc = cal[k] ? calP(cal[k], (N - j) / N) : (N - j) / N; if (pc >= TUNE.sureQ) su = t; if (pc >= 0.9) lo = t; if (pc >= 0.1) hi = t; else break; }
 range[k] = [lo, hi];
+// v19: the 9-in-10 number: the highest whole number he still reaches at least 9 times in 10 from here (what he already has
+// when there is none above it). The stated chance asked for is sureQ, a little above 0.9, so the promise holds at every stage
+// (at a stated 90% it came true 88.4% of the time six minutes into a game, on 9,484 statements from 592 unseen games).
+sure[k] = su;
 }
 // minutes late in a game are two-valued (he comes back or he is done): the middle of the simulations says which is likelier
 { const srt = Array.from(p.mins).sort((x, y) => x - y); let m = 0, c = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m += srt[q]; c++; } mid.min = r.min + (c ? m / c : minSum / N); }
@@ -2521,7 +2527,7 @@ zones: r.z || {},
 db: { nba_id: p.lp ? p.lp.nba_id || null : null, pos: p.lp ? p.lp.pos || null : null, arch: p.lp ? p.lp.arch || null : null, prof: p.lp ? p.lp.prof || null : null, logs: p.gl },
 sit: p.sitMean ? { f: +p.sitMean.f.toFixed(3), parts: Object.fromEntries(Object.entries(p.sitMean).filter(([k]) => k !== 'f').map(([k, x]) => [k, x == null ? null : +x.toFixed(3)])), ratio: p.sit ? Object.fromEntries(Object.entries(p.sit.ratio).map(([k, x]) => [k, +x.toFixed(3)])) : null, fade: p.sit ? +p.sit.fade.toFixed(3) : null, streak: p.sit ? +p.sit.streak.toFixed(3) : null, star: p.sit && p.sit.star ? p.sit.star.name : null } : null,
 pat: { g: p.pat.g, x: p.pat.x, f: Object.fromEntries(PAT_LEARN.map((s2) => [s2, p.pat.F[s2].f])), parts: patOn ? Object.fromEntries(PAT_LEARN.map((s2) => [s2, p.pat.F[s2].parts])) : null, shift: p.pat.F.pts.shift || 0 },
-sd, range, cal, laddersRaw,
+sd, range, sure, cal, laddersRaw,
 live: p.lu ? { onPlays: +p.lu.onPlays.toFixed(1), plays: +p.lu.plays.toFixed(1), xPts: +p.lu.xPts.toFixed(1), playsR: +p.lu.playsR.toFixed(1), onPlaysR: +p.lu.onPlaysR.toFixed(1), minR: +p.lu.minR.toFixed(1) } : null, minPlain: r.min + p.minPlain, usgBase: p.usgBase, ratePM: p.ratePM,
 _sims: sims,
 });
@@ -2709,6 +2715,41 @@ return { tier: 'slight', why: w };
 }
 const TIER_RANK = { strong: 0, solid: 1, slight: 2, unsure: 3 };
 
+/** The chance a price has to come in at to break even (American odds: -340 needs 77%, +138 needs 42%). */
+function priceNeeds(o) { return o < 0 ? -o / (-o + 100) : 100 / (o + 100); }
+/** What one unit staked at a price returns in profit when it comes in. */
+function pricePays(o) { return o < 0 ? 100 / -o : o / 100; }
+/**
+ * One sportsbook's own menu for the plus side (v19: FanDuel, the book the app is used with): for each player and stat its
+ * main line and its "N+" marks, each with the price and the chance that price needs. Where a mark is listed twice the
+ * better price is kept. { [player id]: { [stat]: { main: { line, odds, needs } | null, marks: [{ t, odds, needs }] } } }
+ */
+function bookMenu(props, vendor = 'fanduel') {
+const out = {};
+const okOdds = (o) => Number.isFinite(o) && Math.abs(o) >= 100;
+for (const x of props || []) {
+if (!x || x.vendor !== vendor || !x.market) continue;
+const stat = PROP_MAP[x.prop_type], line = parseFloat(x.line_value);
+if (!stat || !Number.isFinite(line) || !(line > 0)) continue;
+const byStat = (out[x.player_id] = out[x.player_id] || {});
+const m = (byStat[stat] = byStat[stat] || { main: null, marks: [] });
+if (x.market.type === 'over_under') { const o = +x.market.over_odds; if (okOdds(o) && (!m.main || priceNeeds(o) < m.main.needs)) m.main = { line, odds: o, needs: priceNeeds(o) }; }
+else if (x.market.type === 'milestone' && Number.isInteger(line)) { const o = +x.market.odds; if (!okOdds(o)) continue; const had = m.marks.find((y) => y.t === line); if (!had) m.marks.push({ t: line, odds: o, needs: priceNeeds(o) }); else if (priceNeeds(o) < had.needs) { had.odds = o; had.needs = priceNeeds(o); } }
+}
+for (const byStat of Object.values(out)) for (const m of Object.values(byStat)) m.marks.sort((a, b) => a.t - b.t);
+return out;
+}
+/** A player's part of that menu with the engine's own (calibrated) chance on every line: needs his simulations, so before they are dropped. */
+function menuFor(p, menu) {
+const F = menu && menu[p.pid];
+if (!F || !p._sims) return null;
+const out = {};
+for (const [stat, m] of Object.entries(F)) {
+if (!p._sims[stat]) continue;
+out[stat] = { main: m.main ? { ...m.main, p: calProb(p, stat, probOver(p._sims[stat], m.main.line)) } : null, marks: m.marks.map((y) => ({ ...y, p: calProb(p, stat, probAtLeast(p._sims[stat], y.t)) })) };
+}
+return Object.keys(out).length ? out : null;
+}
 /** Plus edges only: every pick's projection sits ahead of its line. With a market line: model % vs no-vig market %. Without: the highest safe ladder rung. */
 function picksForGame(proj, lines, opts = {}) {
 const minP = opts.minP != null ? opts.minP : 0.6;
@@ -2751,4 +2792,4 @@ k.tier = t.tier; k.tierWhy = t.why; k.blowProof = !!p.blowProof; k.chips = (p.ch
 return picks.sort((a, b) => (TIER_RANK[a.tier] - TIER_RANK[b.tier]) || (b.edge ?? 0) - (a.edge ?? 0) || b.prob - a.prob);
 }
 
-/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, normCdf, }; });
+/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, bookMenu, menuFor, priceNeeds, pricePays, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, normCdf, }; });

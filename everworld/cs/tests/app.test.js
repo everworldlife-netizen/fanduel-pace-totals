@@ -83,7 +83,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
 
 (async () => {
   console.log('Courtside app shell (simulated phone browser)');
-  let A;
+  let A, callsAtTip = null; // what the app had said when the games tipped (set by the pregame tests)
   await test('boots before tip-off and projects the fixture games', async () => {
     A = await boot('pre');
     await sleep(2500);
@@ -110,6 +110,49 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.ok(rows.length >= 3, `only ${rows.length} edges saved`);
     for (const r of rows) { assert.ok(r[6] >= 0.55 && r[7] > 0 && r[7] < 1, 'bad chances in a saved edge'); assert.strictEqual(r[8], 0); assert.strictEqual(r[10], null); }
   });
+  await test('before the tip every card carries its 9-in-10 numbers, never above the projection, and the player sheet explains them', async () => {
+    let rows = 0, numbers = 0;
+    for (const fx of FX) {
+      const v = await A.go(`#/game/${fx.g.id}`, 500);
+      for (const c of v.querySelectorAll('[data-act="player"]')) {
+        const sure = c.querySelector('.surerow'); if (!sure) continue;
+        rows++;
+        assert.ok(/^9 IN 10/.test(sure.textContent.trim()), `the strip reads "${sure.textContent}"`);
+        const proj = {}; for (const st of c.querySelectorAll('.statrow .stat')) proj[st.querySelector('small').textContent] = parseFloat(st.querySelector('.proj').textContent);
+        for (const sp of sure.querySelectorAll('span:not(.lbl)')) {
+          const m = /^(\d+)\+ (PTS|REB|AST|3PM)$/.exec(sp.textContent.trim());
+          assert.ok(m, `odd 9-in-10 text "${sp.textContent}"`);
+          assert.ok(+m[1] >= 1 && +m[1] <= proj[m[2]] + 0.5, `${c.querySelector('.pc-head b').textContent}: ${m[1]}+ ${m[2]} against a projection of ${proj[m[2]]}`);
+          numbers++;
+        }
+      }
+    }
+    assert.ok(rows >= 12 && numbers >= 30, `${rows} cards with ${numbers} 9-in-10 numbers`);
+    const v = await A.go(`#/game/${FX[0].g.id}`, 400);
+    v.querySelector('[data-act="player"] .surerow').closest('[data-act="player"]').click(); await sleep(80);
+    const sheet = A.w.document.getElementById('sheetWrap');
+    assert.ok(sheet && /9 IN 10 NUMBERS/.test(sheet.textContent), 'no 9-in-10 section on the player sheet');
+    assert.ok(/at least nine times in ten/.test(sheet.textContent) && /games the app had never seen/.test(sheet.textContent), 'the section does not say what the number means or how it was checked');
+    assert.strictEqual(banned(sheet.textContent).length, 0);
+    A.w.document.querySelector('#sheetWrap [data-act="close"]').click(); await sleep(30);
+  });
+  await test('what the app says before the tip is kept on the phone for the report card', async () => {
+    const C = JSON.parse(A.w.localStorage.getItem('calls:v1') || '{}');
+    for (const fx of FX) {
+      const c = C[fx.g.id];
+      assert.ok(c && !c.r && c.d === fx.g.date && c.v === fx.g.visitor_team.abbreviation && c.h === fx.g.home_team.abbreviation, `no call kept for game ${fx.g.id}`);
+      const ps = Object.values(c.p);
+      assert.ok(ps.length >= 14, `only ${ps.length} players kept`);
+      for (const x of ps) {
+        assert.strictEqual(x.length, 19, 'a kept row is not 19 long');
+        assert.ok(typeof x[0] === 'string' && x[2] >= 6, 'a kept row without a name or under six minutes');
+        for (let i = 0; i < 4; i++) { assert.ok(x[3 + i] * 2 === Math.round(x[3 + i] * 2), 'a projection not kept as shown (halves)'); assert.ok(Number.isInteger(x[7 + i]) && x[7 + i] >= 0 && x[7 + i] <= x[3 + i] + 0.5, `${x[0]}: 9-in-10 number ${x[7 + i]} against ${x[3 + i]}`); }
+      }
+    }
+    const v = await A.go('#/settings', 300);
+    assert.ok(/CAME-TRUE RECORD/.test(v.textContent) && /Your record starts with the next game that finishes/.test(v.textContent), 'no came-true record on the settings page before any game is graded');
+    callsAtTip = A.w.localStorage.getItem('calls:v1');
+  });
   await test('live at halftime: new projections, live edges saved once, wording rules hold', async () => {
     A.state.phase = 'live';
     A.w.document.getElementById('refreshBtn').click();
@@ -118,6 +161,20 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const rows = JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]');
     assert.ok(rows.some((r) => r[8] === 1), 'no live edge saved');
     assert.strictEqual(new Set(rows.map((r) => r[0])).size, rows.length, 'an edge was saved twice');
+  });
+  await test('during a game a 9-in-10 number is always above what he already has, and the call kept before the tip is not rewritten', async () => {
+    assert.ok(callsAtTip && callsAtTip.length > 500, 'nothing was kept before the tip');
+    let numbers = 0;
+    for (const fx of FX) {
+      const v = await A.go(`#/game/${fx.g.id}`, 500);
+      for (const c of v.querySelectorAll('[data-act="player"]')) {
+        const now = {}; for (const st of c.querySelectorAll('.statrow .stat')) now[st.querySelector('small').textContent] = parseFloat(st.querySelector('.now b').textContent);
+        for (const sp of c.querySelectorAll('.surerow span:not(.lbl)')) { const m = /^(\d+)\+ (PTS|REB|AST|3PM)$/.exec(sp.textContent.trim()); assert.ok(m && +m[1] > now[m[2]], `${c.querySelector('.pc-head b').textContent}: "${sp.textContent}" with ${now[m[2]]} already`); numbers++; }
+      }
+    }
+    // (at halftime most of a player's safe number is already in his box: few marks are left above it)
+    assert.ok(numbers >= 4, `only ${numbers} live 9-in-10 numbers`);
+    assert.strictEqual(A.w.localStorage.getItem('calls:v1'), callsAtTip, 'the call kept before the tip changed during the game');
   });
   await test('when the game ends the saved edges are graded from the final box', async () => {
     A.state.phase = 'final';
@@ -131,8 +188,152 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.ok(/Edges graded/.test(v.textContent));
     assert.strictEqual(banned(visibleText(A.w)).length, 0);
   });
+  await test('when the game ends the report card grades every number the app gave before the tip, next to the box score', async () => {
+    const C = JSON.parse(A.w.localStorage.getItem('calls:v1') || '{}');
+    const K = ['pts', 'reb', 'ast', 'fg3m'];
+    let N = 0, H = 0;
+    const perGame = {};
+    for (const fx of FX) {
+      const c = C[fx.g.id]; assert.ok(c && c.r, `game ${fx.g.id} was not graded`);
+      let n = 0, h = 0;
+      for (const [pid, x] of Object.entries(c.p)) {
+        const a = fx.rows[pid];
+        if (!a || !(a.min > 0)) { assert.strictEqual(c.r[pid], null, `${x[0]} did not play and was graded`); continue; }
+        assert.deepStrictEqual(c.r[pid], [Math.round(a.min), a.pts, a.reb, a.ast, a.fg3m], `${x[0]}: the result kept is not the box score`);
+        K.forEach((k, i) => { if (x[7 + i] > 0) { n++; if (a[k] >= x[7 + i]) h++; } });
+      }
+      perGame[fx.g.id] = [n, h]; N += n; H += h;
+      // nobody who had a number is also listed as having had none
+      for (const e of c.x || []) assert.ok(!Object.values(c.p).some((x) => x[0] === e[0]), `${e[0]} is on the card twice`);
+    }
+    assert.ok(N >= 40, `only ${N} 9-in-10 numbers graded`);
+    for (const fx of FX) {
+      const v = await A.go(`#/game/${fx.g.id}`, 500);
+      assert.ok(/REPORT CARD/.test(v.textContent), 'a finished game shows no report card');
+      const kv = [...v.querySelectorAll('.grid3 .kv b')].map((b) => b.textContent.trim());
+      const [n, h] = perGame[fx.g.id];
+      assert.strictEqual(kv[0], String(n)); assert.strictEqual(kv[1], `${h} · ${Math.round((100 * h) / n)}%`);
+      const cells = [...v.querySelectorAll('.stat.rc')];
+      assert.ok(cells.length >= 20, `only ${cells.length} graded cells for the team on screen`);
+      for (const c of cells) {
+        const got = +c.querySelector('.proj').textContent, verdict = c.querySelector('.verdict').textContent.trim(), m = /^(\d+)\+ ([✓✗])$/.exec(verdict);
+        assert.ok(m || verdict === '–', `odd verdict "${verdict}"`);
+        if (m) { assert.strictEqual(m[2], got >= +m[1] ? '✓' : '✗', `${m[1]}+ with ${got} is marked ${m[2]}`); assert.ok(c.classList.contains(got >= +m[1] ? 'yes' : 'no')); }
+        assert.ok(/^said \d+(\.5)?$/.test(c.querySelector('.now').textContent.trim()), `odd "said" text "${c.querySelector('.now').textContent}"`);
+      }
+      assert.strictEqual(v.querySelectorAll('[data-act="player"]').length, 0, 'a graded game still shows projection cards');
+      assert.strictEqual(banned(visibleText(A.w)).length, 0);
+    }
+    const v = await A.go('#/settings', 300);
+    const card = [...v.querySelectorAll('.section-title')].find((t) => /CAME-TRUE RECORD/.test(t.textContent)).nextElementSibling;
+    const kv = [...card.querySelectorAll('.grid3 .kv b')].map((b) => b.textContent.trim());
+    assert.deepStrictEqual(kv, [String(N), `${Math.round((100 * H) / N)}%`, String(FX.length)]);
+    assert.ok(/The points projection itself/.test(card.textContent) && /within 2/.test(card.textContent), 'the record does not say how close the projection itself was');
+    assert.strictEqual(banned(visibleText(A.w)).length, 0);
+  });
   await test('no page errors across the whole run', async () => {
     const hard = A.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
+  await test('a finished game the phone never saw before its tip says so, and still shows the final box', async () => {
+    const B = await boot('final');
+    await sleep(2500);
+    const v = await B.go(`#/game/${FX[0].g.id}`, 500);
+    assert.ok(/No report card for this game/.test(v.textContent), 'no explanation when nothing was said before the tip');
+    assert.ok(v.querySelectorAll('[data-act="player"]').length >= 8, 'the final box is gone');
+    assert.strictEqual(v.querySelectorAll('.surerow').length, 0, 'a finished game shows numbers still to reach');
+    assert.strictEqual(B.w.localStorage.getItem('calls:v1'), null, 'a call was written for a game that had already ended');
+    assert.strictEqual(banned(visibleText(B.w)).length, 0);
+  });
+  await test('report card: a player who sat is not graded, a late addition is found by name, and FanDuel\'s price turns the safe numbers into units won or lost', async () => {
+    const fx = FX[0], v0 = fx.g.visitor_team.abbreviation;
+    const mine = Object.entries(fx.rows).filter(([, a]) => a.team === v0 && a.min >= 20).sort((a, b) => b[1].pts - a[1].pts);
+    const [pa, a] = mine[0], [pb, b] = mine[1], [, cRow] = mine[2];
+    const call = { d: fx.g.date, at: Date.now() - 3600000, v: v0, h: fx.g.home_team.abbreviation, lu: 0, p: {
+      // reaches his points number exactly (came true); FanDuel's mark at it paid -200
+      [pa]: [a.name, v0, 34, a.pts + 2, 5, 5, 2, a.pts, 0, 0, 0, a.pts, -200, 0, 0, 0, 0, 0, 0],
+      // one point short of his number (missed); FanDuel's mark at it cost the unit, his rebounds mark at +150 came in
+      [pb]: [b.name, v0, 30, b.pts + 3, b.reb, 3, 1, b.pts + 1, b.reb, 0, 0, b.pts + 1, -300, b.reb, 150, 0, 0, 0, 0],
+      // on the posted list with no play-by-play id yet: found in the box by his name
+      [-77]: [cRow.name, v0, 25, 10, 4, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      // had a number and never played
+      999999999: ['Nobody Here', v0, 18, 8, 3, 2, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } };
+    const B = await boot('final', null, (w) => { w.localStorage.setItem('calls:v1', JSON.stringify({ [fx.g.id]: call, junk: 'not a call', 12: { d: '2020-01-01', p: {} } })); });
+    await sleep(2500);
+    const C = JSON.parse(B.w.localStorage.getItem('calls:v1'));
+    assert.deepStrictEqual(Object.keys(C), [String(fx.g.id)], 'a damaged or long-gone saved call was kept');
+    const c = C[fx.g.id];
+    assert.deepStrictEqual(c.r[pa].slice(1), [a.pts, a.reb, a.ast, a.fg3m]);
+    assert.deepStrictEqual(c.r['-77'].slice(1), [cRow.pts, cRow.reb, cRow.ast, cRow.fg3m]);
+    assert.strictEqual(c.r['999999999'], null);
+    assert.ok(c.x.length >= 2 && !c.x.some((e) => [a.name, b.name, cRow.name].includes(e[0])), 'players with a number are listed as having none');
+    const v = await B.go(`#/game/${fx.g.id}`, 500);
+    const kv = [...v.querySelectorAll('.grid3 .kv b')].map((x) => x.textContent.trim());
+    // graded: A points (came true), B points (missed), B rebounds (came true), the late addition's points (1+)
+    const lateHit = cRow.pts >= 1 ? 1 : 0;
+    assert.strictEqual(kv[0], '4'); assert.strictEqual(kv[1], `${2 + lateHit} · ${Math.round((100 * (2 + lateHit)) / 4)}%`);
+    assert.ok(/Did not play, so not graded: Nobody Here\./.test(v.textContent), 'the player who sat is not listed as not graded');
+    assert.ok(/Played 10\+ minutes with no number from the app before the tip/.test(v.textContent));
+    // FanDuel: -200 came in (+0.5), -300 missed (-1), +150 came in (+1.5): three plays, two came in, +1.0 units
+    assert.ok(/At FanDuel: .*3 plays, 2 came in, \+1\.0 units/.test(v.textContent.replace(/\s+/g, ' ')), `the FanDuel line reads: ${(v.textContent.replace(/\s+/g, ' ').match(/At FanDuel:.{0,160}/) || [''])[0]}`);
+    const cells = [...v.querySelectorAll('.stat.rc')].filter((x) => /[✓✗]/.test(x.textContent));
+    assert.strictEqual(cells.filter((x) => x.classList.contains('no')).length, 1 + (lateHit ? 0 : 1));
+    assert.strictEqual(banned(visibleText(B.w)).length, 0);
+    const hard = B.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
+  await test('FanDuel\'s price sits next to each mark on the player sheet with the chance it needs, and the mark under each 9-in-10 number is kept with its price', async () => {
+    const MARKS = [[5, -2000], [10, -400], [15, -150], [20, 180], [25, 500]];
+    const B = await boot('pre', (w) => {
+      const orig = w.DB.props;
+      w.DB.props = async (gid) => { const out = []; for (const r of await orig(gid)) { out.push({ ...r, vendor: 'fanduel' }, r); for (const [t, o] of MARKS) out.push({ player_id: r.player_id, prop_type: 'points', line_value: String(t), vendor: 'fanduel', market: { type: 'milestone', odds: o } });
+        // a FanDuel rebounds line far above anyone's projection: the app shows a line only when the projection is ahead of it
+        out.push({ player_id: r.player_id, prop_type: 'rebounds', line_value: '30.5', vendor: 'fanduel', market: { type: 'over_under', over_odds: 400, under_odds: -600 } }); } return out; };
+    });
+    await sleep(3000);
+    const v = await B.go(`#/game/${FX[0].g.id}`, 600);
+    let seen = 0;
+    // (the cards are drawn again when a sheet closes: take each one fresh from the page)
+    const cardCount = v.querySelectorAll('[data-act="player"]').length;
+    for (let i = 0; i < cardCount; i++) {
+      const btn = B.w.document.querySelectorAll('#view [data-act="player"]')[i]; if (!btn) break;
+      btn.click(); await sleep(60);
+      const sheet = B.w.document.getElementById('sheetWrap'), lad = sheet && sheet.querySelector('.ladder.fd');
+      if (lad) {
+        seen++;
+        for (const r of lad.querySelectorAll('.rung')) {
+          const t = parseInt(r.querySelector('span').textContent, 10), mk = MARKS.find((m) => m[0] === t), fd = r.querySelector('.fdp').textContent.replace(/\s+/g, ' ').trim();
+          if (!mk) { assert.strictEqual(fd, '', `a price on ${t}+, which FanDuel does not list`); continue; }
+          const needs = Math.round(100 * (mk[1] < 0 ? -mk[1] / (-mk[1] + 100) : 100 / (mk[1] + 100)));
+          assert.strictEqual(fd, `${mk[1] > 0 ? '+' : '−'}${Math.abs(mk[1])}needs ${needs}%`, `${t}+ reads "${fd}"`);
+        }
+        assert.ok(/FanDuel's price for that mark and the chance the price needs/.test(sheet.textContent), 'the price column is not explained');
+        const main = [...sheet.querySelectorAll('.book')].find((x) => /^FanDuel line/.test(x.textContent));
+        assert.ok(main && /at −110 · that price needs 52% · app says \d+%/.test(main.textContent), `FanDuel's main line reads "${main && main.textContent}"`);
+        assert.ok(![...sheet.querySelectorAll('.book')].some((x) => /30\.5/.test(x.textContent)), 'a FanDuel line the projection is behind is shown');
+        assert.strictEqual(banned(sheet.textContent).length, 0);
+      }
+      const close = B.w.document.querySelector('#sheetWrap [data-act="close"]'); if (close) close.click();
+      await sleep(40);
+    }
+    assert.ok(seen >= 4, `only ${seen} player sheets with FanDuel's prices`);
+    const c = JSON.parse(B.w.localStorage.getItem('calls:v1'))[FX[0].g.id];
+    let kept = 0;
+    for (const x of Object.values(c.p)) {
+      const want = MARKS.filter((m) => m[0] <= x[7]).pop();
+      if (x[11]) { kept++; assert.deepStrictEqual([x[11], x[12]], want, `${x[0]}: mark kept ${x[11]} at ${x[12]}, 9-in-10 number ${x[7]}`); }
+      assert.deepStrictEqual(x.slice(13), [0, 0, 0, 0, 0, 0], 'a FanDuel mark kept for a stat FanDuel had no marks on');
+    }
+    assert.ok(kept >= 3, `only ${kept} FanDuel marks kept`);
+    // the game ends: the safe numbers are also scored at FanDuel's prices
+    B.state.phase = 'final'; B.w.document.getElementById('refreshBtn').click(); await sleep(3000);
+    const g = JSON.parse(B.w.localStorage.getItem('calls:v1'))[FX[0].g.id];
+    let n = 0, h = 0, u = 0;
+    for (const [pid, x] of Object.entries(g.p)) { if (!x[11] || !g.r[pid]) continue; n++; if (g.r[pid][1] >= x[11]) { h++; u += x[12] < 0 ? 100 / -x[12] : x[12] / 100; } else u -= 1; }
+    const v2 = await B.go(`#/game/${FX[0].g.id}`, 500);
+    const txt = v2.textContent.replace(/\s+/g, ' ');
+    assert.ok(txt.includes(`${n} plays, ${h} came in, ${u >= 0 ? '+' : '−'}${Math.abs(u).toFixed(1)} units`), `expected ${n} plays, ${h} came in, ${u.toFixed(1)} units; the card reads: ${(txt.match(/At FanDuel:.{0,170}/) || [''])[0]}`);
+    const hard = B.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
     assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
   });
   await test('a final box that is a few plays short of the final score is not graded; a damaged saved row does not break the edge record', async () => {

@@ -2,7 +2,7 @@
 
 Memory between sessions. Read this before trying anything; add to it at the end of every session.
 
-Last updated: 2026-11-13 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
+Last updated: 2026-11-14 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
 
 ## START HERE (Nov 11, 2026): state of the work, written so any new session can pick it up
 
@@ -20,6 +20,14 @@ in every single game scenario", "I only want the best versions published", and "
 with player performance or the closest possible in all your powers. No excuses." Points, rebounds and assists are
 what matters most.
 
+On Nov 14 Akara put the goal more sharply, in three messages: "The goal of the app is to have projections that can be used and
+they actually come true. That's the main focus, having projections that can be graded next to the actual performances
+... the projections are exactly like the player performance. No excuses."; "I want it to be based on what's available
+on the market for FanDuel ... if there's a player rated for 20 points, if the projections believe that 20 will be there
+at a certain percentage"; and "The goal is to have projections that are winning ... so I could take them and put them
+inside my FanDuel app and place winning wagers." FanDuel is the book Akara plays at. What can and cannot be promised
+about that is measured in "Version 19 (Nov 14)": read it before changing how picks are shown.
+
 1. Plus edges only: never show a pick below the line, and never use the words "over" or "under" anywhere a user can see.
 2. Every factor lives inside the number (no side notes that the number ignores).
 3. Live means live. 4. Plain English. 5. Mobile first.
@@ -35,7 +43,16 @@ what matters most.
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 22:30 UTC, Nov 13)
+### Where the build stands at this commit (updated 22:30 UTC, Nov 14)
+
+**Courtside 19 is BUILT and tested in `cs/build` (version line "19 (Nov 14, 2026)", `ca-shell-v19`); whether it is
+published is the first line of "Version 19 (Nov 14)" below.** What it adds: the 9-in-10 number on every card, a report
+card that grades what the app said before each tip, FanDuel's own prices on the player sheet. GG Winner is unchanged
+(3.11.1). The nightly recording of the books' lines goes on (see "The books' player lines"): snapshots through the day,
+`tools/nightly.sh <date>` each morning.
+
+(Below: the state as of Nov 13.)
+
 
 **PUBLISHED on Nov 13, 2026: Courtside 18 at about 19:20 UTC (`ca-shell-v18`, Space commit `9f5f0be`) and GG Winner 3.11.1
 at about 22:15 UTC (`gg-winner-v3.11.1`, Space commit `3d28807`; 3.11.0 went out at 22:05, commit `5df65ba`).** Full
@@ -1294,6 +1311,99 @@ most of its spread is still to come, which is what the rule is meant to do.
 **6. Not done on purpose:** the lessons were not refitted on the 20 new games (0.5% more games; the phone learns them
 itself from `PAT_FROM = 2026-11-10`), so `PAT_KEY` stays `pat:v6` and nothing saved on a phone is thrown away. GG
 Winner is unchanged (3.10.1).
+
+### Version 19 (Nov 14): numbers built to come true, a report card, FanDuel's own prices
+
+PUBLISHED: see the last line of this section (written when it happens).
+
+Akara's words are in the brief at the top (Nov 14). Three things were measured before anything was built.
+
+**1. How often is the shown number "exactly like the player performance"?** `tools/research/v19-02-sure.js` (replays
+unseen games stage by stage; lessons that never saw them). The shown number, rounded, against the final box, 592 games
+of last season's second half (the 121 games of this season agree to a point or two):
+
+| stage | points: exact / within 1 / within 2 / within 3 | rebounds | assists | threes | player finishes AT OR ABOVE the points number |
+|---|---|---|---|---|---|
+| tip-off (12,614 players) | 8 / 23 / 37 / 49% | 18 / 51 / 74 / 87% | 27 / 67 / 86 / 94% | 45 / 81 / 94 / 98% | 47% |
+| halftime | 10 / 31 / 50 / 65% | 26 / 68 / 88 / 95% | 42 / 80 / 93 / 98% | 57 / 90 / 97 / 99% | 48% |
+| 36:00 | 23 / 45 / 69 / 81% | 44 / 82 / 93 / 97% | 61 / 89 / 97 / 99% | 76 / 95 / 99 / 100% | 54% |
+| 42:00 | 53 / 68 / 84 / 91% | 67 / 90 / 97 / 99% | 79 / 95 / 99 / 100% | 88 / 98 / 100 / 100% | 73% |
+
+So a single number equal to the result is an 8-in-100 event before a game, whoever makes the number (the books' closing
+lines missed by 5.5 points a player on Nov 13, ours by 5.6). And the shown number is a MIDDLE: a player finishes short of
+it about half the time by design. If "the projection came true" means "he got there", the middle number fails half the
+time however good it is. That is very likely what "my projections were off" has been about.
+
+**2. A number that does come true.** The engine already had it, buried in the player sheet as the low end of the
+"likely range": the highest whole number he still reaches with a calibrated chance of 90%. Measured at a stated 90%
+it came true 88.4% of the time six minutes into games (9,484 statements, 592 games), so the shown one asks for 92%
+(`TUNE.sureQ`, new field `p.sure[stat]`). The setting was chosen on the 592 and checked on the other two sets:
+
+| games (never seen by the lessons used) | points | rebounds | assists | threes |
+|---|---|---|---|---|
+| 592, last season's second half (stated 92%) | 92.4% of 43,244 | 94.2% of 33,794 | 94.7% of 15,888 | 92.0% of 1,398 |
+| 121, this season through Nov 9 (`p.sure`) | 92.6% of 8,821 | 93.6% of 7,003 | 95.0% of 3,224 | 94.9% of 216 |
+| 28, Nov 10 to 13 (`p.sure`, built-in lessons) | 93.7% of 1,965 | 94.0% of 1,568 | 95.0% of 720 | 95.3% of 43 |
+
+Every stage from before lineups to 42:00 pooled. Lowest single stage with 300+ statements: points 90.4%, rebounds
+92.0%, assists 93.8%. Players given 30+ minutes: 94.6 to 96.0% (a little safe for stars; a stated 85% holds 86 to 90%
+for them, so the chances are honest there too). The price of safety: the number is about 38% of the projection before
+a game (Jamal Murray, projection 25.5: 11+). PTS+REB+AST does NOT hold early in games (82.5% at 6:00, 85.1% at 12:00 on
+the 592, a calibration gap of that stat alone), so the app shows no 9-in-10 number for it. Lead: fix that table.
+
+**3. FanDuel.** The feed carries FanDuel's whole menu and the app never used most of it: the main lines
+(`market.type` "over_under") AND the "N+" marks ("milestone": points 5, 10, 15, 20, 25 ..., rebounds 4, 6, 8 ..., assists
+2, 4, 6, threes 1, 2, 3, 4, each with one price). `E.consensusLines` skips milestones. `tools/research/v19-03-fd.js`
+grades FanDuel's closing menu of a recorded night with the engine's calibrated chance on each line and the money (one
+unit a play at FanDuel's price; a player who sat is no action). Nov 13, 8 games, tip-off stage, 2,588 marks and 485
+main lines at FanDuel, of which points, rebounds, assists and threes:
+
+| plays | n | came in | engine said | price needs | units per play |
+|---|---|---|---|---|---|
+| every mark, blind | 1,984 | 34.9% | 34.6% | 37.1% | −9.7% (± 5.0) |
+| marks the engine likes by 3+ points (its chance minus what the price needs): points / rebounds / assists / threes | 100 / 68 / 58 / 115 | 28 / 29 / 24 / 20% | 39 / 36 / 36 / 33% | 32 / 29 / 29 / 26% | −16 / −12 / −20 / −45% |
+| marks the engine gives 85%+ | 139 | 87.8% | 90.0% | 94.4% | −7.4% (± 3.0) |
+| marks at or below the 9-in-10 number | 38 | 97.4% | 93.6% | 97.3% | +0.2% (± 2.7) |
+| every main line, plus side, blind | 400 | 48.0% | 47.3% | 50.8% | −6.1% (± 5.0) |
+| main lines the engine likes by 3+ points | 95 | 47% | 59% | 51% | −7.4% |
+| marks where FanDuel pays 3 to 6 points more than the middle of the other books | 347 | 25.9% | 24.7% | 24.6% | +8.6% (± 12.2) |
+
+One night, wide error bars, but the shape is the textbook one: the engine's chances are right ON AVERAGE (34.6 said,
+34.9 happened) and wrong exactly where they disagree with the price (said 32 to 36%, happened 21%: the price was the
+better forecast), and FanDuel keeps 6 to 10% of every play. The same picture as the plus edges against the closing
+consensus that morning (48.7% of 197). So today the app is NOT a way to win at FanDuel, and nothing here can be
+called a winning or guaranteed play. Akara was told so in plain words on Nov 14. The road to an honest answer: grade
+every night at FanDuel's prices (`v19-03-fd.js --from 2026-11-13`, add it to the morning routine), put the price inside
+the chance (a mix of the engine's chance and the market's, weight learned on some nights and checked on others), and
+only then name a kind of play a winner. The off-market row (FanDuel paying more than the other books) is the one lead
+with a reason behind it; 347 plays cannot carry it yet.
+
+**What version 19 is** (engine numbers of every projection unchanged: `p.sure` and the FanDuel menu are additions):
+- Engine: `p.sure` (see 2); `bookMenu(props, 'fanduel')`, `menuFor(player, menu)`, `priceNeeds`, `pricePays`.
+- Worker: `p.fd` = FanDuel's main line and marks for the player with our chance on each (before the simulations go).
+- App: the "9 IN 10" strip on every player card (points, rebounds, assists, threes; only marks above what he has);
+  "9 IN 10 NUMBERS" on the player sheet with what it means and the measured rates (`SURE_LAB`); FanDuel's price and
+  "needs N%" beside each mark of the sheet's ladders, FanDuel's main line when the projection is ahead of it; the
+  REPORT CARD: the last numbers shown before a tip are kept (`calls:v1`: projection, 9-in-10 number and FanDuel's mark
+  at or below it with its price, per player, ten days), graded from the final box (`gradeCall`, also by the nightly
+  sweep), shown on a finished game in place of the projection cards (what he got, what we said, the 9-in-10 verdict, who
+  sat, who played with no number) and summed on Settings as CAME-TRUE RECORD, with the same safe numbers scored at
+  FanDuel's prices in units. A game the phone never saw before its tip has no card and says so.
+- In-app accuracy text: three new findings (the 9-in-10 measurement and the exact-match rates; the report card; FanDuel's
+  prices and the Nov 13 night). `cs/accuracy-findings.json`, put into the app by hand this time (the tables did not
+  change: the engine's numbers are those of version 18).
+- Replayed through the new app in a phone-sized browser (the lab's tip-off numbers of Nov 13 saved the way the phone
+  saves them, graded by the app itself): 8 games, 286 9-in-10 numbers, 94% came true (points 124: 92%, rebounds 105: 97%,
+  assists 53: 94%); the points projection itself: exact 3%, within 2 points 31%, within 3 43%, average miss 5.2;
+  FanDuel's marks under the safe numbers: 38 plays, 37 came in, +0.1 units.
+- Tests: engine 97 checks, app 42; twelve deliberately broken copies each fail (grading a mark reached exactly, a
+  miss that costs nothing, a player who sat, stale calls never cleared, the name lookup, FanDuel's mark above the safe
+  number, the worker dropping the menu, a FanDuel line the projection is behind, the price column showing our chance, a
+  call rewritten during the game, a number equal to what he already has; one test had to be tightened to catch the
+  rewrite).
+- NOT in version 19 (next): picks and the edge record on FanDuel's own lines and prices (they still use the middle
+  line of all books); units in the edge record; the price inside the chance; the PTS+REB+AST 9-in-10 number; a
+  report card for a game the phone did not see before the tip (would need a replay with the saved tables).
 
 ### The books' player lines: the one source the numbers do not use yet (started Nov 13, evening)
 

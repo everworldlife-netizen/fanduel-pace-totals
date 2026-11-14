@@ -689,4 +689,67 @@ test('books\' player lines as a who-plays signal (a candidate, off by default): 
     assert.ok(Math.abs(minOf(P, bench.pid) - bench.mean.min) < 0.1, 'the player with no line moved though lineNoK is 1');
   });
 });
+test('the 9-in-10 number: the highest mark he still reaches with the stated chance, never below what he has, and it moves with the setting', () => {
+  const chanceAt = (p, k, t) => E.calProb(p, k, E.probAtLeast(p._sims[k], t));
+  const nowOf = (p, k) => (k === 'pra' ? p.now.pts + p.now.reb + p.now.ast : p.now[k]);
+  for (const fx of FX) for (const el of [0, 12, 24, 36]) {
+    const P = run(fx, el);
+    let made = 0;
+    for (const p of P.players) for (const k of [...STATS, 'pra']) {
+      const t = p.sure[k], now = nowOf(p, k);
+      assert.ok(Number.isInteger(t) && t >= now, `${p.name} ${k} at ${el}: 9-in-10 number ${t}, he has ${now}`);
+      assert.ok(t <= p.range[k][0], `${p.name} ${k}: 9-in-10 number ${t} above the low end of his likely range ${p.range[k][0]}`);
+      if (t > now) { made++; assert.ok(chanceAt(p, k, t) >= E.TUNE.sureQ, `${p.name} ${k}: ${t}+ has a chance of ${chanceAt(p, k, t).toFixed(3)}`); }
+      assert.ok(!(chanceAt(p, k, t + 1) >= E.TUNE.sureQ), `${p.name} ${k}: ${t + 1}+ is that safe too, the number should be higher`);
+      if (el === 0 && k === 'pts' && p.mean.pts >= 10) assert.ok(t < p.proj.pts, `${p.name}: 9-in-10 number ${t} is not below his projection ${p.proj.pts}`);
+    }
+    // (late in a game little is left to reach: most players' number is what they already have)
+    assert.ok(made >= { 0: 30, 12: 25, 24: 10, 36: 1 }[el], `only ${made} 9-in-10 numbers at ${el} min`);
+  }
+  // a stricter setting can only lower a number, a looser one can only raise it, and both really move some
+  const fx = FX[0], base = run(fx, 0);
+  const sums = (P) => P.players.reduce((a, p) => a + p.sure.pts + p.sure.reb + p.sure.ast, 0);
+  const strict = withTune({ sureQ: 0.99 }, () => run(fx, 0)), loose = withTune({ sureQ: 0.6 }, () => run(fx, 0));
+  for (const p of base.players) { const a = strict.players.find((x) => x.pid === p.pid), b = loose.players.find((x) => x.pid === p.pid); for (const k of STATS) assert.ok(a.sure[k] <= p.sure[k] && p.sure[k] <= b.sure[k], `${p.name} ${k}: ${a.sure[k]} / ${p.sure[k]} / ${b.sure[k]}`); }
+  assert.ok(sums(strict) < sums(base) && sums(base) < sums(loose), 'the setting does not move the numbers');
+  assert.ok(E.TUNE.sureQ >= 0.9 && E.TUNE.sureQ <= 0.95, 'the shipped setting is not the tested one');
+  // the projection itself is untouched by the setting
+  assert.deepStrictEqual(base.players.map((p) => [p.pid, p.proj.pts, p.proj.min]), strict.players.map((p) => [p.pid, p.proj.pts, p.proj.min]));
+  // a finished game: nothing left to reach
+  const fin = E.projectGame({ ...fx.base, game: fx.g, plays: fx.plays, nsims: 100, seed: 1, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+  for (const p of fin.players) for (const k of STATS) assert.strictEqual(p.sure[k], p.now[k], `${p.name} ${k}: a final game still has a number to reach`);
+});
+test('FanDuel\'s own menu: its main line and "N+" marks with the chance each price needs, and the engine\'s chance on each', () => {
+  assert.ok(Math.abs(E.priceNeeds(-340) - 340 / 440) < 1e-12 && Math.abs(E.priceNeeds(138) - 100 / 238) < 1e-12 && Math.abs(E.priceNeeds(100) - 0.5) < 1e-12);
+  assert.ok(Math.abs(E.pricePays(-340) - 100 / 340) < 1e-12 && Math.abs(E.pricePays(138) - 1.38) < 1e-12);
+  const fx = FX[0], P = run(fx, 0), a = P.players[0], b = P.players[1];
+  const row = (pid, vendor, prop, line, market) => ({ player_id: pid, vendor, prop_type: prop, line_value: String(line), market });
+  const rows = [
+    row(a.pid, 'fanduel', 'points', 15, { type: 'milestone', odds: 138 }), row(a.pid, 'fanduel', 'points', 5, { type: 'milestone', odds: -5000 }), row(a.pid, 'fanduel', 'points', 10, { type: 'milestone', odds: -340 }),
+    row(a.pid, 'fanduel', 'points', 10, { type: 'milestone', odds: -300 }), // the same mark listed twice: the better price stays
+    row(a.pid, 'fanduel', 'points', 13.5, { type: 'over_under', over_odds: 100, under_odds: -132 }),
+    row(a.pid, 'fanduel', 'rebounds', 4, { type: 'milestone', odds: -320 }),
+    row(a.pid, 'draftkings', 'points', 20, { type: 'milestone', odds: 400 }), // another book: not on FanDuel's menu
+    row(a.pid, 'fanduel', 'points', 20, { type: 'milestone', odds: 0 }), row(a.pid, 'fanduel', 'points', 25, { type: 'milestone', odds: 'x' }), row(a.pid, 'fanduel', 'points', 12.5, { type: 'milestone', odds: 150 }), // no price, a bad price, a half-point mark
+    row(a.pid, 'fanduel', 'points_1q', 5, { type: 'milestone', odds: 120 }), // a first-quarter market is not a full-game one
+    row(b.pid, 'fanduel', 'assists', 2, { type: 'milestone', odds: -260 }),
+    null, { vendor: 'fanduel' },
+  ];
+  const M = E.bookMenu(rows);
+  assert.deepStrictEqual(M[a.pid].pts.marks.map((m) => [m.t, m.odds]), [[5, -5000], [10, -300], [15, 138]]);
+  assert.deepStrictEqual(M[a.pid].pts.main, { line: 13.5, odds: 100, needs: 0.5 });
+  assert.strictEqual(M[a.pid].pts.marks[1].needs, 300 / 400);
+  assert.deepStrictEqual(Object.keys(M[a.pid]).sort(), ['pts', 'reb']);
+  assert.deepStrictEqual(M[b.pid].ast.marks.map((m) => m.t), [2]);
+  assert.deepStrictEqual(Object.keys(E.bookMenu(rows, 'draftkings')[a.pid].pts.marks[0]).sort(), ['needs', 'odds', 't']);
+  assert.deepStrictEqual(E.bookMenu([]), {}); assert.deepStrictEqual(E.bookMenu(null), {});
+  // the engine's chance on each line is the same calibrated chance the ladders show
+  const F = E.menuFor(a, M);
+  for (const m of F.pts.marks) assert.strictEqual(m.p, E.calProb(a, 'pts', E.probAtLeast(a._sims.pts, m.t)));
+  assert.strictEqual(F.pts.main.p, E.calProb(a, 'pts', E.probOver(a._sims.pts, 13.5)));
+  assert.ok(F.pts.marks[0].p >= F.pts.marks[1].p && F.pts.marks[1].p >= F.pts.marks[2].p, 'a higher mark with a higher chance');
+  const rung = a.ladders.pts.find((x) => x.t === 10); if (rung && 10 > a.now.pts) assert.ok(Math.abs(rung.p - F.pts.marks[1].p) < 1e-12, 'the ladder and the menu disagree on the same mark');
+  assert.strictEqual(E.menuFor(P.players[5], M), null);
+  assert.strictEqual(E.menuFor({ pid: a.pid }, M), null); // simulations already dropped: no chances to give
+});
 console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
