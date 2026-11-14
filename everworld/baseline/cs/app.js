@@ -6,11 +6,12 @@ const view = document.getElementById('view');
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const half = (x) => (Math.round(x * 2) / 2).toString();
+const oddsTxt = (o) => `${o > 0 ? '+' : '−'}${Math.abs(Math.round(o))}`; // a sportsbook price as FanDuel writes it
 const pct = (p) => `${Math.round(p * 100)}%`;
-const APP_VERSION = '18 (Nov 13, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
+const APP_VERSION = '19 (Nov 14, 2026)'; // shown in Settings so an update can be confirmed on the phone; keep in step with ca-shell-vNN in sw.js
 
 // Backtest of this engine on 25 finished games (2026-10-28 → 10-30), players with 10+ minutes.
-const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on 121 of this season's games (Oct 24 to Nov 9; a team's first two games of the season are left out) with lessons learned only from the 3,586 games of the three seasons before, so the lessons had never seen these games. What to build in this version was chosen by studying last season's games and checked against these 121, so read the gains as a careful estimate, not a blind test. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. Box scores count every made three (see the version 17 finding), for \"before\" and now alike. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.98,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.84,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.66,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.43,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.28,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.65,"reb":1.9,"ast":1.4,"fg3m":0.94,"min":4.03,"top3":0.793,"total":13.78,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.8,"min":3.86,"top3":0.835,"total":12.81,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.6,"min":3.23,"top3":0.901,"total":10.97,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.56,"fg3m":0.32,"min":2.64,"top3":0.95,"total":7.86,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.16,"min":1.5,"top3":0.967,"total":6.87,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"83%"},{"said":"65% at tip-off","before":"65%","now":"64%"},{"said":"85% at halftime","before":"83%","now":"83%"},{"said":"65% at halftime","before":"66%","now":"64%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 18: the win chance is honest now. It used to be too timid: when the app said a team was 65% to win, that team won 75% of the time, and when it said 85% the team won 95% (592 games of last season's second half, readings from tip-off through three quarters). The app counted simulated games whose final margins swing far wider than real games do. The chance now comes from the projected final margin and from how far real games swing from that minute on; in the closing minutes it is still the count of simulations, which knows the score and the clock exactly. On the same 592 games: said 65%, won 63%; said 75%, won 76%; said 85%, won 83%. On these 121 games: said 65%, won 60%; said 74%, won 68%; said 85%, won 85% (before: 71%, 84% and 94%). Scored the way forecasts are scored (the squared gap between the chance and what happened, lower is better), tip-off went from 0.213 to 0.182 on these 121 games, level with the books' own chance (0.184), and halftime from 0.160 to 0.143.","Also new in version 18: a closer projected final score. Before a game the app's own total ran low and missed by more than the books' total does, so the projected total now leans on the books' line until the game has shown its own pace (fully from nine minutes in). For the winning margin, the books' spread shared across the time left beat the app's own estimate at every moment of a game, and an early lead usually gives about a fifth of itself back by the end; both are inside the projected final now. On these 121 games the total lands 3.3% closer at tip-off (13.8 points off; the books' line itself is 13.8 off) and the margin lands 4% closer at tip-off, 6% closer after one quarter, 7% closer after 18 minutes and 4% closer at halftime. On last season's 592 games: total 4.7% closer at tip-off, margin 5% closer at tip-off, 8% closer after 18 minutes and at halftime, 6% closer after three quarters. One moment went the other way on these 121 games: after three quarters the margin was 1% further off. Player numbers were tested with the same book information and did not get closer (less than 0.2% either way), so they are left exactly as they were.","Also new in version 18: the number shown for points before the tip and at halftime, and for rebounds from the end of the first quarter to halftime, sits a little closer to the middle of the simulations, where results land most often. Points land 0.2% closer at tip-off and 0.3% closer at halftime on these 121 games (0.15% and 0.14% on last season's 592, 0.5% and 0.3% on the 20 games played since), rebounds 0.1 to 0.3% closer. A small gain, kept because all three sets of games agree.","From version 17: every made three is counted. The play-by-play feed writes about one made three in ten without the words \"three point\" (for example \"makes 25-foot running jump shot\"), and the app was missing those: a player's 3PM count during a game could read one short, and the 3PM numbers ran low. Checked against the official box score of every player in this season's first 154 games: made threes now match for 100% of 3,019 player-games (89% before). On these 121 games 3PM lands 2.5% closer at tip-off, 8% closer at halftime, 25% closer after three quarters and 45% closer with six minutes left than version 16 did. The 592 games of last season's second half show the same (2%, 9%, 27% and 49%). Points, rebounds, assists and minutes did not move: they never depended on that wording.","Also from version 17: the live numbers no longer shift at fixed moments of the game clock when nothing has happened. The biggest was at 27:00 of game time, where the minutes of every other player moved by a minute or more in one second. The lessons from halftime now blend into the lessons for the middle of the third quarter between 25:00 and 27:00. Around that stretch minutes land 1.8 to 4.7% closer on 296 games of last season's second half and 0.3 to 0.7% closer on this season's 121, and points, rebounds and assists follow. Smaller steps at the opening tip, 3:00, 15:00, 21:00 and 33:00 are gone too, with accuracy the same or slightly better at each of them.","If you mark a player OUT during a game (say he went to the locker room), he now stays at what he has and his minutes go to his teammates; before, the app still gave him some. A book line a player has already passed no longer shows as an edge. And an app left open overnight moves to the new day by itself and reads last night's games before it makes tonight's numbers, so a back-to-back is never missed.","From version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. With every change in this list together, minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was on this season's 121 games; points 3.6% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes in, minutes land 20% closer and points 3.9% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.4% closer. That was measured with every absence known in advance; before lineups post the phone only has the injury report, so the gain there can be smaller.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.9% closer and rebounds 0.4 to 3.9% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). The 592 games of last season's second half, which the lessons never saw (the new inputs were picked with those games in view), show the same at every stage from tip-off on: version 16 against version 15, minutes 3 to 12% closer, points up to 2%, rebounds up to 2.2%, assists up to 1.4%.","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. Tested on 585 of last season's games that were not used to set its strength, the final score landed 0.6 to 3.5% closer at every moment from six minutes in to the end of the third quarter, and never further off. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off. A second learning stage that looks at the whole game state got points, rebounds and assists no closer before and early in games, and at most about 1% closer at a few later moments. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 regular-season games across four seasons, through Nov 9. Every plus edge shown is saved and graded on this phone: see EDGE RECORD above."]}/*END*/;
+const ACCURACY = /*ACCURACY*/{"games":121,"trainGames":3586,"note":"Tested on 121 of this season's games (Oct 24 to Nov 9; a team's first two games of the season are left out) with lessons learned only from the 3,586 games of the three seasons before, so the lessons had never seen these games. What to build in this version was chosen by studying last season's games and checked against these 121, so read the gains as a careful estimate, not a blind test. Each game was replayed with what the live app knows at that moment: season stats to date, team ratings, the closing line and the lineup list as it stands at tip-off. Average miss counts everyone who really played 10+ minutes, and a player the app had no number for counts as a full miss. Box scores count every made three (see the version 17 finding), for \"before\" and now alike. \"Before\" is the app as it was on Nov 10, taught on the same games. After this test the app went on to learn from these games as well, as it does from every finished game.","before":{"pre":{"pts":4.84,"reb":1.98,"ast":1.43,"fg3m":0.98,"min":5.11,"top3":0.769,"total":14.58,"players":2253},"q1":{"pts":4.13,"reb":1.7,"ast":1.21,"fg3m":0.84,"min":4.43,"top3":0.851,"total":13.82,"players":2253},"half":{"pts":3.24,"reb":1.35,"ast":0.94,"fg3m":0.66,"min":3.44,"top3":0.884,"total":10.93,"players":2253},"q3":{"pts":2.2,"reb":0.95,"ast":0.56,"fg3m":0.43,"min":2.82,"top3":0.95,"total":7.9,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.28,"min":1.61,"top3":0.975,"total":6.88,"players":2253}},"after":{"pre":{"pts":4.65,"reb":1.9,"ast":1.4,"fg3m":0.94,"min":4.03,"top3":0.793,"total":13.78,"players":2253},"q1":{"pts":4.06,"reb":1.66,"ast":1.2,"fg3m":0.8,"min":3.86,"top3":0.835,"total":12.81,"players":2253},"half":{"pts":3.21,"reb":1.34,"ast":0.93,"fg3m":0.6,"min":3.23,"top3":0.901,"total":10.97,"players":2253},"q3":{"pts":2.16,"reb":0.93,"ast":0.56,"fg3m":0.32,"min":2.64,"top3":0.95,"total":7.86,"players":2253},"late":{"pts":1.24,"reb":0.5,"ast":0.28,"fg3m":0.16,"min":1.5,"top3":0.967,"total":6.87,"players":2253}},"calib":[{"said":"85% at tip-off","before":"85%","now":"83%"},{"said":"65% at tip-off","before":"65%","now":"64%"},{"said":"85% at halftime","before":"83%","now":"83%"},{"said":"65% at halftime","before":"66%","now":"64%"},{"said":"65% after Q3","before":"62%","now":"65%"}],"findings":["New in version 19: the 9-in-10 number. Beneath every player's four stats the app now shows the highest mark he still reaches at least nine times in ten from that point in the game (before a tip: if he plays). Checked on 741 games the app's lessons had never seen (592 from last season's second half, 121 from this season and the 28 newest), at every stage from before lineups to the fourth quarter: the points number held 92 times in 100 (54,030 numbers), rebounds 94 (42,365), assists 95 (19,832), threes 92 (1,657), and no stage with 300 or more numbers came in below 90. The margin behind it was set on the 592; on the other 149 games it held 93, 94 and 95 for points, rebounds and assists. It sits well below the projection on purpose. The projection is the middle of what can happen: before a game it lands exactly on the final points 8 times in 100, within 2 points 37 times in 100 and within 3 points 49 times in 100 (12,614 players), and a player finishes at or above it 47 times in 100. With six minutes left it is exact 53 times in 100 and within 2 points 84 times in 100.","Also new in version 19: a report card. What the app says before each tip is kept on this phone and graded next to the box score when the game ends. Open a finished game to see every projection and every 9-in-10 number beside what the player did; CAME-TRUE RECORD above adds up the last ten days. It grades what the app really showed the last time it was open before the tip, so a game with nothing kept in advance has no card.","Also new in version 19: FanDuel's own prices. The player sheet shows FanDuel's price next to each mark (for example 15+ points at −150) with the chance that price needs to break even, and FanDuel's main line when the projection is ahead of it. That is information, not a tip, and a number that comes true is not a paying one by itself: a sportsbook's price always includes its cut. On the one night graded at FanDuel's closing prices so far (Nov 13, 8 games, 1,984 marks): every mark played blind lost 9.7% per play; the marks the app gave 85% or more came in 88 times in 100 while their prices needed 94; and the marks where the app's chance sat 3 points or more above what the price needed lost on every stat (341 marks: 25 in 100 came in, the prices needed 29). One night is not a verdict; every night from here is graded the same way.","From version 18: the win chance is honest now. It used to be too timid: when the app said a team was 65% to win, that team won 75% of the time, and when it said 85% the team won 95% (592 games of last season's second half, readings from tip-off through three quarters). The app counted simulated games whose final margins swing far wider than real games do. The chance now comes from the projected final margin and from how far real games swing from that minute on; in the closing minutes it is still the count of simulations, which knows the score and the clock exactly. On the same 592 games: said 65%, won 63%; said 75%, won 76%; said 85%, won 83%. On these 121 games: said 65%, won 60%; said 74%, won 68%; said 85%, won 85% (before: 71%, 84% and 94%). Scored the way forecasts are scored (the squared gap between the chance and what happened, lower is better), tip-off went from 0.213 to 0.182 on these 121 games, level with the books' own chance (0.184), and halftime from 0.160 to 0.143.","Also from version 18: a closer projected final score. Before a game the app's own total ran low and missed by more than the books' total does, so the projected total now leans on the books' line until the game has shown its own pace (fully from nine minutes in). For the winning margin, the books' spread shared across the time left beat the app's own estimate at every moment of a game, and an early lead usually gives about a fifth of itself back by the end; both are inside the projected final now. On these 121 games the total lands 3.3% closer at tip-off (13.8 points off; the books' line itself is 13.8 off) and the margin lands 4% closer at tip-off, 6% closer after one quarter, 7% closer after 18 minutes and 4% closer at halftime. On last season's 592 games: total 4.7% closer at tip-off, margin 5% closer at tip-off, 8% closer after 18 minutes and at halftime, 6% closer after three quarters. One moment went the other way on these 121 games: after three quarters the margin was 1% further off. Player numbers were tested with the same book information and did not get closer (less than 0.2% either way), so they are left exactly as they were.","Also from version 18: the number shown for points before the tip and at halftime, and for rebounds from the end of the first quarter to halftime, sits a little closer to the middle of the simulations, where results land most often. Points land 0.2% closer at tip-off and 0.3% closer at halftime on these 121 games (0.15% and 0.14% on last season's 592, 0.5% and 0.3% on the 20 games played since), rebounds 0.1 to 0.3% closer. A small gain, kept because all three sets of games agree.","From version 17: every made three is counted. The play-by-play feed writes about one made three in ten without the words \"three point\" (for example \"makes 25-foot running jump shot\"), and the app was missing those: a player's 3PM count during a game could read one short, and the 3PM numbers ran low. Checked against the official box score of every player in this season's first 154 games: made threes now match for 100% of 3,019 player-games (89% before). On these 121 games 3PM lands 2.5% closer at tip-off, 8% closer at halftime, 25% closer after three quarters and 45% closer with six minutes left than version 16 did. The 592 games of last season's second half show the same (2%, 9%, 27% and 49%). Points, rebounds, assists and minutes did not move: they never depended on that wording.","Also from version 17: the live numbers no longer shift at fixed moments of the game clock when nothing has happened. The biggest was at 27:00 of game time, where the minutes of every other player moved by a minute or more in one second. The lessons from halftime now blend into the lessons for the middle of the third quarter between 25:00 and 27:00. Around that stretch minutes land 1.8 to 4.7% closer on 296 games of last season's second half and 0.3 to 0.7% closer on this season's 121, and points, rebounds and assists follow. Smaller steps at the opening tip, 3:00, 15:00, 21:00 and 33:00 are gone too, with accuracy the same or slightly better at each of them.","If you mark a player OUT during a game (say he went to the locker room), he now stays at what he has and his minutes go to his teammates; before, the app still gave him some. A book line a player has already passed no longer shows as an edge. And an app left open overnight moves to the new day by itself and reads last night's games before it makes tonight's numbers, so a back-to-back is never missed.","From version 16: role anchors. The app's minutes used to be too spread out: a high number finished lower and a low number finished higher, at every stage of a game. Each number is now pulled toward what a player in that role normally plays: tonight's starters, the bench, who is on the floor right now, and his own pace tonight. With every change in this list together, minutes land 21% closer at tip-off and 13 to 20% closer in the first quarter than the app as it was on this season's 121 games; points 3.6% closer at tip-off.","During a game a player still waiting to check in keeps the same kind of number as before tip-off: what he does if he gets in. Six minutes in, minutes land 20% closer and points 3.9% closer (121 games).","Late in a decided game the app reads who is actually on the floor. When the reserves are finishing the game, the regulars on the bench are done for the night and the reserves play it out. With three minutes left, minutes land 16% closer.","A lopsided score now costs a player more the more he usually plays, smoothly, instead of one rule for starters and one for everybody else. At halftime his first-half minutes count for more than before.","Before lineups post, deep-bench players get a number too (two of every three players who had no number and then played 10+ minutes were deep bench), and minutes nobody was going to play are no longer handed to teammates. Minutes land 15% closer before lineups, points 2.4% closer. That was measured with every absence known in advance; before lineups post the phone only has the injury report, so the gain there can be smaller.","Tonight's starting five is inside every number from the moment lineups post. A reserve who starts gets his extra minutes, and a usual starter left out of the five is cut and flagged.","How crowded tonight's rotation is counts too: when several players are out, or everyone is back, minutes are not shared out evenly.","Points, rebounds and assists follow the minutes. Through the third quarter points land 1 to 3.9% closer and rebounds 0.4 to 3.9% closer on these 121 games; in the last six minutes the gain is small (about half a percent on points). The 592 games of last season's second half, which the lessons never saw (the new inputs were picked with those games in view), show the same at every stage from tip-off on: version 16 against version 15, minutes 3 to 12% closer, points up to 2%, rebounds up to 2.2%, assists up to 1.4%.","The projected final score ran 2 to 5 points low during games. A check learned from complete games now corrects half of that through the third quarter. Tested on 585 of last season's games that were not used to set its strength, the final score landed 0.6 to 3.5% closer at every moment from six minutes in to the end of the third quarter, and never further off. Player numbers are not touched by it.","What is left is mostly the bounce of the game. With the real minutes known in advance, points would still miss by about 4 at tip-off. A second learning stage that looks at the whole game state got points, rebounds and assists no closer before and early in games, and at most about 1% closer at a few later moments. The app's numbers close in on the final line as the game goes: about 3.2 points at halftime, 2.2 after three quarters, 1.2 with six minutes left.","The lessons built into the app come from 3,709 regular-season games across four seasons, through Nov 9. Every plus edge shown, and every number given before a tip, is saved and graded on this phone: see CAME-TRUE RECORD and EDGE RECORD above."]}/*END*/;
 
 const TEAM = {
 ATL: ['#E03A3E', '#C1D32F'], BOS: ['#007A33', '#BA9653'], BKN: ['#2a2a2a', '#FFFFFF'], CHA: ['#1D1160', '#00788C'],
@@ -223,8 +224,9 @@ market, teams: state.teamsDb, gameLogs, avail, patterns: patternsNow() });
 if (s.phase === 'live' && before && before.proj) noteMoves(g, before.proj, res.proj);
 state.proj.set(g.id, { ...res, at: Date.now(), playKey, feed: DB.feed[g.id] || 'databallr' });
 rememberTip(g, s, res.proj);
+try { rememberCall(g, s, res.proj); } catch (e) { console.warn('report card', e); }
 try {
-if (s.phase === 'final') { if (box) ledgerGrade(g.id, box.rows); }
+if (s.phase === 'final') { if (box) { ledgerGrade(g.id, box.rows); gradeCall(g.id, box.rows); } }
 else {
 // the same edges the Edges screen shows: no shaky status, no skipped blowouts
 const ov = getOverrides();
@@ -306,17 +308,18 @@ async function ledgerSweep() {
 if (sweeping || Date.now() - lastSweep < 30 * 60000) return;
 lastSweep = Date.now();
 const open = ledger().filter((r) => r[10] == null);
-if (!open.length) return;
+const openCalls = Object.values(calls()).filter((c) => !c.r);
+if (!open.length && !openCalls.length) return;
 sweeping = true;
 try {
 const today = DB.etDate(0);
-const days = [...new Set(open.map((r) => r[1]))].filter((d) => d < today && d >= DB.addDays(today, -6));
+const days = [...new Set([...open.map((r) => r[1]), ...openCalls.map((c) => c.d)])].filter((d) => d < today && d >= DB.addDays(today, -6));
 for (const d of days) {
 let rows = [];
 try { rows = await DB.slate(d, 3600000); } catch { continue; }
 for (const g of rows) {
-if (g.status_state !== 'final' || !ledgerOpen(g.id)) continue;
-try { let b = finalBox(g, await DB.plays(g.id, true)); if (!b) b = finalBox(g, await DB.plays(g.id, true, true)); if (b) ledgerGrade(g.id, b.rows); } catch (e) { console.warn('ledger sweep', g.id, e); }
+if (g.status_state !== 'final' || !(ledgerOpen(g.id) || callOpen(g.id))) continue;
+try { let b = finalBox(g, await DB.plays(g.id, true)); if (!b) b = finalBox(g, await DB.plays(g.id, true, true)); if (b) { ledgerGrade(g.id, b.rows); gradeCall(g.id, b.rows); } } catch (e) { console.warn('ledger sweep', g.id, e); }
 }
 }
 ledgerSave();
@@ -378,6 +381,177 @@ return `<div class="section-title">📒 EDGE RECORD</div>
 ${S.n ? `<table class="mtable acc2" style="margin-top:10px"><tr><th>Chance we gave</th><th>Edges</th><th>Came in</th></tr>${S.bands.map(row).join('')}</table>
 <p class="small" style="font-weight:700;margin:10px 0 0">The books gave these same edges ${Math.round(100 * S.book)}% on average.${S.trust != null ? ` So far the results sit <b>${Math.round(100 * Math.min(S.trust, 1))}%</b> of the way from the book's chance to ours (100% means our chance was the right one).` : ' After 60 graded edges this card also shows whose chance has been closer, ours or the book\'s.'}</p>` : ''}
 <p class="small muted" style="font-weight:700;margin:8px 0 0">${S.waiting} waiting for a final score${S.noAction ? ` · ${S.noAction} no action (player sat, or landed exactly on the line)` : ''}. One row before the game and one during it for each player and stat. Kept on this phone.</p>
+</div>`;
+}
+// ------------------------------------------------------------------ report card (what the app said before the tip, graded)
+// The last numbers shown for each player before a game tips are kept on this phone: the projection and the 9-in-10 number
+// for points, rebounds, assists and threes. When the game ends they are graded from the final box and shown next to it.
+// { [game id]: { d: date, at: saved at, v, h, lu: 1 once lineups were posted, p: { [pid]: [name, team, minutes, PTS, REB, AST, 3PM, then the 9-in-10 numbers of the same four] },
+//   (after those eleven: for each of the four stats, FanDuel's highest "N+" mark at or below the 9-in-10 number and its price, 0 0 when it has none)
+//   r (once graded): { [pid]: [minutes, PTS, REB, AST, 3PM] or null when he did not play }, x (once graded): others who played 10+ minutes [name, team, minutes, PTS, REB, AST, 3PM] } }
+const CALLS_KEY = 'calls:v1', CALLS_DAYS = 10;
+const CARD_STATS = [['pts', 'PTS'], ['reb', 'REB'], ['ast', 'AST'], ['fg3m', '3PM']];
+let callsCache = null;
+const callRowOk = (x) => Array.isArray(x) && x.length >= 11 && typeof x[0] === 'string' && typeof x[1] === 'string' && x.slice(2, 11).every((n) => typeof n === 'number' && Number.isFinite(n));
+const callOk = (c) => !!c && typeof c === 'object' && typeof c.d === 'string' && /^\d{4}-\d\d-\d\d$/.test(c.d) && !!c.p && typeof c.p === 'object' && !Array.isArray(c.p) && Object.values(c.p).every(callRowOk)
+&& (c.r == null || (typeof c.r === 'object' && !Array.isArray(c.r) && Object.values(c.r).every((a) => a === null || (Array.isArray(a) && a.length >= 5 && a.every((n) => typeof n === 'number' && Number.isFinite(n))))))
+&& (c.x == null || (Array.isArray(c.x) && c.x.every((e) => Array.isArray(e) && e.length >= 7 && typeof e[0] === 'string')));
+function calls() {
+if (!callsCache) {
+let c = null; try { c = DB.store.get(CALLS_KEY); } catch { c = null; }
+callsCache = {};
+let dropped = c != null && (typeof c !== 'object' || Array.isArray(c));
+if (c && typeof c === 'object' && !Array.isArray(c)) for (const [id, x] of Object.entries(c)) { if (callOk(x)) callsCache[id] = x; else dropped = true; }
+// anything unreadable is cleared off the phone at once, so it cannot come back in another open copy
+if (dropped) { try { DB.store.set(CALLS_KEY, callsCache); } catch { /* storage full or blocked */ } }
+}
+return callsCache;
+}
+function callsSave() {
+const C = calls();
+// another open copy of the app may have saved or graded a game since this one loaded: keep its work
+try { const disk = DB.store.get(CALLS_KEY); if (disk && typeof disk === 'object' && !Array.isArray(disk)) for (const [id, x] of Object.entries(disk)) { if (!callOk(x)) continue; const m = C[id]; if (!m || (!m.r && x.r) || (!m.r && !x.r && x.at > m.at)) C[id] = x; } } catch { /* nothing saved yet */ }
+const today = DB.etDate(0), old = DB.addDays(today, -CALLS_DAYS), stale = DB.addDays(today, -6);
+// (a call still waiting after 6 days can no longer be graded: its game has left the days the app looks back on)
+for (const [id, c] of Object.entries(C)) if (c.d < old || (!c.r && c.d < stale)) delete C[id];
+try { DB.store.set(CALLS_KEY, C); } catch { /* storage full or blocked */ }
+}
+/** Keep what the app says about a game that has not started (the last look before the tip is the one that stays). */
+function rememberCall(g, s, P) {
+if (!P || s.phase !== 'pre') return;
+// (the row handed in can be minutes old after a long load, and a board running on its saved copy has frozen statuses:
+// the newest row on the board decides whether the game is still to come)
+const fresh = state.slate.find((x) => x.id === g.id);
+if ((fresh && st(fresh).phase !== 'pre') || DB.slateSource() === 'saved') return;
+const C = calls(), before = C[g.id];
+if (before && before.r) return;
+const out = new Set(getOverrides().out);
+const p = {};
+for (const x of P.players) {
+if (!(x.proj.min >= 6) || out.has(x.pid)) continue;
+const su = x.sure || {};
+const sureK = (k) => Math.max(0, Math.round(su[k] || 0));
+// FanDuel's highest "N+" mark at or below each 9-in-10 number, and its price (0, 0 when FanDuel has none)
+const fdK = (k) => { const m = x.fd && x.fd[k] ? x.fd[k].marks.filter((y) => y.t > 0 && y.t <= sureK(k)).pop() : null; return m ? [m.t, Math.round(m.odds)] : [0, 0]; };
+p[x.pid] = [x.name, x.team, Math.round(x.proj.min), ...CARD_STATS.map(([k]) => Math.round(x.proj[k] * 10) / 10), ...CARD_STATS.map(([k]) => sureK(k)), ...CARD_STATS.flatMap(([k]) => fdK(k))];
+}
+if (!Object.keys(p).length) return;
+// no FanDuel menu at all this time (the lines did not load, or FanDuel took its menu down at the tip): the marks and
+// prices kept at the last good look stay with every player whose 9-in-10 numbers have not changed
+if (before && !P.players.some((x) => x.fd)) for (const [pid, x] of Object.entries(p)) { const b = before.p[pid]; if (b && b.length >= 19 && [7, 8, 9, 10].every((i) => b[i] === x[i])) for (let i = 11; i < 19; i++) x[i] = b[i]; }
+const lu = P.lineup && P.lineup.confirmed ? 1 : 0;
+if (before && before.lu === lu && JSON.stringify(before.p) === JSON.stringify(p)) return;
+// FanDuel's prices move by a few cents all afternoon: when nothing but a price changed, write at most once a minute
+// (the whole record is written each time; a changed projection, 9-in-10 number or lineup is always written at once)
+const core = (q) => JSON.stringify(Object.entries(q).map(([pid, x]) => [pid, x.slice(0, 11), x[11], x[13], x[15], x[17]]));
+if (before && before.lu === lu && Date.now() - before.at < 60000 && core(before.p) === core(p)) return;
+C[g.id] = { d: String(g.date || state.date).slice(0, 10), at: Date.now(), v: s.v, h: s.h, lu, p };
+callsSave();
+}
+/** Is a saved call for this game still waiting for its final box? */
+const callOpen = (gameId) => { const c = calls()[gameId]; return !!c && !c.r; };
+/** Grade a game's saved call from its final box: rows = { pid: { name, team, min, pts, reb, ast, fg3m } }. */
+function gradeCall(gameId, rows) {
+// (another open copy may have kept a later look at this game, or graded it already: start from what is on the phone)
+try { const disk = DB.store.get(CALLS_KEY), x = disk && disk[gameId], m = calls()[gameId]; if (callOk(x) && (!m || (!m.r && (x.r || x.at > m.at)))) calls()[gameId] = x; } catch { /* keep the copy in memory */ }
+const c = calls()[gameId];
+if (!c || c.r || !rows) return;
+const byName = {};
+for (const [pid, a] of Object.entries(rows)) byName[`${a.team}:${E.norm(a.name || '')}`] = pid;
+const line = (a) => [Math.round(a.min), a.pts || 0, a.reb || 0, a.ast || 0, a.fg3m || 0];
+const r = {}, seen = new Set();
+for (const [pid, x] of Object.entries(c.p)) {
+// a player projected from tonight's posted list has no play-by-play id yet: find him in the box by name
+const rid = rows[pid] ? pid : byName[`${x[1]}:${E.norm(x[0])}`];
+const a = rid != null ? rows[rid] : null;
+if (rid != null) seen.add(String(rid));
+r[pid] = a && a.min > 0 ? line(a) : null;
+}
+c.x = Object.entries(rows).filter(([pid, a]) => !seen.has(String(pid)) && a.min >= 10 && (a.team === c.v || a.team === c.h)).map(([, a]) => [a.name, a.team, ...line(a)]);
+c.r = r;
+callsSave();
+}
+/** One player's verdicts: for each of the four stats, the 9-in-10 number (0 = none), what we projected, what he got, came true or not. */
+function callRows(c, pid) {
+const x = c.p[pid], a = c.r && c.r[pid];
+return CARD_STATS.map(([k, label], i) => { const fdT = x[11 + 2 * i] || 0, fdOdds = x[12 + 2 * i] || 0; return { k, label, said: x[3 + i], sure: x[7 + i], got: a ? a[1 + i] : null, hit: a && x[7 + i] > 0 ? a[1 + i] >= x[7 + i] : null, fdT, fdOdds, fdHit: a && fdT > 0 && fdOdds ? a[1 + i] >= fdT : null }; });
+}
+/** The record of graded calls: all games on this phone, or one game. */
+function callStats(only) {
+const S = { fd: { n: 0, hit: 0, units: 0 }, games: 0, n: 0, hit: 0, by: Object.fromEntries(CARD_STATS.map(([k]) => [k, { n: 0, hit: 0 }])), players: 0, sat: 0, exact: 0, w1: 0, w2: 0, w3: 0, miss: 0, waiting: 0 };
+for (const [id, c] of Object.entries(calls())) {
+if (only != null && +id !== +only) continue;
+if (!c.r) { S.waiting++; continue; }
+S.games++;
+for (const pid of Object.keys(c.p)) {
+if (!c.r[pid]) { S.sat++; continue; }
+const rows = callRows(c, pid);
+for (const q of rows) if (q.hit != null) { S.n++; S.by[q.k].n++; if (q.hit) { S.hit++; S.by[q.k].hit++; } }
+// the same safe numbers played at FanDuel: its mark at or below each one, one unit on each, at the price saved before the tip
+for (const q of rows) if (q.fdHit != null) { S.fd.n++; if (q.fdHit) { S.fd.hit++; S.fd.units += E.pricePays(q.fdOdds); } else S.fd.units -= 1; }
+// the points number against the result, for everyone the app gave 10+ minutes
+if (c.p[pid][2] >= 10) { const d = Math.abs(Math.round(rows[0].said) - rows[0].got); S.players++; S.miss += Math.abs(rows[0].said - rows[0].got); if (d === 0) S.exact++; if (d <= 1) S.w1++; if (d <= 2) S.w2++; if (d <= 3) S.w3++; }
+}
+}
+return S;
+}
+// measured by tools/research/v19-02-sure.js on 592 + 121 + 28 games the lessons had not seen, every stage from before lineups to 42:00 pooled
+// (the 0.92 setting was chosen on the 592; the other 149 are the blind check: points 10,013 of 10,786, rebounds 8,031 of 8,571, assists 3,746 of 3,944)
+const SURE_LAB = { games: 741, text: 'Checked on 741 games the app\'s lessons had never seen, from before lineups to the fourth quarter: points held 92 times in 100, rebounds 94, assists 95, threes 92 (before a tip a player who then sat is not counted). The margin behind it was set on 592 of those games; on the other 149 it held 93, 94 and 95.' };
+/** What those safe numbers were worth at FanDuel's prices: a safe number is not a paying one by itself. */
+function fdLine(S) {
+if (!S.fd.n) return '';
+const u = S.fd.units;
+const units = Math.abs(u) < 0.05 ? '0.0 units (level)' : `${u > 0 ? '+' : '−'}${Math.abs(u).toFixed(1)} units`;
+return `<p class="small" style="font-weight:700;margin:8px 0 0">At FanDuel: its "N+" mark at or below each 9-in-10 number, one unit on each at the price shown before the tip. ${S.fd.n} play${S.fd.n === 1 ? '' : 's'}, ${S.fd.hit} came in, <b>${units}</b>. Marks this likely pay very little, so one that falls short takes back many that came in.</p>`;
+}
+// what the first night graded at FanDuel's prices showed (tools/research/v19-03-fd.js, Nov 13, 8 games); update it as nights are added
+const FD_NOTE = 'This is information, not a tip: on the one night graded so far, marks where the app\'s chance sat 3 points or more above what the price needed came in 25 times in 100 (341 marks; their prices needed 29).';
+const SURE_NOTE = 'A 9-in-10 number is the highest mark a player still reaches at least nine times in ten from that point in the game.';
+/** A finished game: every number the app gave before the tip, next to what the player did. */
+function reportCardHTML(g, s, tm) {
+const c = calls()[g.id];
+if (!c) return `<div class="section-title">📋 REPORT CARD</div><div class="card small" style="font-weight:700">No report card for this game: nothing was kept on this phone before it tipped, so there is nothing said in advance to grade. Open the app (version 19 or later) any time before a game starts and its numbers are kept, then graded here when the game ends.</div>`;
+if (!c.r) return `<div class="section-title">📋 REPORT CARD</div><div class="card small" style="font-weight:700">Waiting for the final box score to grade what the app said before the tip.</div>`;
+const S = callStats(g.id);
+const dayOf = (ms) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+const when = new Date(c.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + (dayOf(c.at) !== c.d ? ` on ${new Date(c.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, the last time the app was open before this game` : '');
+const cell = (q) => `<div class="stat rc ${q.hit == null ? '' : q.hit ? 'yes' : 'no'}"><small>${q.label}</small><div class="proj">${q.got}</div><div class="now">said <b>${half(q.said)}</b></div><div class="verdict">${q.sure > 0 ? `${q.sure}+ ${q.hit ? '✓' : '✗'}` : '–'}</div></div>`;
+const mine = Object.keys(c.p).filter((pid) => c.p[pid][1] === tm).sort((a, b) => c.p[b][2] - c.p[a][2]);
+const played = mine.filter((pid) => c.r[pid]), sat = mine.filter((pid) => !c.r[pid]);
+const extra = (c.x || []).filter((x) => x[1] === tm);
+let html = `<div class="section-title">📋 REPORT CARD <span class="count">before the tip vs the result</span></div>
+<div class="card">
+<div class="grid3">
+<div class="kv"><small>9-in-10 numbers</small><b>${S.n}</b></div>
+<div class="kv"><small>Came true</small><b>${S.n ? `${S.hit} · ${Math.round((100 * S.hit) / S.n)}%` : '–'}</b></div>
+<div class="kv"><small>Points within 3</small><b>${S.players ? `${S.w3} of ${S.players}` : '–'}</b></div>
+</div>
+<p class="small muted" style="font-weight:700;margin:8px 0 0">What the app said at ${when} (${c.lu ? 'lineups posted' : 'before lineups posted'}), both teams. ${SURE_NOTE} The big number is what he finished with; "said" is the projection.</p>
+${fdLine(S)}
+</div>
+<div class="stack">${played.map((pid) => { const x = c.p[pid]; return `<div class="card"><div class="pc-head"><b>${esc(x[0])}</b><span class="grow"></span><span class="mins">said ${x[2]}′ · played ${c.r[pid][0]}′</span></div><div class="statrow">${callRows(c, pid).map(cell).join('')}</div></div>`; }).join('')}</div>`;
+if (sat.length) html += `<div class="card small" style="margin-top:10px;font-weight:700">Did not play, so not graded: ${sat.map((pid) => esc(c.p[pid][0])).join(', ')}.</div>`;
+if (extra.length) html += `<div class="card small" style="margin-top:10px;font-weight:700">Played 10+ minutes with no number kept before the tip (the app gave him fewer than six minutes, or he was marked OUT): ${extra.map((x) => `${esc(x[0])} (${x[2]}′, ${x[3]} PTS)`).join(', ')}.</div>`;
+return html;
+}
+/** The running record on this phone, for the settings page. */
+function callsRecordHTML() {
+const S = callStats();
+const lab = SURE_LAB.text;
+if (!S.games) return `<div class="section-title">✅ CAME-TRUE RECORD</div><div class="card"><p class="small" style="font-weight:700;margin:0">Every number the app gives before a game is kept on this phone and graded next to the box score when the game ends; this record covers the last ${CALLS_DAYS} days. ${SURE_NOTE} ${lab} Your record starts with the next game that finishes${S.waiting ? ` (${S.waiting} waiting for a final score)` : ''}.</p></div>`;
+const row = ([k, label]) => `<tr><td>${label}</td><td>${S.by[k].n}</td><td><b>${S.by[k].n ? Math.round((100 * S.by[k].hit) / S.by[k].n) + '%' : '–'}</b></td></tr>`;
+return `<div class="section-title">✅ CAME-TRUE RECORD</div>
+<div class="card">
+<div class="grid3">
+<div class="kv"><small>9-in-10 numbers</small><b>${S.n}</b></div>
+<div class="kv"><small>Came true</small><b>${S.n ? Math.round((100 * S.hit) / S.n) + '%' : '–'}</b></div>
+<div class="kv"><small>Games graded</small><b>${S.games}</b></div>
+</div>
+<table class="mtable acc2" style="margin-top:10px"><tr><th>9-in-10 number</th><th>Graded</th><th>Came true</th></tr>${CARD_STATS.map(row).join('')}</table>
+${S.players ? `<p class="small" style="font-weight:700;margin:10px 0 0">The points projection itself, ${S.players} players the app gave 10+ minutes who played: exactly right ${Math.round((100 * S.exact) / S.players)}%, within 1 point ${Math.round((100 * S.w1) / S.players)}%, within 2 ${Math.round((100 * S.w2) / S.players)}%, within 3 ${Math.round((100 * S.w3) / S.players)}%. Average miss ${(S.miss / S.players).toFixed(1)} points.</p>` : ''}
+${fdLine(S)}
+<p class="small muted" style="font-weight:700;margin:8px 0 0">${SURE_NOTE} Graded from what the app showed the last time it was open before each tip; a player who did not play is not graded (${S.sat} so far)${S.waiting ? `; ${S.waiting} game${S.waiting > 1 ? 's' : ''} waiting for a final score` : ''}. ${lab} Open a finished game to see its report card. Kept on this phone; this record covers the last ${CALLS_DAYS} days.</p>
 </div>`;
 }
 // ------------------------------------------------------------------ learning from finished games
@@ -525,7 +699,7 @@ const plays = await DB.plays(g.id, true);
 // only a box that adds up to the final score is graded and learned from
 const act = finalBox(g, plays) || finalBox(g, await DB.plays(g.id, true, true));
 if (!act) { failed++; continue; }
-try { ledgerGrade(g.id, act.rows); } catch (e) { console.warn('ledger', e); }
+try { ledgerGrade(g.id, act.rows); gradeCall(g.id, act.rows); } catch (e) { console.warn('ledger', e); }
 if (!sn) continue; // no copy of the tables from before this game: the edge record is graded, the lessons sit this day out
 const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
 const logs = await DB.teamLogs([v, h], d);
@@ -610,7 +784,7 @@ for (const g of list) {
 if (stale()) return;
 const s = st(g);
 const old = state.proj.get(g.id);
-const regrade = s.phase === 'final' && ledgerOpen(g.id) && (state.gradeTries.get(g.id) || 0) < 6;
+const regrade = s.phase === 'final' && (ledgerOpen(g.id) || callOpen(g.id)) && (state.gradeTries.get(g.id) || 0) < 6;
 if (s.phase === 'final' && old && old.proj.state.phase === 'final' && !regrade) continue;
 if (s.phase === 'pre' && old && !old.redo && Date.now() - old.at < 5 * 60000) continue;
 try { await projectGame(g); } catch (e) { console.warn('project', g.id, e); }
@@ -887,7 +1061,13 @@ const b2bTeams = [s.v, s.h].filter((t) => P.b2b && P.b2b[t]);
 if (b2bTeams.length && s.phase === 'pre') html += `<div class="card small" style="margin-top:12px;font-weight:700;border-color:var(--ink);background:#3b2a12">⏱️ <b>${b2bTeams.join(' & ')}</b> on the 2nd night of a back-to-back — veterans often rest. Confirm on X before you pick.</div>`;
 html += `<div class="seg" role="group" aria-label="Team">${[s.v, s.h].map((t) => `<button data-act="team" data-g="${id}" data-t="${t}" aria-pressed="${t === tm}">${badge(t, 'sm')}${t}</button>`).join('')}</div>`;
 const players = P.players.filter((p) => p.team === tm && (p.proj.min >= 6 || p.now.min > 0));
-html += `<div class="stack">${players.map((p) => playerCard(p, id, s)).join('') || emptyHTML('No rotation yet', 'Projections appear once data loads.')}</div>`;
+const cardsHTML = `<div class="stack">${players.map((p) => playerCard(p, id, s)).join('') || emptyHTML('No rotation yet', 'Projections appear once data loads.')}</div>`;
+if (s.phase === 'final') {
+// a saved record that cannot be read must never take the game screen down with it
+let rc = '', graded = false;
+try { rc = reportCardHTML(g, s, tm); graded = !!(calls()[id] && calls()[id].r); } catch (e) { console.warn('report card', e); rc = ''; graded = false; }
+html += rc + (graded ? `<div style="margin-top:12px">${details(`box:${id}:${tm}`, `📦 FINAL BOX · ${tm}`, cardsHTML)}</div>` : `<div class="section-title">FINAL BOX</div>${cardsHTML}`);
+} else html += cardsHTML;
 const absent = (P.absent || []).filter((a) => a.team === tm);
 if (absent.length) {
 html += `<div class="section-title">🩹 NOT EXPECTED TONIGHT</div><div class="card stack" style="gap:8px">${absent.map((a) => `<div class="row between"><div><b>${esc(a.name)}</b><div class="small muted" style="font-weight:700">${esc(a.why)}</div></div>
@@ -926,6 +1106,8 @@ const list = max ? w.filter((x) => x.icon !== '🗓️').sort((a, b) => rank(a) 
 if (!list.length) return '';
 return `<ul class="why${max ? ' compact' : ''}">${list.map((x) => `<li class="${x.effect}"><span aria-hidden="true">${x.icon}</span><span>${esc(x.text)}${x.so ? `<span class="so">${esc(x.so)}</span>` : ''}</span></li>`).join('')}</ul>`;
 }
+/** A player's 9-in-10 number for one stat, or null when nothing above what he already has is that safe. */
+function sureOf(p, k) { const t = p.sure && p.sure[k], now = (p.now && p.now[k]) || 0; return t != null && t > now ? t : null; }
 function playerCard(p, gid, s) {
 const tags = [];
 if (p.flags.includes('hot')) tags.push('<span class="tag hot">🔥 HOT</span>');
@@ -942,6 +1124,8 @@ if (p.doubt && getOverrides().in.includes(p.pid)) tags.push('<span class="tag" s
 else if (p.confirmed && s.phase === 'pre') tags.push('<span class="tag" style="background:var(--green);color:var(--ink)">✓ ACTIVE</span>');
 const stat = (k, lbl) => `<div class="stat"><small>${lbl}</small><div class="proj">${half(p.proj[k])}</div><div class="now">${s.phase === 'pre' ? 'proj' : `now <b>${p.now[k]}</b>`}</div></div>`;
 const fouls = Array.from({ length: 6 }, (_, i) => `<i class="${i < p.now.pf ? 'f' : ''}"></i>`).join('');
+// the 9-in-10 numbers: marks he still reaches at least nine times in ten from here (only those above what he already has)
+const sure = s.phase === 'final' ? [] : CARD_STATS.map(([k, lbl]) => [sureOf(p, k), lbl]).filter(([t]) => t != null);
 const showNow = s.phase !== 'pre';
 const mv = s.phase === 'live' ? moveOf(gid, p.pid) : null;
 if (p.fade) tags.unshift('<span class="tag fadew">📉 FADE WARNING</span>');
@@ -954,6 +1138,7 @@ ${tags.length ? `<div class="tags">${tags.join('')}</div>` : ''}
 ${chipRow((p.chips || []).filter((c) => !/CHECK STATUS|CONFIRMED/.test(c.t)), 4)}
 ${whyLines(p, 2)}
 <div class="statrow">${stat('pts', 'PTS')}${stat('reb', 'REB')}${stat('ast', 'AST')}${stat('fg3m', '3PM')}</div>
+${sure.length ? `<div class="surerow"><span class="lbl">9 IN 10${s.phase === 'pre' ? ' IF HE PLAYS' : ''}</span>${sure.map(([t, lbl]) => `<span><b>${t}+</b> ${lbl}</span>`).join('')}</div>` : ''}
 <div class="pc-foot"><div class="minbar" aria-hidden="true"><i class="proj" style="width:${Math.min(100, (p.proj.min / 48) * 100).toFixed(0)}%"></i><i class="played" style="width:${Math.min(100, (p.now.min / 48) * 100).toFixed(0)}%"></i></div>
 <span class="usg">USG ${pct(p.usage.proj)}</span><span class="fouls ${p.now.pf >= 4 ? 'danger' : ''}" aria-label="${p.now.pf} fouls">${fouls}</span></div>
 </button>`;
@@ -981,7 +1166,14 @@ if (!rungs.length) return '';
 const m = p.market && p.market[k];
 const ahead = m ? p.proj[k] - m.line : 0;
 const book = m && ahead > 0 ? `<div class="book">Book line <b>${m.line}</b> · proj <b>${half(p.proj[k])}</b> · <b style="color:var(--green)">+${ahead.toFixed(1)} ahead</b> · hits <b>${pct(m.model)}</b>${m.model - m.book >= 0.03 ? ` (book ${pct(m.book)}) · <b style="color:var(--green)">edge ✓</b>` : ''}</div>` : '';
-return `<h3>${label} · now ${nowK} → ${half(p.proj[k])}</h3><div class="ladder">${rungs.map((r) => `<div class="rung"><span>${r.t}+ ${E.STAT_LABEL[k]}</span><div class="bar"><i class="${tier(r.p)}" style="width:${(r.p * 100).toFixed(0)}%"></i></div><span class="pct">${pct(r.p)}</span></div>`).join('')}</div>${book}`;
+// FanDuel's own price on each mark (v19), and its main line when the projection is ahead of it
+// (live means live: once a game is on, prices more than three minutes old are left out rather than set beside a chance that has moved)
+const fd0 = p.fd && p.fd[k], fdAge = fd0 && fd0.at ? Date.now() - fd0.at : null;
+const fd = fd0 && !(s.phase === 'live' && !(fdAge != null && fdAge < 180000)) ? fd0 : null;
+const fdAt = (t) => (fd ? fd.marks.find((y) => y.t === t) : null), fdCol = !!fd && rungs.some((r) => fdAt(r.t));
+const fdWhen = fd && fd.at ? ` as of ${new Date(fd.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : '';
+const fdMain = fd && fd.main && fd.main.line >= nowK && p.proj[k] > fd.main.line ? `<div class="book">FanDuel line <b>${fd.main.line}</b> at <b>${oddsTxt(fd.main.odds)}</b>${fdWhen} · that price needs <b>${pct(fd.main.needs)}</b> · app says <b>${pct(fd.main.p)}</b></div>` : '';
+return `<h3>${label} · now ${nowK} → ${half(p.proj[k])}</h3><div class="ladder${fdCol ? ' fd' : ''}">${rungs.map((r) => { const f = fdAt(r.t); return `<div class="rung"><span>${r.t}+ ${E.STAT_LABEL[k]}</span><div class="bar"><i class="${tier(r.p)}" style="width:${(r.p * 100).toFixed(0)}%"></i></div><span class="pct">${pct(r.p)}</span>${fdCol ? `<span class="fdp">${f ? `${oddsTxt(f.odds)}<small>needs ${pct(f.needs)}</small>` : ''}</span>` : ''}</div>`; }).join('')}</div>${fdCol ? `<div class="fdnote">Right column: FanDuel's price for that mark${fdWhen} and the chance the price needs to break even. ${FD_NOTE}</div>` : ''}${book}${fdMain}`;
 };
 const qmax = Math.max(12, ...[1, 2, 3, 4].map((q) => p.qavg[q] || 0));
 const usage = (x) => (x == null ? '–' : pct(x));
@@ -1030,7 +1222,15 @@ if (mv) bits.push(`<li class="${mv.d > 0 ? 'up' : 'down'}"><span aria-hidden="tr
 if (p.shift && s.phase === 'live' && Math.abs(p.shift.rem - p.shift.baseRem) >= 1.5) { const d = p.shift.rem - p.shift.baseRem; bits.push(`<li class="${d > 0 ? 'up' : 'down'}"><span aria-hidden="true">⚡</span><span>From here he projects for ${p.shift.rem.toFixed(1)} more points. On a normal night it would be about ${p.shift.baseRem.toFixed(1)}.<span class="so">${Math.abs(p.shift.dMin) >= Math.abs(p.shift.dRate) ? `Mostly minutes: ${p.shift.remMin.toFixed(1)} left to play vs his usual ${p.shift.usualRem.toFixed(1)}.` : 'Mostly his share of the shots and how the game is going.'}</span></span></li>`); }
 return `<div class="nowbox"><div class="nb-num"><span class="led">${half(p.proj.pts)}</span><small>projected points</small></div>
 <div class="nb-range">${rg ? `Likely finish <b>${rg[0]} to ${rg[1]}</b><small>8 games in 10 land in this range</small>` : ''}</div></div>
+${sureHTML(p, s.phase === 'pre')}
 ${bits.length ? `<h3>WHAT CHANGED</h3><ul class="why">${bits.join('')}</ul>` : ''}`;
+}
+/** The 9-in-10 numbers on the player sheet, with what they mean and how often they have held. */
+function sureHTML(p, pre) {
+const rows = CARD_STATS.map(([k, lbl]) => [sureOf(p, k), lbl]);
+if (!rows.some(([t]) => t != null)) return '';
+return `<h3>9 IN 10 NUMBERS</h3><div class="grid4">${rows.map(([t, lbl]) => `<div class="kv"><small>${lbl}</small><b class="${t != null ? 'sureb' : ''}">${t != null ? t + '+' : '–'}</b></div>`).join('')}</div>
+<p class="small muted" style="font-weight:700;margin:8px 0 0">The highest mark he still reaches at least nine times in ten from here${pre ? ', if he plays' : ''}. ${pre ? 'It sits well below the projection on purpose: the projection is the middle of what can happen, and before a game he finishes short of it about half the time. ' : ''}${SURE_LAB.text}</p>`;
 }
 function dbSections(p, s) {
 let out = '';
@@ -1164,6 +1364,8 @@ let html = (alerts.length ? `<div class="section-title" style="margin-top:4px">�
 <div class="card row between" style="padding:10px 14px"><div><b>Skip blowouts</b><div class="small muted" style="font-weight:600">Hide games up 15+, or 12+ after halftime. Blowout-proof players stay.</div></div>
 <label class="toggle"><input type="checkbox" data-act="skipblow" ${settings.skipBlowouts ? 'checked' : ''} aria-label="Skip blowouts"><span></span></label></div>`;
 html += progressHTML();
+// what the edges shown on this phone have really done (v19): an edge is the app's read against the line, not a promise
+{ const R = ledgerStats(); html += `<div class="card small" style="margin-top:10px;font-weight:700">📒 ${R.n ? `Edges graded on this phone so far: <b>${R.n}</b>, came in <b>${Math.round((100 * R.hit) / R.n)}%</b> (the app said ${Math.round(100 * R.said)}%).${R.n < 60 ? ' Too few to judge yet.' : ''}` : 'Every edge shown here is saved and graded when its game ends.'} An edge is the app's read against the books' line, not a promise: at a sportsbook's prices a play has to come in more often than its price needs. The full record is in Settings.</div>`; }
 if (state.hiddenShaky) html += `<div class="card small" style="margin-top:10px;font-weight:700;background:#3b2a12">⚠️ ${state.hiddenShaky} pick${state.hiddenShaky > 1 ? 's' : ''} hidden: player status not confirmed (back-to-back rest, questionable, or missed last game). Open the game, check X, and tap PLAYING to unlock.</div>`;
 if (!picks.length) return html + (state.busy || state.progress ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div></div>' : emptyHTML('No plus edges yet', 'Picks show when a player is projected ahead of the line: 60%+ to clear a book line with value, or 75%+ on a model rung.'));
 const value = picks.filter((k) => k.kind === 'line'), safe = picks.filter((k) => k.kind !== 'line');
@@ -1313,6 +1515,7 @@ ${chipRow('sims', [1000, 2000, 4000], settings.sims, (v) => (v === 1000 ? 'FAST'
 <div class="setting"><div><b>Pick confidence floor</b><small>Minimum model chance for book-line edges</small></div></div>
 ${chipRow('minp', [0.55, 0.6, 0.65, 0.7], settings.minP, (v) => pct(v))}
 </div>
+${(() => { try { return callsRecordHTML(); } catch (e) { console.warn('came-true record', e); return '<div class="section-title">✅ CAME-TRUE RECORD</div><div class="card small" style="font-weight:700">The saved record on this phone could not be read. It starts again with the next game.</div>'; } })()}
 ${ledgerHTML()}
 ${accuracyHTML()}
 <div class="section-title">📲 APP</div>
@@ -1400,7 +1603,7 @@ else if (waited >= 60000) changed.push(g); // quiet stretch (timeouts, reviews):
 if (due) {
 state.lastFull = Date.now();
 const live = rows.filter((g) => st(g).phase === 'live');
-const list = r.name === 'game' ? rows.filter((g) => g.id === +r.id) : rows.filter((g) => st(g).phase !== 'final' || !state.proj.has(g.id) || (ledgerOpen(g.id) && (state.gradeTries.get(g.id) || 0) < 6)).sort((a) => (live.includes(a) ? -1 : 1));
+const list = r.name === 'game' ? rows.filter((g) => g.id === +r.id) : rows.filter((g) => st(g).phase !== 'final' || !state.proj.has(g.id) || ((ledgerOpen(g.id) || callOpen(g.id)) && (state.gradeTries.get(g.id) || 0) < 6)).sort((a) => (live.includes(a) ? -1 : 1));
 for (const g of list) state.lastGame.set(g.id, Date.now());
 return refreshAll({ games: list });
 }

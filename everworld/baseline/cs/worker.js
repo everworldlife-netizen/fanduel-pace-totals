@@ -33,6 +33,8 @@ return;
 const proj = Engine.projectGame(payload);
 const lines = Engine.consensusLines(payload.props || []);
 const picks = Engine.picksForGame(proj, lines, { minP: payload.minP });
+// FanDuel's own menu (main lines and "N+" marks with their prices), with our chance on each line
+const menu = Engine.bookMenu(payload.props || [], 'fanduel');
 // attach book lines + model chance to each player, then drop the raw simulations
 for (const p of proj.players) {
 p.market = {};
@@ -40,6 +42,7 @@ for (const s of STATS) {
 const L = lines[p.pid + ':' + s];
 if (L) p.market[s] = { line: L.line, book: L.fairOver, model: Engine.calProb(p, s, Engine.probOver(p._sims[s], L.line)), books: L.books };
 }
+p.fd = Engine.menuFor(p, menu);
 delete p._sims; delete p.laddersRaw;
 }
 self.postMessage({ id, ok: true, proj, picks });

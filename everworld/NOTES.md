@@ -45,8 +45,8 @@ about that is measured in "Version 19 (Nov 14)": read it before changing how pic
 
 ### Where the build stands at this commit (updated 22:30 UTC, Nov 14)
 
-**Courtside 19 is BUILT and tested in `cs/build` (version line "19 (Nov 14, 2026)", `ca-shell-v19`); whether it is
-published is the first line of "Version 19 (Nov 14)" below.** What it adds: the 9-in-10 number on every card, a report
+**PUBLISHED on Nov 14, 2026 at 23:26 UTC: Courtside 19 (`ca-shell-v19`, Space commit `3c3aaa8`). Full story: "Version 19
+(Nov 14)" below.** What it adds: the 9-in-10 number on every card, a report
 card that grades what the app said before each tip, FanDuel's own prices on the player sheet. GG Winner is unchanged
 (3.11.1). The nightly recording of the books' lines goes on (see "The books' player lines"): snapshots through the day,
 `tools/nightly.sh <date>` each morning.
@@ -1314,7 +1314,11 @@ Winner is unchanged (3.10.1).
 
 ### Version 19 (Nov 14): numbers built to come true, a report card, FanDuel's own prices
 
-PUBLISHED: see the last line of this section (written when it happens).
+**PUBLISHED on Nov 14, 2026 at 23:26 UTC (6:26 pm Eastern, before the night's first tip): Space commit `3c3aaa8`,
+`ca-shell-v19`, five files (app.js, engine.js, styles.css, sw.js, worker.js), `release-2026-11-14/`; live files byte for byte,
+`livecheck` clean on both links, and the published app read at Pixel width: "Version 19 (Nov 14, 2026)", the strip
+("9 IN 10 IF HE PLAYS 7+ PTS"), FanDuel's prices with their time and the not-a-tip line, the calls of all five games kept,
+no banned word, no page error. `baseline/cs` = the live files.**
 
 Akara's words are in the brief at the top (Nov 14). Three things were measured before anything was built.
 
