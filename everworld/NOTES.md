@@ -1280,6 +1280,17 @@ reference only" and the final score runs on our own numbers with the give-back (
 saved, the live line IS the market's projected final (it already holds the score): a rule of its own could use it, but no
 history of live lines exists to test it.
 
+**The BOOK LINES card watched across a real tip (Nov 13, POR at SAC, 10:00 pm ET tip, one look a minute from 9:24 to
+10:31 pm ET, 68 looks, the scratch `cardwatch.js` with ESPN passed through node):** no page error, no banned word, no odd
+token, and the projected score and the win bar named the same team on every look. Before the tip: total 229 (ours 228,
+books 229.5), POR 120 to 109, POR 82%. At the tip the three notes changed as designed: "This early in a game the books'
+total is the closer of the two", "the score now, plus the books' spread for the time left ... (we keep 80% of it from
+here)", "The books said POR 79% before the tip." From 3 minutes in the total note adds "a little less every minute"; at
+7.7 minutes in (the lean is then under 20%) it becomes "Projected total 228, from the pace of this game so far. The books
+had 229.5 before the tip." The share of the lead kept moved 80% to 81% by the end of the quarter. POR trailed 5 to 8 and
+the card said POR by 7.4, 74%; POR led 23 to 20 and it said POR by 10.7, 84%: a pregame favorite stays the favorite while
+most of its spread is still to come, which is what the rule is meant to do.
+
 **6. Not done on purpose:** the lessons were not refitted on the 20 new games (0.5% more games; the phone learns them
 itself from `PAT_FROM = 2026-11-10`), so `PAT_KEY` stays `pat:v6` and nothing saved on a phone is thrown away. GG
 Winner is unchanged (3.10.1).
