@@ -1269,6 +1269,17 @@ the 121-game exam add `--to 2026-11-09` (it picked up 141 games). `bt2.js` has n
 full default backtest. The app test "a late game ends while the phone is down" now waits for the board instead of a
 fixed 14 seconds (it failed once in a full run on a busy machine, never alone).
 
+**Live check of the published version 18 (Nov 13, 7:26 to 7:45 pm ET, two games under way):** both live links load
+(9 games, `ca-shell-v18`, `gg-winner-v3.11.1`, no page errors). A 15-minute watch of NYK at IND (`livewatch`, 45 looks,
+528 player rows, late Q1 into Q2): no page error, no banned word, no odd token, no number below what a player has, nobody
+on the floor tagged not-in-yet; with nothing new for a player his minutes moved 0.06 and his points 0.08 between looks;
+360 comparisons of 3PM on screen against the feed, none short. The seven games not yet started showed the three notes of
+the BOOK LINES card as designed, margin equal to the spread to the decimal, score and win bar on the same side.
+A phone that first opens a game AFTER its tip has no pregame line saved: the card then shows the books' live line "for
+reference only" and the final score runs on our own numbers with the give-back (as tested). Lead: with no pregame line
+saved, the live line IS the market's projected final (it already holds the score): a rule of its own could use it, but no
+history of live lines exists to test it.
+
 **6. Not done on purpose:** the lessons were not refitted on the 20 new games (0.5% more games; the phone learns them
 itself from `PAT_FROM = 2026-11-10`), so `PAT_KEY` stays `pat:v6` and nothing saved on a phone is thrown away. GG
 Winner is unchanged (3.10.1).
