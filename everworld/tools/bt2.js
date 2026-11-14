@@ -23,6 +23,11 @@ const opt = {
   stages: String(arg('--stages', '0,12,24,36,42')).split(',').map((x) => (x === 'rep' ? 'rep' : Number(x))), nsims: +arg('--nsims', 500), lessons: arg('--lessons', 'builtin'), sit: arg('--sit', 'auto'),
   avail: arg('--avail', 'tip'), jobs: +arg('--jobs', 4), every: +arg('--every', 1), out: arg('--out', null), dump: arg('--dump', null), tune: arg('--tune', ''), shard: arg('--shard', null),
   post: has('--no-playoffs') ? false : true,
+  // the books' player lines as a who-plays signal (recorded nights only; see tools/proprec.js and NOTES.md):
+  // --lines closing|first|<minutes before the tip>  --lineout <minutes>: before the tip, a player we give that many minutes
+  // or more, with no line at any book while --linemin (default 6) of his teammates have one, is taken out and the game is
+  // projected again without him (the same as tapping OUT in the app). Starters named in a posted lineup are never taken out.
+  lines: arg('--lines', 'off'), lineOut: +arg('--lineout', 0), lineMin: +arg('--linemin', 6),
 };
 
 function applyTune(E, s) { for (const kv of String(s || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); E.TUNE[k] = v === 'true' ? true : v === 'false' ? false : +v; } }
@@ -44,21 +49,30 @@ function work(shard, n) {
   const acc = Object.fromEntries(opt.stages.map((s) => [s, R.emptyStage()]));
   const dump = opt.dump ? [] : null;
   let used = 0, skipped = 0, k = 0;
+  const lineOuts = [];
   const pick = S.games.filter((it) => it.g.date >= opt.from && it.g.date <= opt.to && (opt.post || !it.g.postseason));
   for (const it of pick) {
     if (k++ % opt.every !== 0) continue;
     if ((k - 1) / opt.every % n !== shard) continue;
-    const ctx = R.contextFor(E, S, it, { avail: opt.avail });
+    const ctx = R.contextFor(E, S, it, { avail: opt.avail, lines: opt.lines });
     if (!ctx.ok) { skipped++; continue; }
     const plays = L.readJSON(path.join(L.DATA, 'plays', `${it.g.id}.json.gz`));
     for (const el of opt.stages) {
       const m = R.momentAt(E, it.g, plays, el === 'rep' ? 0 : el);
-      const proj = E.projectGame({ ...ctx.base, ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season) });
+      const input = { ...ctx.base, ...(ctx.lines ? { lines: ctx.lines } : {}), ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season) };
+      let proj = E.projectGame(input);
+      if (opt.lineOut > 0 && ctx.lines && (el === 'rep' || el === 0)) {
+        const lined = new Set(Object.values(E.consensusLines(ctx.lines)).map((c) => +c.pid));
+        const cnt = {};
+        for (const p of proj.players) if (lined.has(+p.pid)) cnt[p.team] = (cnt[p.team] || 0) + 1;
+        const out = proj.players.filter((p) => +p.pid > 0 && (cnt[p.team] || 0) >= opt.lineMin && !lined.has(+p.pid) && p.proj.min >= opt.lineOut && !(p.startsTonight > 0)).map((p) => +p.pid);
+        if (out.length) { proj = E.projectGame({ ...input, overrides: { in: [], out } }); lineOuts.push(...out.map((pid) => `${it.g.id}:${pid}`)); }
+      }
       R.score(E, proj, it, acc[el], dump);
     }
     used++;
   }
-  return { acc, used, skipped, dump };
+  return { acc, used, skipped, dump, lineOuts };
 }
 
 if (opt.shard != null) {
@@ -79,7 +93,8 @@ if (opt.shard != null) {
   Promise.all(kids).then((parts) => {
     const acc = Object.fromEntries(opt.stages.map((s) => [s, R.emptyStage()]));
     let used = 0, skipped = 0;
-    for (const p of parts) { used += p.used; skipped += p.skipped; for (const s of opt.stages) R.addStage(acc[s], p.acc[s]); }
+    const lineOuts = [];
+    for (const p of parts) { used += p.used; skipped += p.skipped; lineOuts.push(...(p.lineOuts || [])); for (const s of opt.stages) R.addStage(acc[s], p.acc[s]); }
     const sum = Object.fromEntries(opt.stages.map((s) => [s, R.summarize(acc[s])]));
     if (opt.dump) {
       const fs = require('fs'); const all = [];
@@ -95,6 +110,7 @@ if (opt.shard != null) {
       const x = sum[s];
       console.log(`${(label[s] || `${s} min`).padEnd(10)} | ${pad(x.n, 7)} | ${pad(x.pts.toFixed(3), 5)} ${pad(x.reb.toFixed(3), 5)} ${pad(x.ast.toFixed(3), 5)} ${pad(x.fg3m.toFixed(3), 5)} ${pad(x.min.toFixed(2), 5)} | ${pad(x.ptsMean.toFixed(3), 8)} | ${pad(x.ptsAll.toFixed(3), 10)} ${pad(x.minAll.toFixed(2), 5)} | ${pad((x.top3 * 100).toFixed(1), 4)} | ${pad(x.total.toFixed(2), 6)} (${pad(x.totalBias.toFixed(2), 5)})  ${pad(x.lineMiss.toFixed(2), 5)} | ${pad(x.team.toFixed(2), 8)} | ${pad((x.calGap * 100).toFixed(2), 6)}%  ${x.brier.toFixed(4)}`);
     }
-    if (opt.out) L.writeJSON(path.resolve(L.ROOT, opt.out), { opt, used, skipped, sum, acc, at: new Date().toISOString() });
+    if (opt.lineOut > 0) console.log(`no-line rule (${opt.lines} lines, ${opt.lineOut}+ minutes, ${opt.lineMin}+ teammates lined): ${lineOuts.length} player-stages taken out${lineOuts.length ? ': ' + lineOuts.join(' ') : ''}`);
+    if (opt.out) L.writeJSON(path.resolve(L.ROOT, opt.out), { opt, used, skipped, sum, acc, lineOuts, at: new Date().toISOString() });
   }).catch((e) => { console.error(e); process.exit(1); });
 }

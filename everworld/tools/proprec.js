@@ -22,7 +22,7 @@ const etDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_Y
   if (odds) L.writeJSON(path.join(dir, `lines-${hhmm}.json.gz`), { at: now.toISOString(), rows: odds.data || odds });
   // the two injury reports the phone reads, as they stand now (to study what the lines know that the reports do not)
   try { const inj = await L.getJSON(`${L.DB}/v1/nba/injuries?date=${date}`); L.writeJSON(path.join(dir, `injuries-${hhmm}.json.gz`), { at: now.toISOString(), rows: (inj && inj.data) || [] }); } catch { /* not vital */ }
-  try { const e = await L.getJSON(`${L.ESPN}/injuries`); const rows = []; for (const t of e.injuries || []) for (const x of t.injuries || []) rows.push({ team: t.displayName, name: x.athlete && x.athlete.displayName, status: x.status, date: x.date, note: x.shortComment }); L.writeJSON(path.join(dir, `espn-injuries-${hhmm}.json.gz`), { at: now.toISOString(), rows }); } catch { /* not vital */ }
+  try { const e = await L.getJSON(`${L.ESPN}/injuries`); const rows = []; for (const t of e.injuries || []) for (const x of t.injuries || []) rows.push({ team: t.displayName, name: x.athlete && x.athlete.displayName, status: x.status, date: x.date, note: x.shortComment, fs: (x.details && x.details.fantasyStatus && x.details.fantasyStatus.abbreviation) || null, type: (x.details && x.details.type) || null, ret: (x.details && x.details.returnDate) || null }); L.writeJSON(path.join(dir, `espn-injuries-${hhmm}.json.gz`), { at: now.toISOString(), rows }); } catch { /* not vital */ }
   let saved = 0, lines = 0;
   for (const g of games) {
     const state = String(g.status_state || g.display_status || g.status || '').toLowerCase();

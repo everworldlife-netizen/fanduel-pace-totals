@@ -641,4 +641,52 @@ test('the pace reading comes in gradually from 3:00, and the shown number has no
   E.TUNE.landInterp = 0; try { t12o = run(fx, 12); } finally { E.TUNE.landInterp = keepL; }
   assert.deepStrictEqual(t12.players.map((p) => [p.pid, p.proj.pts, p.proj.ast]), t12o.players.map((p) => [p.pid, p.proj.pts, p.proj.ast]));
 });
+test('books\' player lines as a who-plays signal (a candidate, off by default): no line at any book with the team\'s lines up means fewer minutes', () => {
+  const fx = FX[0], v = fx.g.visitor_team.abbreviation;
+  const row = (pid) => ({ player_id: +pid, prop_type: 'points', line_value: '10.5', vendor: 't', market: { type: 'over_under', over_odds: -110, under_odds: -110 } });
+  const key = (P) => P.players.map((p) => [p.pid, p.proj.min, p.proj.pts]);
+  const minOf = (P, pid) => P.players.find((p) => p.pid === pid).mean.min;
+  const base = run(fx, 0, { avail: null });
+  const mine = base.players.filter((p) => p.team === v).sort((a, b) => b.mean.min - a.mean.min);
+  const bench = mine.find((p) => p.mean.min >= 12 && p.mean.min <= 26);
+  assert.ok(bench, 'no rotation bench player in the fixture');
+  const mates = mine.filter((p) => p.pid !== bench.pid);
+  const all = base.players.filter((p) => p.pid !== bench.pid).map((p) => row(p.pid));
+  // off (as shipped): the lines are read by nobody
+  assert.strictEqual(E.TUNE.lineNoK, 1); assert.strictEqual(E.TUNE.lineYesK, 1);
+  assert.deepStrictEqual(key(run(fx, 0, { avail: null, lines: all })), key(base));
+  withTune({ lineNoK: 0.5 }, () => {
+    // on: he gets half the minutes (before the tip a number means "if he plays": nobody else's minutes move)
+    const P = run(fx, 0, { avail: null, lines: all });
+    assert.ok(Math.abs(minOf(P, bench.pid) / bench.mean.min - 0.5) < 0.03, `${bench.name}: ${bench.mean.min.toFixed(1)} minutes before, ${minOf(P, bench.pid).toFixed(1)} with no line`);
+    assert.ok(P.players.find((p) => p.pid === bench.pid).mean.pts < 0.75 * bench.mean.pts, 'his points did not come down with his minutes');
+    for (const p of base.players.filter((x) => x.pid !== bench.pid)) assert.ok(Math.abs(minOf(P, p.pid) - p.mean.min) < (p.team === v ? 0.1 : 1e-9), `${p.name} moved ${(minOf(P, p.pid) - p.mean.min).toFixed(2)} minutes`);
+    // a team whose lines are not up yet (fewer than lineTeamMin players with one): nothing is read into a missing line
+    const few = [...mates.slice(0, E.TUNE.lineTeamMin - 1).map((p) => row(p.pid)), ...base.players.filter((x) => x.team !== v).map((p) => row(p.pid))];
+    assert.deepStrictEqual(key(run(fx, 0, { avail: null, lines: few })), key(base));
+    // the same lines as the ready-made table the app builds (pid:stat -> line) read the same as the raw rows
+    assert.deepStrictEqual(key(run(fx, 0, { avail: null, lines: E.consensusLines(all) })), key(P));
+    // a player the user marked IN keeps his minutes
+    const In = run(fx, 0, { avail: null, lines: all, overrides: { in: [bench.pid], out: [] } }), In0 = run(fx, 0, { avail: null, overrides: { in: [bench.pid], out: [] } });
+    assert.ok(Math.abs(minOf(In, bench.pid) - minOf(In0, bench.pid)) < 1e-9, 'a player marked IN was cut');
+    // a starter named in the posted lineup keeps his minutes, line or no line
+    const posted = run(fx, 0);
+    const st = posted.players.find((p) => p.team === v && p.startsTonight === 1);
+    assert.ok(st, 'no posted starter in the fixture');
+    const others = posted.players.filter((p) => p.pid !== st.pid).map((p) => row(p.pid));
+    assert.deepStrictEqual(key(run(fx, 0, { lines: others })), key(run(fx, 0, { lines: [...others, row(st.pid)] })));
+    // once the game is on, the play-by-play says who plays: the lines are not read
+    const live = run(fx, 12);
+    const sub = live.players.find((p) => p.team === v && p.startsTonight !== 1 && p.mean.min - p.now.min >= 5);
+    assert.ok(sub, 'no bench player with minutes to come at 12:00 in the fixture');
+    assert.deepStrictEqual(key(run(fx, 12, { lines: live.players.filter((p) => p.pid !== sub.pid).map((p) => row(p.pid)) })), key(live));
+  });
+  // the other half of the switch: players the books do have a line for
+  withTune({ lineYesK: 1.05 }, () => {
+    const P = run(fx, 0, { avail: null, lines: all });
+    const star = mates.find((p) => p.mean.min >= 20 && p.mean.min <= 34);
+    assert.ok(Math.abs(minOf(P, star.pid) / star.mean.min - 1.05) < 0.01, `${star.name}: ${star.mean.min.toFixed(1)} to ${minOf(P, star.pid).toFixed(1)}`);
+    assert.ok(Math.abs(minOf(P, bench.pid) - bench.mean.min) < 0.1, 'the player with no line moved though lineNoK is 1');
+  });
+});
 console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);

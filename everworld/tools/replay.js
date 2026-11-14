@@ -127,6 +127,25 @@ function boxOk(it) {
   return Math.abs(it.g.visitor_team_score - pts[v]) < 2 && Math.abs(it.g.home_team_score - pts[h]) < 2 && min[v] >= need - 3 && min[h] >= need - 3;
 }
 
+/**
+ * The books' player lines recorded for a game before its tip (tools/proprec.js): the raw rows of one snapshot, or null.
+ * mode 'closing' = the last snapshot before the tip, 'first' = the earliest, a number = the last one at least that many
+ * minutes before the tip (what a phone opened that early would have seen).
+ */
+function recordedLines(g, mode = 'closing') {
+  const dir = path.join(L.DATA, 'props', String(g.date).slice(0, 10));
+  if (!fs.existsSync(dir)) return null;
+  const tip = Date.parse(g.datetime);
+  const snaps = fs.readdirSync(dir).filter((f) => f.startsWith(`${g.id}-`) && f.endsWith('.json.gz')).map((f) => L.readJSON(path.join(dir, f)))
+    .filter((x) => x && Array.isArray(x.rows) && x.rows.length && Date.parse(x.at) < tip).sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  if (!snaps.length) return null;
+  if (mode === 'first') return snaps[0].rows;
+  if (mode === 'closing') return snaps[snaps.length - 1].rows;
+  const lead = +mode * 60000;
+  const early = snaps.filter((x) => tip - Date.parse(x.at) >= lead);
+  return early.length ? early[early.length - 1].rows : null;
+}
+
 /** Everything projectGame needs for one game, apart from the moment itself. */
 function contextFor(E, S, it, opts = {}) {
   if (process.env.LAB_DIRTY !== '1' && !boxOk(it)) return { ok: false, incomplete: true };
@@ -151,7 +170,7 @@ function contextFor(E, S, it, opts = {}) {
   const avail = availOf(it, opts.avail || 'tip', hist);
   // the same game as the app saw it before lineups were posted (injury report only)
   const availReport = availOf(it, 'report', hist);
-  return { ok: nV >= 2 && nH >= 2 && !!it.lists, nV, nH, availReport, base: { logs, priors: { last, cur }, injuries: [], overrides: { in: [], out: [] }, market: it.market && it.market.total ? it.market : null, teams, gameLogs, avail } };
+  return { ok: nV >= 2 && nH >= 2 && !!it.lists, nV, nH, availReport, lines: opts.lines && opts.lines !== 'off' ? recordedLines(it.g, opts.lines) : null, base: { logs, priors: { last, cur }, injuries: [], overrides: { in: [], out: [] }, market: it.market && it.market.total ? it.market : null, teams, gameLogs, avail } };
 }
 
 /** Last season's situational prior for a season's games, built from the previous season's logs with the engine's own builder (cached on disk). */
@@ -313,4 +332,4 @@ function summarize(A) {
   return out;
 }
 
-module.exports = { STATS, loadEngine, loadSeasons, recentLogs, momentAt, availOf, contextFor, sitPriorFor, sitPriorShipped, patternsFrom, emptyStage, addStage, score, summarize, boxOk };
+module.exports = { STATS, loadEngine, loadSeasons, recentLogs, momentAt, availOf, recordedLines, contextFor, sitPriorFor, sitPriorShipped, patternsFrom, emptyStage, addStage, score, summarize, boxOk };

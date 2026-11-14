@@ -124,6 +124,7 @@ patHalf: 0, // minutes lessons between halftime and 30 minutes in: 0 = nearest s
 tipBlend: 1, // the first six minutes of a game: minutes are the tip-off projection fading out and the live one fading in (the 6-minute lessons were learned at 6:00; used whole from the opening tip they moved minutes 1.2 on average in the first second and were worse than the tip-off number until about 4:30)
 mktAnchor: 1, mktTotW: 0.9, mktMarU: 1, mktKeep: 0.8, // v18: the projected final score. Share of the book's total before the tip (fading out from 3 to 9 minutes in), share of the book's spread in the margin of the rest of the game (0 = our own numbers only), and the share of an early lead that holds to the end (rising to all of it with the square of the clock)
 winCal: 1, winSd0: 7.5, winSd1: 4, // v18: win chance from the projected final margin and the swing real games have from this minute on (sd = winSd0 x sqrt(share of the game left) + winSd1), crossing over to the count of simulations from 36:00 to 45:00 (0 = count of simulations only)
+lineNoK: 1, lineYesK: 1, lineTeamMin: 6, // v19 candidate, OFF (1 = no change): minutes of a player with no line at any book while lineTeamMin of his teammates have one (see lineK); needs o.lines
 threeFix: 1, // v17: a made shot worth three is a three whatever its wording; missed long shots by distance (0 = the wording only, which missed one three in ten)
 outDone: 1, // v17: a player the user marks OUT during a game gets no more minutes (he was still projected for some), and they go to his teammates
 minXa: 25, minXb: 27, // v17: minutes lessons after halftime cross-fade from the halftime ones to the 30-minute ones between these game minutes (equal = the old switch at 27:00). Eight windows tried on 296 unseen games of 2025-26 and this season's 121: 25 to 27 is the one never worse on either (minutes 1.8 / 3.3 / 4.7% closer at 25:30 / 26:00 / 26:30 on the first set, 0.4 / 0.3 / 0.7% on the second); starting at 24 or 24.5 was 1 to 3% worse on this season's games, ending at 27.5 or 28 was 0.7 to 2% worse at 27:00 on last season's
@@ -2246,6 +2247,18 @@ patB[s2] = a && b2 ? a.map((x, i) => (1 - t) * (x || 0) + t * (b2[i] || 0)) : a 
 }
 } else patB = (t >= 0.999 ? B : A) || {};
 }
+// v19 candidate (off until proven on recorded nights: lineNoK = 1 and lineYesK = 1 change nothing): the books post a player
+// line for everyone they expect in tonight's rotation. With his team's lines up (lineTeamMin players or more) and none for
+// him at any book, his minutes are scaled by lineNoK and the team's refill hands them to the others. Before the tip only;
+// a starter named in a posted lineup and a player the user marked IN are left alone.
+const lineK = {};
+if (st.phase === 'pre' && o.lines && (TUNE.lineNoK !== 1 || TUNE.lineYesK !== 1)) {
+const CL = Array.isArray(o.lines) ? consensusLines(o.lines) : o.lines;
+const lined = new Set(Object.values(CL || {}).map((c) => +c.pid));
+const cnt = { [v]: 0, [h]: 0 };
+for (const p of players) if (lined.has(+p.r.pid)) cnt[p.tm]++;
+for (const p of players) if (cnt[p.tm] >= TUNE.lineTeamMin && +p.r.pid > 0 && !forceIn.has(+p.r.pid)) lineK[p.r.pid] = lined.has(+p.r.pid) ? TUNE.lineYesK : (p.sT === 1 ? 1 : TUNE.lineNoK);
+}
 for (const p of players) {
 const r = p.r;
 const proofP = !!(p.starter && ((habits[p.tm].players || {})[r.name] || {}).proof);
@@ -2266,6 +2279,7 @@ const Fm = patB.min && !(r.ejected || r.pf >= 6) ? patApply(patB.min, patX.min, 
 p.lu = lu; p.pat = { g: patG, x: patX, F: { min: Fm } };
 p.minPlain = mean(p.mins);
 if (Fm.f !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i] * Fm.f);
+if (lineK[r.pid] != null && lineK[r.pid] !== 1) for (let i = 0; i < N; i++) p.mins[i] = Math.min(left, p.mins[i] * lineK[r.pid]);
 }
 // The first six minutes: carry the tip-off number into the game. The same lineup is projected once more as if the game had not
 // started (the tip-off lessons), and each player's minutes are a mix of the two: all tip-off at 0:00, all live at 6:00.

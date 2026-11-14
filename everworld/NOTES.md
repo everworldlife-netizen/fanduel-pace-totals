@@ -1341,6 +1341,52 @@ Rules for deciding (unchanged method): at least 300 player lines per stat; the s
 some nights and checked on others; tested per stat and per stage (before lineups, tip-off); line presence as a sign of
 who plays tested against who really played. Nothing is shipped on one night.
 
+**Night 1, the first two finished games (NYK at IND, MIL at ORL; written Nov 13 at 11:50 pm ET, the other seven still on).**
+`node tools/availgrade.js --date 2026-11-13` (new) sets who really played against what was known before the tip (ESPN's
+list, the app's own rows from `appsnap`, the lines), all from the last snapshot before each tip (here 9 minutes before):
+- Players the app gave 15+ minutes: with a line at any book 28, all 28 played. With no line 4: Jarace Walker (17 from
+  us), Kobe Brown (15), Jase Richardson (20) never played, AJ Green (16) played 8.
+- All 51 players shown, by the minutes the app gave: with a line the app is right (15.7 given, 15.7 played; 19.8 → 21.0;
+  29.3 → 30.6: a touch low). With NO line it is about double: 14 players given 12 to 17 minutes (13.5 on average) played
+  7.2 on average, 9 of the 14 got in at all; 7 players given 6 to 11 (9.7) played 7.3, 3 of 7 got in.
+- Walker and Richardson were on the ACTIVE list (ESPN's box: "coach's decision"). So the lines know rotation choices
+  that even the posted lineup does not: this applies at tip-off too, not only before lineups. The lab has always counted
+  these: at tip-off the engine gives 10+ minutes to 1.45 players a game who never play (860 in 592 games; 140 in 121).
+- Jalen Suggs (a 9.5 points line, no number in the app: no game in our recent logs) played 21 minutes. A player with a
+  line and no number from us is the one the user most wants a number for. Not solved yet: the lines carry a player id
+  and no name, and the phone has no name for an id it has not seen in three weeks.
+- ESPN's list: the STATUS field is coarse (Out / Day-To-Day; it pairs one to one with the fantasy field the app reads:
+  Day-To-Day = GTD, Out = OUT or OFS). The NOTE says more ("listed as doubtful / questionable / probable for Friday's
+  game"), and the app does not read it. `noteVerdict` and `noteIsForGame` in `availgrade.js` read it (the last verdict
+  in the note, and only a note that names the game's weekday or was written that day: most "ruled out" notes under a
+  Day-To-Day status are about the PREVIOUS game). Nov 13 at 22:54 UTC: of 28 Day-To-Day players 10 questionable, 5
+  probable, 1 doubtful (Pelle Larsson, 29 minutes from the app at that time, moved to Out before the tip). Tallies
+  against who played need more nights. `proprec.js` now also saves ESPN's fantasy field, injury type and return date.
+
+What "if he plays" means for this (read before designing): before the tip every number answers "what if he plays", so
+a bench player who sits does NOT take minutes from his teammates in the engine (team minutes may add up to more than
+240 and only the TEAM total is scaled; the refill is off before lineups by measurement, capped at 20% at tip-off). A
+player with no line is also a player with no pick. So the value of the lines is, in this order: (1) the LEVEL of the
+line inside the number of the players who have one (they are the ones picks are made on): `propgrade.js`, needs nights;
+(2) a number for a player the books line and we do not show; (3) honest minutes and a flag for a player with no line.
+
+Built tonight for (3), OFF as shipped (nothing changes in the live app until it is proven):
+- Engine: `o.lines` (the raw rows or the `consensusLines` table) and `TUNE.lineNoK`, `lineYesK`, `lineTeamMin` (1, 1, 6).
+  Before the tip only: on a team with lineTeamMin or more players lined, a player with no line has his minutes times
+  lineNoK, a lined one times lineYesK; a starter named in a posted lineup and a player marked IN are left alone. Test in
+  `cs/tests/engine.test.js` (95 checks; six broken copies each fail it). With both at 1 the engine equals the published
+  18 to the last digit (checked on the Nov 11 to 12 games).
+- Lab: `bt2.js --lines closing|first|<minutes before the tip>` hands the recorded lines of a game to the engine
+  (`R.recordedLines`); `--lineout <minutes>` is the blunt version (take the player out and project again, like tapping
+  OUT). Games with no recorded lines replay exactly as before.
+- To measure on the recorded nights: `node tools/bt2.js --engine cs/build/engine.js --seasons 2027 --from 2026-11-13
+  --no-playoffs --stages rep,0 --lessons builtin --lines closing --tune lineNoK=0.6,lineYesK=1.03` against the same
+  without `--lines`. First real run: the morning of Nov 14 (9 games). One night is about 180 players: a direction, not
+  a proof.
+
+Recording from Nov 14 on: snapshots through the whole day (the first in the morning), not only the last hours, so the
+lab can also answer "how early are a team's lines up" and "what did a phone see at noon".
+
 ### Traps found this session
 - (Nov 12) The lab graded 3PM against its own play-by-play box, so a counting error in that box was invisible to every
   test for the whole project. Whenever the box code changes, check it against an outside official box for every stat
