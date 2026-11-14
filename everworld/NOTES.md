@@ -1396,11 +1396,42 @@ with a reason behind it; 347 plays cannot carry it yet.
   saves them, graded by the app itself): 8 games, 286 9-in-10 numbers, 94% came true (points 124: 92%, rebounds 105: 97%,
   assists 53: 94%); the points projection itself: exact 3%, within 2 points 31%, within 3 43%, average miss 5.2;
   FanDuel's marks under the safe numbers: 38 plays, 37 came in, +0.1 units.
-- Tests: engine 97 checks, app 42; twelve deliberately broken copies each fail (grading a mark reached exactly, a
+- Tests before the review: engine 97 checks, app 42; twelve deliberately broken copies each fail (grading a mark reached exactly, a
   miss that costs nothing, a player who sat, stale calls never cleared, the name lookup, FanDuel's mark above the safe
   number, the worker dropping the menu, a FanDuel line the projection is behind, the price column showing our chance, a
   call rewritten during the game, a number equal to what he already has; one test had to be tightened to catch the
   rewrite).
+- Independent review before release (a fresh reviewer with the diff against the published files and the measurement
+  files; 71 tool calls): no blocker, six should-fix, eleven minor or notes. ALL fixed before release:
+  1. A saved call was never graded that night when the first final box came in short and the game had no saved edges
+     (the retry looked only at open edges): `callOpen` now counts in both places.
+  2. FanDuel's price next to the app's chance read like a value play and could be stale: the note under the column now
+     says it is information, not a tip, with the one night's result (`FD_NOTE`: 341 marks the app liked by 3+ points,
+     25 in 100 came in, their prices needed 29: UPDATE IT as nights are graded); the time of the newest price is shown
+     (`bookMenu` keeps `updated_at`); during a game prices older than three minutes, or with no time, are left out.
+  3. A saved record damaged below the top level (a row that is not a row) broke Settings and the game screen:
+     `callOk` checks every row and every result, unreadable entries are cleared off the phone on load, and both screens
+     catch what is left.
+  4. Before the tip the strip now reads "9 IN 10 IF HE PLAYS" (the lab never counts a pre-game player who then sat),
+     and the sheet and the finding say so.
+  5. One failed read of the lines wiped the FanDuel marks kept for the report card: with no FanDuel menu at all, the
+     marks of the last good look stay with every player whose 9-in-10 numbers have not changed.
+  6. The record is a ten-day window and now says so everywhere (a running total that never forgets is a lead: fold a
+     graded call into small totals before it ages out; fold only when the call is still on the phone, so two open
+     copies cannot count it twice). The sentence "the app will only call a kind of play a winner once that record says
+     so" is gone: no code did that.
+  Smaller ones: with two open copies the later look at a game wins and grading starts from what is on the phone; a call
+  is never written from a row that is no longer pre-game or from a board running on its saved copy; a look from an
+  earlier day says so; "No report card" says what is true; the final box stays, folded under the report card; the
+  projection is kept to a tenth and graded like the lab does, and the text names who is counted; "741 games" now says
+  the margin was set on 592 of them and held 93 / 94 / 95 on the other 149; "about half the time" only before a game;
+  FanDuel's main line is the one priced nearest even money (an alternate line cannot take its place); units of zero read
+  "level"; a call still waiting after 6 days is dropped.
+  Not done from the review (noted, not needed for this release): a `sure` test with no calibration tables (the app
+  always has the built-in ones; without tables the numbers get LOWER, checked by the reviewer), the two-open-copies
+  and stale-row paths have no automated test, nothing ties the quoted numbers to the measurement files automatically
+  (the reviewer recomputed every one by hand: all match).
+- Final test counts: engine 97 checks, app 45; nineteen deliberately broken copies each fail.
 - NOT in version 19 (next): picks and the edge record on FanDuel's own lines and prices (they still use the middle
   line of all books); units in the edge record; the price inside the chance; the PTS+REB+AST 9-in-10 number; a
   report card for a game the phone did not see before the tip (would need a replay with the saved tables).

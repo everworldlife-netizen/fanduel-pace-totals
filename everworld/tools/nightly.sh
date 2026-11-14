@@ -24,5 +24,7 @@ echo; echo "######## replay of $D with $ENGINE"
 node tools/bt2.js --engine "$ENGINE" --seasons "$SEASON" --from "$D" --to "$D" --no-playoffs --jobs 4 --nsims 500 --stages rep,0 --lessons builtin --dump "data/runs/L1-$D.rows.json.gz" --out "data/runs/L1-$D.json"
 echo; echo "######## our number against the books' closing lines, every recorded night, tip-off"
 node tools/propgrade.js data/runs/L1-*.rows.json.gz
+echo; echo "######## FanDuel's own menu at its closing prices, every recorded night: the engine's chance, the price, the money"
+node tools/research/v19-03-fd.js --from 2026-11-13 --to "$D" --out data/research/v19-fd-all.json
 echo; echo "######## the same before lineups"
 node tools/propgrade.js data/runs/L1-*.rows.json.gz --stage rep | sed -n 1,16p

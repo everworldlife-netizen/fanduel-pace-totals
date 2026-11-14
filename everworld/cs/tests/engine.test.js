@@ -743,6 +743,12 @@ test('FanDuel\'s own menu: its main line and "N+" marks with the chance each pri
   assert.deepStrictEqual(M[b.pid].ast.marks.map((m) => m.t), [2]);
   assert.deepStrictEqual(Object.keys(E.bookMenu(rows, 'draftkings')[a.pid].pts.marks[0]).sort(), ['needs', 'odds', 't']);
   assert.deepStrictEqual(E.bookMenu([]), {}); assert.deepStrictEqual(E.bookMenu(null), {});
+  // an alternate line listed like a main line does not take its place: the main line is the one priced nearest even money
+  const alt = E.bookMenu([row(a.pid, 'fanduel', 'points', 29.5, { type: 'over_under', over_odds: 320, under_odds: -450 }), { ...row(a.pid, 'fanduel', 'points', 20.5, { type: 'over_under', over_odds: -110, under_odds: -110 }), updated_at: '2026-11-14T23:40:00Z' }, { ...row(a.pid, 'fanduel', 'points', 10, { type: 'milestone', odds: -400 }), updated_at: '2026-11-14T23:10:00Z' }, row(undefined, 'fanduel', 'points', 10, { type: 'milestone', odds: -400 })]);
+  assert.strictEqual(alt[a.pid].pts.main.line, 20.5);
+  assert.strictEqual(alt[a.pid].pts.at, Date.parse('2026-11-14T23:40:00Z'), 'the time of the newest price is not kept');
+  assert.deepStrictEqual(Object.keys(alt), [String(a.pid)], 'a row with no player made an entry');
+  assert.strictEqual(E.menuFor(a, alt).pts.at, Date.parse('2026-11-14T23:40:00Z')); assert.strictEqual(M[a.pid].pts.at, null);
   // the engine's chance on each line is the same calibrated chance the ladders show
   const F = E.menuFor(a, M);
   for (const m of F.pts.marks) assert.strictEqual(m.p, E.calProb(a, 'pts', E.probAtLeast(a._sims.pts, m.t)));

@@ -1,0 +1,43 @@
+{
+ "date": "2026-11-14",
+ "spaces": [
+  {
+   "name": "courtside-arcade",
+   "live": "https://everworldlife-courtside-arcade.static.hf.space/",
+   "upload": "https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main",
+   "files": [
+    {
+     "path": "app.js",
+     "bytes": 142470,
+     "sha256": "50f0f02e5636cd8ea2ea01da2e3e0bc0bf9c5bc88c20e970b506217ad52a75fc"
+    },
+    {
+     "path": "engine.js",
+     "bytes": 245882,
+     "sha256": "2c06b0374fb82f63c91d93dfcf8fc99cfa38b4b56a50563c26629e852d6c3afa"
+    },
+    {
+     "path": "styles.css",
+     "bytes": 37706,
+     "sha256": "b35a85c35d96bfffc05d475cb2934782b44d285eb66c352c84728506c1168bfe"
+    },
+    {
+     "path": "sw.js",
+     "bytes": 1441,
+     "sha256": "cbd62f673ad9a4cd26ed43f0c7c495e8e9ae6678b7c78f15c4869d54872f44ae"
+    },
+    {
+     "path": "worker.js",
+     "bytes": 2588,
+     "sha256": "2aa35e4a531e0c2c4f50adf37dadad8e164634aa4929ad39feae1745905d83ec"
+    }
+   ]
+  },
+  {
+   "name": "gg-winner",
+   "live": "https://everworldlife-gg-winner.static.hf.space/",
+   "upload": "https://huggingface.co/spaces/everworldlife/gg-winner/upload/main",
+   "files": []
+  }
+ ]
+}

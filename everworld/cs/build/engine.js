@@ -2722,18 +2722,21 @@ function pricePays(o) { return o < 0 ? 100 / -o : o / 100; }
 /**
  * One sportsbook's own menu for the plus side (v19: FanDuel, the book the app is used with): for each player and stat its
  * main line and its "N+" marks, each with the price and the chance that price needs. Where a mark is listed twice the
- * better price is kept. { [player id]: { [stat]: { main: { line, odds, needs } | null, marks: [{ t, odds, needs }] } } }
+ * better price is kept. { [player id]: { [stat]: { main: { line, odds, needs } | null, marks: [{ t, odds, needs }], at: newest update (ms) | null } } }
  */
 function bookMenu(props, vendor = 'fanduel') {
 const out = {};
 const okOdds = (o) => Number.isFinite(o) && Math.abs(o) >= 100;
 for (const x of props || []) {
-if (!x || x.vendor !== vendor || !x.market) continue;
+if (!x || x.vendor !== vendor || !x.market || x.player_id == null) continue;
 const stat = PROP_MAP[x.prop_type], line = parseFloat(x.line_value);
 if (!stat || !Number.isFinite(line) || !(line > 0)) continue;
 const byStat = (out[x.player_id] = out[x.player_id] || {});
-const m = (byStat[stat] = byStat[stat] || { main: null, marks: [] });
-if (x.market.type === 'over_under') { const o = +x.market.over_odds; if (okOdds(o) && (!m.main || priceNeeds(o) < m.main.needs)) m.main = { line, odds: o, needs: priceNeeds(o) }; }
+const m = (byStat[stat] = byStat[stat] || { main: null, marks: [], at: null });
+// when the book last touched these prices (the newest row), so the app can say how old they are
+const at = Date.parse(x.updated_at); if (Number.isFinite(at) && !(m.at >= at)) m.at = at;
+// the main line is the one priced nearest even money (an alternate line listed the same way must not take its place)
+if (x.market.type === 'over_under') { const o = +x.market.over_odds; if (okOdds(o) && (!m.main || Math.abs(priceNeeds(o) - 0.5) < Math.abs(m.main.needs - 0.5))) m.main = { line, odds: o, needs: priceNeeds(o) }; }
 else if (x.market.type === 'milestone' && Number.isInteger(line)) { const o = +x.market.odds; if (!okOdds(o)) continue; const had = m.marks.find((y) => y.t === line); if (!had) m.marks.push({ t: line, odds: o, needs: priceNeeds(o) }); else if (priceNeeds(o) < had.needs) { had.odds = o; had.needs = priceNeeds(o); } }
 }
 for (const byStat of Object.values(out)) for (const m of Object.values(byStat)) m.marks.sort((a, b) => a.t - b.t);
@@ -2746,7 +2749,7 @@ if (!F || !p._sims) return null;
 const out = {};
 for (const [stat, m] of Object.entries(F)) {
 if (!p._sims[stat]) continue;
-out[stat] = { main: m.main ? { ...m.main, p: calProb(p, stat, probOver(p._sims[stat], m.main.line)) } : null, marks: m.marks.map((y) => ({ ...y, p: calProb(p, stat, probAtLeast(p._sims[stat], y.t)) })) };
+out[stat] = { at: m.at || null, main: m.main ? { ...m.main, p: calProb(p, stat, probOver(p._sims[stat], m.main.line)) } : null, marks: m.marks.map((y) => ({ ...y, p: calProb(p, stat, probAtLeast(p._sims[stat], y.t)) })) };
 }
 return Object.keys(out).length ? out : null;
 }
