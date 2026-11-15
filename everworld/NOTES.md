@@ -1573,6 +1573,47 @@ game; who-played counts use ESPN's official minutes and keep all nine.
    probable 1 of 2 (Klay Thompson was a late scratch). Too few to say anything.
 5. Not shown by the app and played 15+ minutes: Jalen Suggs (21, had a line), Nikola Topic (16).
 
+**Night 2 graded (Nov 14, five games; written Nov 15, 10 am ET). Two nights together: 13 games in the number tables,
+14 in the who-played counts.** `tools/nightly.sh 2026-11-14` (it now also runs `tools/research/v19-03-fd.js` over every
+recorded night: FanDuel's own menu at its closing prices, saved as `data/research/v19-fd-all.json`). Night 2 by itself
+was a calm one: points miss at tip-off 3.91 on 91 players (night 1: 5.22).
+
+1. THE LEVEL OF THE LINE, tip-off, closing lines, players who played 10+ minutes:
+
+   | stat | lines | our miss | book's miss | half and half | gain of half and half ± one standard error | night 1 / night 2 |
+   |---|---|---|---|---|---|---|
+   | points | 191 | 4.920 | 4.788 | 4.779 | +0.142 ± 0.056 (z 2.5) | +0.115 (120) / +0.186 (71) |
+   | rebounds | 188 | 1.927 | 1.878 | 1.869 | +0.058 ± 0.025 (z 2.3) | +0.079 (117) / +0.023 (71) |
+   | assists | 142 | 1.493 | 1.514 | 1.489 | +0.004 ± 0.023 (z 0.2) | +0.014 (93) / −0.013 (49) |
+   | threes | 156 | 1.110 | 1.103 | 1.094 | +0.016 ± 0.019 (z 0.8) | −0.006 (102) / +0.058 (54) |
+
+   Before lineups: points +0.114 ± 0.055 (z 2.1), rebounds +0.068 ± 0.028 (z 2.4). Both nights point the same way on
+   points and rebounds (2.9% and 3.0% closer with half the line inside); assists and threes gain nothing. Still under
+   300 lines a stat: the share of the line is to be chosen on two nights and checked on the third (Nov 15, nine games).
+2. PLUS EDGES against the closing line (the middle of all books), tip-off: 51.5% ± 2.9 of 307 came in; the wider ones
+   (our number 12%+ ahead) 54.4% ± 4.1 of 147. Night 2 alone about 56% of 110 (night 1: 48.7% of 197). Before lineups
+   50.0% of 306. Still a coin within its error; a book's price needs about 52.4%.
+3. FANDUEL'S OWN MENU at its closing prices, 13 games (4,108 marks and 763 main lines; points, rebounds, assists, threes):
+   every mark blind −16.1% a play (3,153; night 2 was hard on long shots); the engine's chances are RIGHT band by band
+   (said 8.6 / 29.4 / 49.6 / 67.5 / 82.4 / 92.8%, happened 8.6 / 29.7 / 50.0 / 71.6 / 83.5 / 92.7%) and still lose to the
+   price where they disagree with it: liked by 3 to 6 points 24.1% came in (said 32.6, price needed 28.3; 266 marks,
+   −31% a play), by 6 to 10 points 24.8% (said 36.8, needed 29.1; 153; −33%); ONLY the biggest gaps, 10 points and more,
+   were ahead: 41.4% came in against 34.5 needed (111 marks, +19% ± 19 a play), and the same on main lines (64.1% against
+   51.5 needed, 39 lines, +24% ± 15). Two small samples that agree: a lead, not a finding. All marks liked by 3+ points
+   together: 530, 28 in 100 came in, the prices needed 30 (UPDATE `FD_NOTE` in the app with these at the next release).
+   By stat the threes marks are the engine's worst (184 liked, 20.7% came in against 26.8 needed, −44% ± 10): it
+   overrates made threes at long prices. Marks the engine gives 85%+: 236, 90.3% came in (said 90.3), prices needed
+   94.0: −3.7% ± 2.2. Marks at or below the 9-in-10 number: 70, 97.1% came in, needed 97.1: level. FanDuel paying 3 to 6
+   points more than the middle of the other books: 552 marks, −1.4% ± 9 (against −19.5% where it pays the same): the
+   best group that is not a matter of our own chance, and still not ahead.
+4. WHO PLAYS, last look before each tip, 14 games: 204 of 204 players with a line played; of 34 with no line the app gave
+   15+ minutes, 9 never played. Minutes with a line: 15.4 given → 17.6, 20.6 → 21.4, 29.4 → 30.2 (the app runs about
+   3% low for players the books line); with no line: 8.9 → 5.8, 14.1 → 9.7, 19.4 → 13.4.
+5. ESPN's NOTE WORDING, two hours before the tips (27 Day-To-Day players over two nights): "doubtful" 0 of 3 played,
+   "probable" 6 of 7, "questionable" 6 of 16 (Cleveland sat four questionable starters on Nov 14). The app treats all
+   27 the same (plays, check status). Reading the note is the next availability lead once there are 60+ cases.
+6. Not shown by the app and played 15+ minutes: Suggs (21), Topic (16), Yves Missi (22).
+
 Next: nights 2 to 4 the same way (`tools/nightly.sh <date>` each morning). Decide the share of the line per stat on
 some nights, check it on the others, at least 300 lines per stat. Build the mix only then, inside the number (so the
 plus edges shrink with it), and tell Akara what it does to the picks before it ships.
