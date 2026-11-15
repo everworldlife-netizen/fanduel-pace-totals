@@ -1613,6 +1613,10 @@ was a calm one: points miss at tip-off 3.91 on 91 players (night 1: 5.22).
    "probable" 6 of 7, "questionable" 6 of 16 (Cleveland sat four questionable starters on Nov 14). The app treats all
    27 the same (plays, check status). Reading the note is the next availability lead once there are 60+ cases.
 6. Not shown by the app and played 15+ minutes: Suggs (21), Topic (16), Yves Missi (22).
+7. The 9-in-10 numbers of night 2, replayed through the published app's own report card (the lab's tip-off numbers saved
+   the way the phone saves them): 187 numbers, 95% came true (points 81: 94%, rebounds 66: 97%, assists 32: 97%, threes 8:
+   88%); the points projection itself exact 7%, within 2 points 38%, within 3 54%, average miss 3.9; FanDuel's marks at
+   or below them: 30 plays, 29 came in, +0.1 units. (Night 1 the same way: 286 numbers, 94%.)
 
 Next: nights 2 to 4 the same way (`tools/nightly.sh <date>` each morning). Decide the share of the line per stat on
 some nights, check it on the others, at least 300 lines per stat. Build the mix only then, inside the number (so the
