@@ -19,7 +19,7 @@ for (const k of Object.keys(localStorage)) {
 let m;
 if ((m = k.match(/^slate:last:(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -1)) localStorage.removeItem(k); }
 else if ((m = k.match(/^slate:[^:]+:(\d{4}-\d\d-\d\d)$/))) { if (!k.startsWith(`slate:${VER}:`) || m[1] < addDays(today, -25)) localStorage.removeItem(k); }
-else if ((m = k.match(/^(?:tip|overrides):(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -2)) localStorage.removeItem(k); }
+else if ((m = k.match(/^(?:tip|overrides|pl):(\d{4}-\d\d-\d\d)$/))) { if (m[1] < addDays(today, -2)) localStorage.removeItem(k); }
 else if (k.startsWith('glines:')) { let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch { v = null; } if (!v || !(v.at > Date.now() - 7 * 86400000)) localStorage.removeItem(k); }
 // game logs of games nothing looks back to any more (recent form reads 21 days back, the nightly learning 5 more): without
 // this the logs pile up for the whole season until storage refuses a write

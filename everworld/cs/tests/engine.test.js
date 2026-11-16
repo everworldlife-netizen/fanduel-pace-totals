@@ -758,4 +758,68 @@ test('FanDuel\'s own menu: its main line and "N+" marks with the chance each pri
   assert.strictEqual(E.menuFor(P.players[5], M), null);
   assert.strictEqual(E.menuFor({ pid: a.pid }, M), null); // simulations already dropped: no chances to give
 });
+test('the books\' line inside the number (a candidate, off as shipped): the number moves toward the line by the share, the chances move with it, more of it the closer the tip', () => {
+  const fx = FX[0];
+  const ou = (pid, prop, line, vendor = 'a') => ({ player_id: +pid, prop_type: prop, line_value: String(line), vendor, market: { type: 'over_under', over_odds: -110, under_odds: -110 } });
+  const key = (P) => P.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.fg3m, p.mean.pts, p.sure.pts, JSON.stringify(p.ladders.pts)]);
+  const base = run(fx, 0);
+  const stars = base.players.filter((p) => p.mean.pts >= 14).slice(0, 4);
+  assert.ok(stars.length >= 3, 'the fixture has too few scorers');
+  const [hi, lo, same] = stars; // one line well above his number, one well below, one right on it
+  const lines = [ou(hi.pid, 'points', Math.round(hi.proj.pts) + 6.5), ou(hi.pid, 'points', Math.round(hi.proj.pts) + 6.5, 'b'), ou(lo.pid, 'points', Math.max(4.5, Math.round(lo.proj.pts) - 6.5)), ou(same.pid, 'points', Math.round(same.proj.pts * 2) / 2), ou(hi.pid, 'rebounds', Math.round(hi.proj.reb) + 3.5), ou(lo.pid, 'assists', Math.round(lo.proj.ast) + 2.5), ou(lo.pid, 'threes', Math.round(lo.proj.fg3m) + 1.5)];
+  const lineOf = (p, prop) => +lines.find((x) => x.player_id === p.pid && x.prop_type === prop).line_value;
+  const get = (P, p) => P.players.find((x) => x.pid === p.pid);
+  // off (as shipped): the lines and the time to the tip are read by nobody
+  for (const k of ['lineWPts', 'lineWReb', 'lineWAst', 'lineW3', 'lineLive']) assert.strictEqual(E.TUNE[k], 0, `${k} is not off`);
+  assert.deepStrictEqual(key(run(fx, 0, { lines, toTip: 5 })), key(base));
+  withTune({ lineWPts: 0.75, lineWReb: 0.6 }, () => {
+    const P = run(fx, 0, { lines, toTip: 5 });
+    for (const [p, dir] of [[hi, 1], [lo, -1]]) {
+      const q = get(P, p), L = lineOf(p, 'points'), want = 0.25 * p.proj.pts + 0.75 * L;
+      assert.ok(Math.abs(q.proj.pts - want) < 0.25, `${p.name}: number ${p.proj.pts.toFixed(2)}, line ${L}, moved to ${q.proj.pts.toFixed(2)} (three quarters of the way is ${want.toFixed(2)})`);
+      assert.ok(dir * (q.mean.pts - p.mean.pts) > 2, `${p.name}: the average of his simulations did not move with the number`);
+      assert.deepStrictEqual([q.lineIn.pts.line, q.lineIn.pts.share], [L, 0.75]);
+      // the chance on the books' own line comes back toward even (the number now sits close to that line)
+      const chance = (X) => E.calProb(X, 'pts', E.probOver(X._sims.pts, L));
+      assert.ok(Math.abs(chance(q) - 0.5) < Math.abs(chance(p) - 0.5) - 0.1, `${p.name}: chance on the line ${chance(p).toFixed(2)} before, ${chance(q).toFixed(2)} after`);
+      // the 9-in-10 number and the ladder moved the same way
+      assert.ok(dir * (q.sure.pts - p.sure.pts) >= 1, `${p.name}: 9-in-10 number ${p.sure.pts} to ${q.sure.pts}`);
+      // points + rebounds + assists is still the sum of the three in every simulated night
+      for (let i = 0; i < q._sims.pra.length; i += 37) assert.strictEqual(q._sims.pra[i], q._sims.pts[i] + q._sims.reb[i] + q._sims.ast[i]);
+    }
+    assert.ok(Math.abs(get(P, same).proj.pts - same.proj.pts) < 0.3, 'a line that agrees with the number moved it');
+    assert.ok(Math.abs(get(P, hi).proj.reb - (0.4 * hi.proj.reb + 0.6 * lineOf(hi, 'rebounds'))) < 0.25, 'rebounds did not take 60% of the line');
+    // stats whose share is 0 are untouched, and so is every player with no line
+    assert.strictEqual(get(P, lo).proj.ast, lo.proj.ast); assert.strictEqual(get(P, lo).proj.fg3m, lo.proj.fg3m);
+    assert.ok(!get(P, lo).lineIn.ast && !get(P, lo).lineIn.fg3m);
+    for (const p of base.players) if (![hi.pid, lo.pid, same.pid].includes(p.pid)) { const q = get(P, p); assert.deepStrictEqual([q.proj.pts, q.proj.reb, q.mean.pts, q.lineIn], [p.proj.pts, p.proj.reb, p.mean.pts, null], `${p.name} has no line and moved`); }
+    // the team totals, the projected score and the minutes are not touched by it
+    assert.deepStrictEqual([P.projScore, P.winProb], [base.projScore, base.winProb]);
+    assert.strictEqual(get(P, hi).proj.min, hi.proj.min);
+    // the same lines handed over as the ready-made table the app keeps read the same
+    assert.deepStrictEqual(key(run(fx, 0, { lines: E.consensusLines(lines), toTip: 5 })), key(P));
+    // more of the line the closer the tip: none five hours out, half of the share three hours out, all of it inside the last hour
+    const at = (toTip) => get(run(fx, 0, { lines, toTip }), hi).proj.pts;
+    assert.strictEqual(at(300), hi.proj.pts); assert.strictEqual(at(600), hi.proj.pts);
+    const L = lineOf(hi, 'points');
+    assert.ok(Math.abs(at(180) - ((1 - 0.375) * hi.proj.pts + 0.375 * L)) < 0.25, `three hours out: ${at(180).toFixed(2)}`);
+    assert.ok(Math.abs(at(60) - at(5)) < 1e-9 && Math.abs(at(0) - at(5)) < 1e-9, 'the share is not full inside the last hour');
+    assert.ok(at(240) > hi.proj.pts && at(240) < at(180) && at(180) < at(60), 'the share does not grow as the tip nears');
+    // once the game is on, nothing (lineLive is 0): the play-by-play has taken over
+    assert.deepStrictEqual(key(run(fx, 12, { lines })), key(run(fx, 12)));
+  });
+  // kept into the game when asked: what he has plus the line's share of the time left, fading to nothing at lineLive
+  withTune({ lineWPts: 0.75, lineLive: 48 }, () => {
+    const live0 = run(fx, 12), q0 = get(live0, hi);
+    const big = [ou(hi.pid, 'points', 60.5)];
+    const q = get(run(fx, 12, { lines: big }), hi);
+    const left = 36, wantLine = q0.now.pts + 60.5 * (left / 48), w = 0.75 * (1 - 12 / 48);
+    assert.ok(Math.abs(q.proj.pts - ((1 - w) * q0.proj.pts + w * wantLine)) < 0.6, `at 12:00 ${q0.proj.pts.toFixed(1)} became ${q.proj.pts.toFixed(1)}`);
+    assert.ok(q.proj.pts >= q.now.pts && q.sure.pts >= q.now.pts, 'a live number fell below what he already has');
+    for (let i = 0; i < q._sims.pts.length; i += 23) assert.ok(q._sims.pts[i] >= q.now.pts, 'a simulated night ends below what he already has');
+    const low = get(run(fx, 12, { lines: [ou(hi.pid, 'points', 0.5)] }), hi);
+    assert.ok(low.proj.pts >= low.now.pts && low.proj.pts < q0.proj.pts, 'a low line did not pull the live number down, or pulled it below what he has');
+    assert.deepStrictEqual(key(run(fx, 47.9, { lines: big })).map((x) => x[1]), key(run(fx, 47.9)).map((x) => x[1]));
+  });
+});
 console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);

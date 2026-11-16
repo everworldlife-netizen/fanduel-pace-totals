@@ -126,6 +126,7 @@ mktAnchor: 1, mktTotW: 0.9, mktMarU: 1, mktKeep: 0.8, // v18: the projected fina
 winCal: 1, winSd0: 7.5, winSd1: 4, // v18: win chance from the projected final margin and the swing real games have from this minute on (sd = winSd0 x sqrt(share of the game left) + winSd1), crossing over to the count of simulations from 36:00 to 45:00 (0 = count of simulations only)
 lineNoK: 1, lineYesK: 1, lineTeamMin: 6, // v19 candidate, OFF (1 = no change): minutes of a player with no line at any book while lineTeamMin of his teammates have one (see lineK); needs o.lines
 sureQ: 0.92, // v19: the stated chance behind the 9-in-10 number shown on every card (0.92 stated came true 90.4 to 95.7% at every stage on 592 unseen games)
+lineWPts: 0, lineWReb: 0, lineWAst: 0, lineW3: 0, lineFar: 300, lineNear: 60, lineLive: 0, // v20 candidate, OFF (shares of 0 change nothing): the books' consensus line inside a player's number, by stat; the share grows from none lineFar minutes before the tip to full lineNear minutes before it; lineLive = game minutes over which it fades out after the tip (0 = before the tip only). Needs o.lines and o.toTip
 threeFix: 1, // v17: a made shot worth three is a three whatever its wording; missed long shots by distance (0 = the wording only, which missed one three in ten)
 outDone: 1, // v17: a player the user marks OUT during a game gets no more minutes (he was still projected for some), and they go to his teammates
 minXa: 25, minXb: 27, // v17: minutes lessons after halftime cross-fade from the halftime ones to the 30-minute ones between these game minutes (equal = the old switch at 27:00). Eight windows tried on 296 unseen games of 2025-26 and this season's 121: 25 to 27 is the one never worse on either (minutes 1.8 / 3.3 / 4.7% closer at 25:30 / 26:00 / 26:30 on the first set, 0.4 / 0.3 / 0.7% on the second); starting at 24 or 24.5 was 1 to 3% worse on this season's games, ending at 27.5 or 28 was 0.7 to 2% worse at 27:00 on last season's
@@ -2252,6 +2253,15 @@ patB[s2] = a && b2 ? a.map((x, i) => (1 - t) * (x || 0) + t * (b2[i] || 0)) : a 
 // line for everyone they expect in tonight's rotation. With his team's lines up (lineTeamMin players or more) and none for
 // him at any book, his minutes are scaled by lineNoK and the team's refill hands them to the others. Before the tip only;
 // a starter named in a posted lineup and a player the user marked IN are left alone.
+// v20 candidate (off as shipped): how much of the books' line goes into each stat right now. Before the tip it grows as
+// the tip nears (the line is no better than our number in the morning and clearly better in the last hours: lineup and
+// injury news goes into it first); after the tip it fades over lineLive game minutes.
+const lineOn = TUNE.lineWPts > 0 || TUNE.lineWReb > 0 || TUNE.lineWAst > 0 || TUNE.lineW3 > 0;
+const lineRamp = !lineOn || !o.lines || st.phase === 'final' ? 0
+: st.phase === 'pre' ? clamp((TUNE.lineFar - (o.toTip != null ? +o.toTip : 0)) / Math.max(TUNE.lineFar - TUNE.lineNear, 1), 0, 1)
+: TUNE.lineLive > 0 ? clamp(1 - el / TUNE.lineLive, 0, 1) : 0;
+const lineShare = lineRamp > 0 ? { pts: TUNE.lineWPts * lineRamp, reb: TUNE.lineWReb * lineRamp, ast: TUNE.lineWAst * lineRamp, fg3m: TUNE.lineW3 * lineRamp } : null;
+const lineMap = lineShare ? (Array.isArray(o.lines) ? consensusLines(o.lines) : o.lines) || {} : null;
 const lineK = {};
 if (st.phase === 'pre' && o.lines && (TUNE.lineNoK !== 1 || TUNE.lineYesK !== 1)) {
 const CL = Array.isArray(o.lines) ? consensusLines(o.lines) : o.lines;
@@ -2441,6 +2451,28 @@ sims.reb[i] = r.reb + R.negbin(p.rate.reb * m * sR * patF.reb.f, TUNE.varReb || 
 sims.ast[i] = r.ast + R.negbin(p.rate.ast * m * sA * patF.ast.f, TUNE.varAst || VAR_K.ast);
 teamPts[p.tm][i] += add;
 }
+// v20 candidate: the books' line inside the number. The number as it would be shown (average and middle of the simulations,
+// mixed as the stage asks) is moved toward the line by the share, and every simulated night is scaled with it, so the
+// chances on every mark and line stay in step with the number. Only what is still to come is scaled.
+const lineIn = {};
+if (lineShare && !(r.ejected || r.pf >= 6)) for (const k of ['pts', 'reb', 'ast', 'fg3m']) {
+const w = lineShare[k], c = w > 0 ? lineMap[r.pid + ':' + k] : null;
+if (!c || !(c.line > 0)) continue;
+const a = sims[k], base = r[k] || 0;
+let s0 = 0; for (let i = 0; i < N; i++) s0 += a[i];
+const srt0 = Array.from(a).sort((x, y) => x - y);
+let m0 = 0, c0 = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m0 += srt0[q]; c0++; }
+const lw = TUNE.landOn > 0 && left > 0 ? landNow[k] || 0 : 0;
+const shown0 = Math.max(base, (1 - lw) * (s0 / N) + lw * (c0 ? m0 / c0 : s0 / N));
+// before the tip the line is the books' number for the whole game; once the game is on, what he has plus the line's share of the time left
+const lineNow = st.phase === 'pre' ? c.line : base + c.line * clamp(left / 48, 0, 1);
+if (!(shown0 - base > 0.05)) continue;
+const target = Math.max(base, (1 - w) * shown0 + w * lineNow);
+const kf = clamp((target - base) / (shown0 - base), 0.4, 2.5);
+let carry = 0;
+for (let i = 0; i < N; i++) { const x = (a[i] - base) * kf + carry, y = Math.max(0, Math.round(x)); carry = x - y; a[i] = base + y; }
+lineIn[k] = { line: c.line, books: c.books, share: +w.toFixed(3), from: +shown0.toFixed(2), to: +target.toFixed(2) };
+}
 const sdOf = (a) => { let m = 0; for (let i = 0; i < N; i++) m += a[i]; m /= N; let v = 0; for (let i = 0; i < N; i++) v += (a[i] - m) * (a[i] - m); return Math.sqrt(v / N); };
 const pra = new Int16Array(N);
 for (let i = 0; i < N; i++) pra[i] = sims.pts[i] + sims.reb[i] + sims.ast[i];
@@ -2527,7 +2559,7 @@ zones: r.z || {},
 db: { nba_id: p.lp ? p.lp.nba_id || null : null, pos: p.lp ? p.lp.pos || null : null, arch: p.lp ? p.lp.arch || null : null, prof: p.lp ? p.lp.prof || null : null, logs: p.gl },
 sit: p.sitMean ? { f: +p.sitMean.f.toFixed(3), parts: Object.fromEntries(Object.entries(p.sitMean).filter(([k]) => k !== 'f').map(([k, x]) => [k, x == null ? null : +x.toFixed(3)])), ratio: p.sit ? Object.fromEntries(Object.entries(p.sit.ratio).map(([k, x]) => [k, +x.toFixed(3)])) : null, fade: p.sit ? +p.sit.fade.toFixed(3) : null, streak: p.sit ? +p.sit.streak.toFixed(3) : null, star: p.sit && p.sit.star ? p.sit.star.name : null } : null,
 pat: { g: p.pat.g, x: p.pat.x, f: Object.fromEntries(PAT_LEARN.map((s2) => [s2, p.pat.F[s2].f])), parts: patOn ? Object.fromEntries(PAT_LEARN.map((s2) => [s2, p.pat.F[s2].parts])) : null, shift: p.pat.F.pts.shift || 0 },
-sd, range, sure, cal, laddersRaw,
+sd, range, sure, cal, laddersRaw, lineIn: Object.keys(lineIn).length ? lineIn : null,
 live: p.lu ? { onPlays: +p.lu.onPlays.toFixed(1), plays: +p.lu.plays.toFixed(1), xPts: +p.lu.xPts.toFixed(1), playsR: +p.lu.playsR.toFixed(1), onPlaysR: +p.lu.onPlaysR.toFixed(1), minR: +p.lu.minR.toFixed(1) } : null, minPlain: r.min + p.minPlain, usgBase: p.usgBase, ratePM: p.ratePM,
 _sims: sims,
 });

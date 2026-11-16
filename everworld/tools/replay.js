@@ -139,11 +139,14 @@ function recordedLines(g, mode = 'closing') {
   const snaps = fs.readdirSync(dir).filter((f) => f.startsWith(`${g.id}-`) && f.endsWith('.json.gz')).map((f) => L.readJSON(path.join(dir, f)))
     .filter((x) => x && Array.isArray(x.rows) && x.rows.length && Date.parse(x.at) < tip).sort((a, b) => String(a.at).localeCompare(String(b.at)));
   if (!snaps.length) return null;
-  if (mode === 'first') return snaps[0].rows;
-  if (mode === 'closing') return snaps[snaps.length - 1].rows;
   const lead = +mode * 60000;
-  const early = snaps.filter((x) => tip - Date.parse(x.at) >= lead);
-  return early.length ? early[early.length - 1].rows : null;
+  const early = mode === 'first' || mode === 'closing' ? snaps : snaps.filter((x) => tip - Date.parse(x.at) >= lead);
+  const pick = mode === 'first' ? snaps[0] : early.length ? early[early.length - 1] : null;
+  if (!pick) return null;
+  // (the rows carry how long before the tip they were read: the engine's share of the line depends on it)
+  const rows = pick.rows.slice();
+  rows.toTip = Math.round((tip - Date.parse(pick.at)) / 60000);
+  return rows;
 }
 
 /** Everything projectGame needs for one game, apart from the moment itself. */

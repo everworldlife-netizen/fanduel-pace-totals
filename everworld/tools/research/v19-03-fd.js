@@ -11,8 +11,10 @@ const L = require('../lib');
 const R = require('../replay');
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
-const opt = { engine: arg('--engine', 'cs/build/engine.js'), from: arg('--from', '2026-11-13'), to: arg('--to', '9999'), stage: arg('--stage', '0'), book: arg('--book', 'fanduel'), nsims: +arg('--nsims', 2000), out: arg('--out', null), snap: arg('--snap', 'closing') };
+const opt = { tune: arg('--tune', ''), engine: arg('--engine', 'cs/build/engine.js'), from: arg('--from', '2026-11-13'), to: arg('--to', '9999'), stage: arg('--stage', '0'), book: arg('--book', 'fanduel'), nsims: +arg('--nsims', 2000), out: arg('--out', null), snap: arg('--snap', 'closing') };
 const E = R.loadEngine(opt.engine);
+// --tune k=v,... sets engine switches (for example the books' line inside the number: lineWPts=0.75,lineWReb=0.6); the recorded lines are handed to the engine then
+for (const kv of String(opt.tune || '').split(',').filter(Boolean)) { const [k, v] = kv.split('='); E.TUNE[k] = +v; }
 const S = R.loadSeasons([2027]);
 const patterns = E.patBeta(null), sit = R.sitPriorShipped(E, opt.engine);
 const MAP = { points: 'pts', rebounds: 'reb', assists: 'ast', threes: 'fg3m', points_rebounds_assists: 'pra' };
@@ -26,7 +28,7 @@ for (const it of S.games.filter((x) => x.g.date >= opt.from && x.g.date <= opt.t
   const ctx = R.contextFor(E, S, it, { avail: 'tip' }); if (!ctx.ok) continue;
   const plays = L.readJSON(path.join(L.DATA, 'plays', `${it.g.id}.json.gz`));
   const m = R.momentAt(E, it.g, plays, 0);
-  const P = E.projectGame({ ...ctx.base, ...(opt.stage === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sit });
+  const P = E.projectGame({ ...ctx.base, ...(opt.tune ? { lines, toTip: lines.toTip } : {}), ...(opt.stage === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sit });
   const truth = it.truth || it.log.rows;
   games++;
   // the same line at the other books: the chance their prices need, to see where this book pays more than the market does
@@ -51,6 +53,7 @@ for (const it of S.games.filter((x) => x.g.date >= opt.from && x.g.date <= opt.t
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
 const money = (R0) => R0.reduce((s, r) => s + (r.push ? 0 : r.y ? win(r.odds) : -1), 0);
 const line = (label, R0) => { if (!R0.length) return `${label.padEnd(34)} —`; const u = money(R0), n = R0.length; const sd = Math.sqrt(R0.reduce((s, r) => { const v = r.push ? 0 : r.y ? win(r.odds) : -1; return s + (v - u / n) ** 2; }, 0) / Math.max(n - 1, 1)); return `${label.padEnd(34)} ${String(n).padStart(5)} plays | came in ${(100 * mean(R0.map((r) => r.y))).toFixed(1)}% | we said ${(100 * mean(R0.map((r) => r.p))).toFixed(1)}% | price needs ${(100 * mean(R0.map((r) => r.be))).toFixed(1)}% | units ${u >= 0 ? '+' : ''}${u.toFixed(1)} (${(100 * u / n).toFixed(1)}% per play, ± ${(100 * sd / Math.sqrt(n)).toFixed(1)})`; };
+if (opt.tune) console.log(`engine switches: ${opt.tune}`);
 console.log(`${opt.book} lines, ${games} games ${opt.from}..${opt.to === '9999' ? 'now' : opt.to}, ${opt.snap} snapshot, stage ${opt.stage === 'rep' ? 'before lineups' : 'tip-off'}: ${rows.length} lines (${rows.filter((r) => r.kind === 'mile').length} milestones, ${rows.filter((r) => r.kind === 'main').length} main lines, plus side)`);
 for (const kind of ['mile', 'main']) {
   const K = rows.filter((r) => r.kind === kind && r.k !== 'pra');

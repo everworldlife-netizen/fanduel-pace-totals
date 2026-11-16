@@ -59,7 +59,7 @@ function work(shard, n) {
     const plays = L.readJSON(path.join(L.DATA, 'plays', `${it.g.id}.json.gz`));
     for (const el of opt.stages) {
       const m = R.momentAt(E, it.g, plays, el === 'rep' ? 0 : el);
-      const input = { ...ctx.base, ...(ctx.lines ? { lines: ctx.lines } : {}), ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season) };
+      const input = { ...ctx.base, ...(ctx.lines ? { lines: ctx.lines, toTip: ctx.lines.toTip } : {}), ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season) };
       let proj = E.projectGame(input);
       if (opt.lineOut > 0 && ctx.lines && (el === 'rep' || el === 0)) {
         const lined = new Set(Object.values(E.consensusLines(ctx.lines)).map((c) => +c.pid));

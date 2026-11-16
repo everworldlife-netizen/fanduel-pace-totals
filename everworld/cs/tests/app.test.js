@@ -363,6 +363,49 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const hard = B.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
     assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
   });
+  await test('the books\' line inside the number (a candidate, off as shipped): off, nothing on screen changes; on, lined players move toward the line, the sheet says so, and the line is kept into the game', async () => {
+    const read = async (X) => { const out = {}; for (const fx of FX) { const v = await X.go(`#/game/${fx.g.id}`, 500); for (const c of v.querySelectorAll('[data-act="player"]')) out[c.getAttribute('data-p')] = parseFloat(c.querySelector('.statrow .stat .proj').textContent); } return out; };
+    // off: the lines reach the engine and are kept for the day, and no number moves and no screen mentions them
+    const off = await boot('pre'); await sleep(3000);
+    const offPts = await read(off);
+    const kept = JSON.parse(off.w.localStorage.getItem(`pl:${FX[0].g.date}`) || '{}');
+    assert.ok(Object.keys(kept).length === FX.length && Object.values(kept).every((r) => Object.keys(r.m).length >= 4), 'the books\' lines were not kept for the day');
+    off.w.document.querySelector('#view [data-act="player"]').click(); await sleep(80);
+    assert.ok(!/THE BOOKS' LINE INSIDE THE NUMBER/.test(off.w.document.getElementById('sheetWrap').textContent), 'the shipped app says the line is inside the number');
+    // on
+    const on = await boot('pre', (w) => { Object.assign(w.Engine.TUNE, { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineLive: 48 }); }); await sleep(3000);
+    const onPts = await read(on);
+    let moved = 0, still = 0;
+    for (const [gid, rec] of Object.entries(kept)) for (const [k, v] of Object.entries(rec.m)) {
+      const [pid, stat] = k.split(':'); if (stat !== 'pts' || offPts[pid] == null) continue;
+      // (cards show halves: three quarters of the way from the app's own number to the line, within the rounding)
+      const want = 0.25 * offPts[pid] + 0.75 * v[0];
+      assert.ok(Math.abs(onPts[pid] - want) <= 0.8, `player ${pid}: ${offPts[pid]} alone, line ${v[0]}, shown ${onPts[pid]} (three quarters of the way is ${want.toFixed(2)})`);
+      if (Math.abs(onPts[pid] - offPts[pid]) >= 1) moved++;
+    }
+    const lined = new Set(Object.values(kept).flatMap((r) => Object.keys(r.m).map((k) => k.split(':')[0])));
+    for (const [pid, x] of Object.entries(offPts)) if (!lined.has(pid)) { assert.strictEqual(onPts[pid], x, `player ${pid} has no line and moved`); still++; }
+    assert.ok(moved >= 6 && still >= 12, `${moved} lined players moved, ${still} others checked`);
+    const v = await on.go(`#/game/${FX[0].g.id}`, 500);
+    const first = [...v.querySelectorAll('[data-act="player"]')].find((c) => lined.has(c.getAttribute('data-p')));
+    first.click(); await sleep(80);
+    let sheet = on.w.document.getElementById('sheetWrap').textContent.replace(/\s+/g, ' ');
+    assert.ok(/THE BOOKS' LINE INSIDE THE NUMBER/.test(sheet) && /PTS: the books' line is [\d.]+\. 75% of it is inside the number: the app alone had [\d.]+, with the line it is [\d.]+\./.test(sheet), `the sheet does not say what the line did: ${(sheet.match(/THE BOOKS' LINE.{0,200}/) || [''])[0]}`);
+    assert.strictEqual(banned(sheet).length, 0);
+    on.w.document.querySelector('#sheetWrap [data-act="close"]').click(); await sleep(30);
+    const e = await on.go('#/edges', 400);
+    assert.ok(/most of the books' line is inside each number, so few plus edges remain/.test(e.textContent), 'the Edges screen does not say why few edges remain');
+    // the game starts: the lines kept before the tip are still there, and what is left of the share is inside the live number
+    const keptOn = on.w.localStorage.getItem(`pl:${FX[0].g.date}`);
+    on.state.phase = 'live'; on.w.document.getElementById('refreshBtn').click(); await sleep(3000);
+    assert.strictEqual(on.w.localStorage.getItem(`pl:${FX[0].g.date}`), keptOn, 'the lines kept before the tip were rewritten during the game');
+    const vl = await on.go(`#/game/${FX[0].g.id}`, 500);
+    [...vl.querySelectorAll('[data-act="player"]')].find((c) => lined.has(c.getAttribute('data-p'))).click(); await sleep(80);
+    sheet = on.w.document.getElementById('sheetWrap').textContent.replace(/\s+/g, ' ');
+    assert.ok(/PTS: the books' line is [\d.]+\. 38% of it is inside the number, for the time left/.test(sheet), `at halftime the sheet reads: ${(sheet.match(/THE BOOKS' LINE.{0,200}/) || ['(no section)'])[0]}`);
+    const hard = [...off.errors, ...on.errors].filter((x) => !/network is off|learn|game logs/i.test(x));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
   await test('a saved call waits for a final box that adds up, also for a game with no saved edges', async () => {
     let short = false;
     const B = await boot('pre', (w, state, fxOf) => {

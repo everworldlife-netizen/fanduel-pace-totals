@@ -219,7 +219,11 @@ for (const [k, x] of Object.entries(state.glogs)) if (x && x.games && x.games[0]
 // live means live: a new projection for every new play (or new lineup, line or status news), and none when nothing has happened
 const playKey = s.phase === 'live' ? [plays.length, s.period, s.clock, s.vs, s.hs, JSON.stringify(getOverrides()), Object.keys(gameLogs).length, avail ? `${avail.in.length}/${avail.out.length}/${avail.confirmed}` : '', props.length, market ? market.total : '', settings.sims, settings.minP].join(':') : null;
 if (playKey && before && before.playKey === playKey && Date.now() - before.at < 90000) return before;
-const res = await runProjection({ game: g, plays, logs, priors: state.priors, injuries: state.injuries, nsims: settings.sims, props, seed: g.id, minP: settings.minP, overrides: getOverrides(),
+// the books' player lines for the number itself (kept from the last look before the tip), and how far off the tip is
+try { rememberLines(g, s, props); } catch (e) { console.warn('lines', e); }
+const lines = keptLines(g);
+const toTip = s.phase === 'pre' && g.datetime ? Math.max(0, (Date.parse(g.datetime) - (Date.now() + (clockOff || 0))) / 60000) : 0;
+const res = await runProjection({ game: g, plays, logs, priors: state.priors, injuries: state.injuries, nsims: settings.sims, props, seed: g.id, minP: settings.minP, overrides: getOverrides(), lines, toTip,
 market, teams: state.teamsDb, gameLogs, avail, patterns: patternsNow() });
 if (s.phase === 'live' && before && before.proj) noteMoves(g, before.proj, res.proj);
 state.proj.set(g.id, { ...res, at: Date.now(), playKey, feed: DB.feed[g.id] || 'databallr' });
@@ -272,6 +276,32 @@ if (!P || s.phase !== 'pre' || String(g.date || state.date).slice(0, 10) !== sta
 const m = tipMap(); let changed = false;
 for (const p of P.players) { const v = Math.round(p.proj.pts * 10) / 10; if (m[p.pid] !== v) { m[p.pid] = v; changed = true; } }
 if (changed) { try { DB.store.set(tipKey(), m); } catch { /* storage full or blocked */ } }
+}
+// ------------------------------------------------------------------ the books' player lines, kept for the game (v20 candidate)
+// The last look at the books' lines before a tip (the middle line of all books, per player and stat) is kept for the day. The
+// engine can put a share of it inside each number before the tip and what is left of that share during the game; it does
+// nothing with it while its shares are 0 (as shipped). { [game id]: { at, m: { 'player:stat': [line, books] } } }
+const plKey = () => `pl:${state.date}`;
+let plCache = null, plDay = '';
+function pregameLines() { if (!plCache || plDay !== state.date) { plDay = state.date; try { plCache = DB.store.get(plKey()); } catch { plCache = null; } if (!plCache || typeof plCache !== 'object' || Array.isArray(plCache)) plCache = {}; } return plCache; }
+function rememberLines(g, s, props) {
+// (only before the tip, and only for the day on screen: a projection of another day's game can finish after the user has tapped back)
+if (s.phase !== 'pre' || String(g.date || state.date).slice(0, 10) !== state.date) return;
+const m = {};
+for (const c of Object.values(E.consensusLines(props || []))) if (c && c.line > 0 && ['pts', 'reb', 'ast', 'fg3m'].includes(c.stat)) m[`${c.pid}:${c.stat}`] = [c.line, c.books];
+if (!Object.keys(m).length) return; // the lines did not load this time: the last good look stays
+const P = pregameLines(), before = P[g.id];
+if (before && JSON.stringify(before.m) === JSON.stringify(m)) return;
+P[g.id] = { at: Date.now() + (clockOff || 0), m };
+try { DB.store.set(plKey(), P); } catch { /* storage full or blocked */ }
+}
+/** The kept lines of a game in the shape the engine reads ({ 'player:stat': { pid, stat, line, books } }), or null. */
+function keptLines(g) {
+const rec = pregameLines()[g.id];
+if (!rec || !rec.m || typeof rec.m !== 'object') return null;
+const out = {};
+for (const [k, v] of Object.entries(rec.m)) { const [pid, stat] = k.split(':'); if (Array.isArray(v) && v[0] > 0) out[k] = { pid: +pid, stat, line: v[0], books: v[1] || 1 }; }
+return Object.keys(out).length ? out : null;
 }
 // ------------------------------------------------------------------ edge record (pick ledger)
 // Every plus edge the app shows against a book line is written down once before the game and once during it:
@@ -1223,7 +1253,18 @@ if (p.shift && s.phase === 'live' && Math.abs(p.shift.rem - p.shift.baseRem) >= 
 return `<div class="nowbox"><div class="nb-num"><span class="led">${half(p.proj.pts)}</span><small>projected points</small></div>
 <div class="nb-range">${rg ? `Likely finish <b>${rg[0]} to ${rg[1]}</b><small>8 games in 10 land in this range</small>` : ''}</div></div>
 ${sureHTML(p, s.phase === 'pre')}
+${lineInHTML(p, s.phase === 'pre')}
 ${bits.length ? `<h3>WHAT CHANGED</h3><ul class="why">${bits.join('')}</ul>` : ''}`;
+}
+// measured on the recorded nights (tools/propgrade.js, tools/bt2.js --lines): update with every night graded
+const LINE_NOTE = 'In the last hours before a tip the books\' line has been the closer of the two, so more of it goes into the number as the tip nears; in the morning none does. On 22 recorded games points landed 2.7 to 3.9% closer with it inside, rebounds 2.5% closer.';
+/** What the books' line did to each number it is inside of (only when the engine used it). */
+function lineInHTML(p, pre) {
+const L = p.lineIn;
+if (!L) return '';
+const rows = CARD_STATS.filter(([k]) => L[k]).map(([k, lbl]) => `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: the books' line is <b>${L[k].line}</b>. <b>${Math.round(L[k].share * 100)}%</b> of it is inside the number${pre ? '' : ', for the time left'}: the app alone had ${L[k].from.toFixed(1)}, with the line it is ${L[k].to.toFixed(1)}.</span></li>`);
+if (!rows.length) return '';
+return `<h3>THE BOOKS' LINE INSIDE THE NUMBER</h3><ul class="why">${rows.join('')}</ul><p class="small muted" style="font-weight:700;margin:8px 0 0">${LINE_NOTE}</p>`;
 }
 /** The 9-in-10 numbers on the player sheet, with what they mean and how often they have held. */
 function sureHTML(p, pre) {
@@ -1365,7 +1406,7 @@ let html = (alerts.length ? `<div class="section-title" style="margin-top:4px">�
 <label class="toggle"><input type="checkbox" data-act="skipblow" ${settings.skipBlowouts ? 'checked' : ''} aria-label="Skip blowouts"><span></span></label></div>`;
 html += progressHTML();
 // what the edges shown on this phone have really done (v19): an edge is the app's read against the line, not a promise
-{ const R = ledgerStats(); html += `<div class="card small" style="margin-top:10px;font-weight:700">📒 ${R.n ? `Edges graded on this phone so far: <b>${R.n}</b>, came in <b>${Math.round((100 * R.hit) / R.n)}%</b> (the app said ${Math.round(100 * R.said)}%).${R.n < 60 ? ' Too few to judge yet.' : ''}` : 'Every edge shown here is saved and graded when its game ends.'} An edge is the app's read against the books' line, not a promise: at a sportsbook's prices a play has to come in more often than its price needs. The full record is in Settings.</div>`; }
+{ const R = ledgerStats(); html += `<div class="card small" style="margin-top:10px;font-weight:700">📒 ${R.n ? `Edges graded on this phone so far: <b>${R.n}</b>, came in <b>${Math.round((100 * R.hit) / R.n)}%</b> (the app said ${Math.round(100 * R.said)}%).${R.n < 60 ? ' Too few to judge yet.' : ''}` : 'Every edge shown here is saved and graded when its game ends.'} An edge is the app's read against the books' line, not a promise: at a sportsbook's prices a play has to come in more often than its price needs. The full record is in Settings.${[...state.proj.values()].some((x) => x && x.proj && x.proj.players.some((q) => q.lineIn)) ? ' Close to a tip most of the books\' line is inside each number, so few plus edges remain before a game.' : ''}</div>`; }
 if (state.hiddenShaky) html += `<div class="card small" style="margin-top:10px;font-weight:700;background:#3b2a12">⚠️ ${state.hiddenShaky} pick${state.hiddenShaky > 1 ? 's' : ''} hidden: player status not confirmed (back-to-back rest, questionable, or missed last game). Open the game, check X, and tap PLAYING to unlock.</div>`;
 if (!picks.length) return html + (state.busy || state.progress ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div></div>' : emptyHTML('No plus edges yet', 'Picks show when a player is projected ahead of the line: 60%+ to clear a book line with value, or 75%+ on a model rung.'));
 const value = picks.filter((k) => k.kind === 'line'), safe = picks.filter((k) => k.kind !== 'line');

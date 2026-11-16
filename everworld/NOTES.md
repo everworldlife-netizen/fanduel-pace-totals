@@ -2,7 +2,7 @@
 
 Memory between sessions. Read this before trying anything; add to it at the end of every session.
 
-Last updated: 2026-11-14 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
+Last updated: 2026-11-16 (session 1 in this repo, a cloud session). Status lines marked WIP are still being measured.
 
 ## START HERE (Nov 11, 2026): state of the work, written so any new session can pick it up
 
@@ -43,10 +43,14 @@ about that is measured in "Version 19 (Nov 14)": read it before changing how pic
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 22:30 UTC, Nov 14)
+### Where the build stands at this commit (updated 15:10 UTC, Nov 16)
 
 **PUBLISHED on Nov 14, 2026 at 23:26 UTC: Courtside 19 (`ca-shell-v19`, Space commit `3c3aaa8`). Full story: "Version 19
-(Nov 14)" below.** What it adds: the 9-in-10 number on every card, a report
+(Nov 14)" below.**
+
+**Nov 16: a version 20 candidate (the books' line inside the points and rebounds numbers) is built in `cs/build`, switched
+OFF and NOT published: it waits for Akara's yes. See "Version 20 candidate (Nov 16)". With the switch off `cs/build`
+gives the numbers of the published 19; the files differ from `baseline/cs` (engine.js, app.js, data.js).** What it adds: the 9-in-10 number on every card, a report
 card that grades what the app said before each tip, FanDuel's own prices on the player sheet. GG Winner is unchanged
 (3.11.1). The nightly recording of the books' lines goes on (see "The books' player lines"): snapshots through the day,
 `tools/nightly.sh <date>` each morning.
@@ -1439,6 +1443,64 @@ with a reason behind it; 347 plays cannot carry it yet.
 - NOT in version 19 (next): picks and the edge record on FanDuel's own lines and prices (they still use the middle
   line of all books); units in the edge record; the price inside the chance; the PTS+REB+AST 9-in-10 number; a
   report card for a game the phone did not see before the tip (would need a replay with the saved tables).
+
+### Version 20 candidate (Nov 16): the books' line inside the number. BUILT, SWITCHED OFF, NOT PUBLISHED
+
+**Needs Akara's yes before it is published: it changes how picks are shown (few plus edges are left before a game).**
+Asked on Nov 16 in the morning report. The evidence is in "Night 3 graded" below; this section is the build.
+
+- THE CANDIDATE SETTINGS (frozen on Nov 16 after three nights; the fourth night, Nov 16, is their blind check):
+  `lineWPts=0.75,lineWReb=0.6,lineWAst=0.45,lineW3=0.45,lineFar=300,lineNear=60,lineLive=48`. As shipped all four
+  shares and `lineLive` are 0: the engine, the app and every number are those of version 19.
+- Engine (`cs/build/engine.js`): inputs `o.lines` (the raw rows, or the app's kept table `{ 'pid:stat': { pid, stat, line,
+  books } }`) and `o.toTip` (minutes to the scheduled tip when the lines were read). Before the tip the share of a stat
+  is its weight times a ramp: 0 at `lineFar` minutes out, full from `lineNear` minutes in. After the tip the share fades
+  to 0 over `lineLive` game minutes and the line is read as "what he has + the line's share of the time left" (the same
+  idea as the projected margin in version 18). For a player with a consensus line, the number as it would be shown is
+  moved toward the line by the share and EVERY simulated night is scaled with it (only what is still to come; rounding
+  carries its remainder so the average moves exactly), so the ladders, the 9-in-10 number, FanDuel's menu and the picks
+  all follow. Team totals, minutes and players with no line are untouched. `p.lineIn[stat] = { line, books, share, from, to }`.
+- App: the last look at the books' lines before a tip is kept for the day (`pl:<date>`, the middle line per player and
+  stat; a failed read keeps the last good look; never rewritten once the game is on) and handed to the engine with the
+  minutes to the tip; the player sheet gets "THE BOOKS' LINE INSIDE THE NUMBER" (what the line is, how much of it is in,
+  the number without and with it) and the Edges screen says why few edges remain. All of it shows only when the engine
+  used a line, so nothing is visible while the shares are 0.
+- Lab (`bt2.js --lines closing|<minutes> --tune ...` hands the recorded lines and their distance to the tip to the
+  engine; `v19-03-fd.js --tune ...` does the same for the FanDuel grading). Three nights, 22 games, EVERY scored player
+  (those with no line count unchanged), average miss off → on. In-sample for the settings; the held-out numbers by
+  stat are in "Night 3 graded" (points 2.7 and 3.9% on lined players, rebounds 2.5%).
+
+  | stage | points | rebounds | assists | threes |
+  |---|---|---|---|---|
+  | before lineups, closing lines | 4.998 → 4.864 (−2.7%) | 1.935 → 1.908 (−1.4%) | 1.398 → 1.388 | 1.061 → 1.054 |
+  | tip-off, closing lines | 4.981 → 4.859 (−2.4%) | 1.941 → 1.901 (−2.1%) | 1.385 → 1.371 | 1.036 → 1.032 |
+  | 6:00 (points and rebounds shares only) | 4.659 → 4.621 | 1.851 → 1.820 | | |
+  | 12:00 | 4.228 → 4.174 | 1.751 → 1.725 | | |
+  | halftime | 3.450 → 3.403 | 1.364 → 1.360 | | |
+  | before lineups, lines about 1.5 h before the tip (share by the ramp) | 4.998 → 4.907 | 1.935 → 1.907 | | |
+  | lines about 3 h before | 4.998 → 4.930 | 1.935 → 1.924 | | |
+  | lines about 5.5 h before | 4.998 → 4.990 | | | |
+
+  Night by night the points number is closer on all three nights before lineups, at tip-off, at 12:00 and at halftime
+  (at 6:00 two nights closer, one level). Fading over 12 or 24 game minutes was no better than over 48.
+- What it does to the plays at FanDuel's prices (22 games): the plays the engine likes by 3+ points drop from 266 to 81
+  points marks and from 75 to 19 points main lines, and what is left sits around level instead of clearly below it;
+  with the 0.45 share on threes the liked threes marks go from −42% ± 8 a play to −9% ± 13 (the threes chances were the
+  engine's clearest fault at long prices). The engine's "liked by 10+" group shrinks from 181 marks to 51 to 84:
+  whatever it was, it does not survive the line going in.
+- Tests: engine 98 checks (the new one: the number lands three quarters of the way, the simulations and the chance on
+  the line follow, the 9-in-10 number follows, PTS+REB+AST stays the sum, stats at share 0 and players with no line
+  do not move, the ramp by time to the tip, live reading and fade, never below what he has); eight broken copies of the
+  engine each fail. App 46 checks (off: lines kept, no number moves, nothing on screen; on: lined players three
+  quarters of the way, the sheet text, the Edges line, the lines kept into the game and 38% at halftime); five broken
+  copies of the app side each fail. GG Winner suites unchanged (10, 8, 15). With the shares at 0 the replay of the
+  three nights is the published engine's to the last digit.
+- TO PUBLISH ON AKARA'S YES: (1) blind check on Nov 16 with the frozen settings (tomorrow morning's routine does it);
+  (2) set the seven TUNE values in `engine.js`, `APP_VERSION` 20, `ca-shell-v20`; (3) update `LINE_NOTE`, `FD_NOTE` and
+  the findings with the numbers of all nights; (4) every suite, an independent review of the diff, `mkrelease`,
+  `publish.sh`, live check. The Edges screen will show few pre-game edges after it: say so in the report.
+- Still open after it: FanDuel-first picks (the picks still compare with the middle line of all books), the ESPN note
+  wording (doubtful 0 of 4 played, probable 8 of 9, questionable 9 of 27), a running total for the came-true record.
 
 ### The books' player lines: the one source the numbers do not use yet (started Nov 13, evening)
 
