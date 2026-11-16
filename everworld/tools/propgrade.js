@@ -25,7 +25,11 @@ const linesFor = (gid) => {
   if (!list.length) return null;
   const tip = list[0].game && list[0].game.datetime ? Date.parse(list[0].game.datetime) : Infinity;
   const before = list.filter((s) => Date.parse(s.at) < tip);
-  const pick = SNAP === 'first' ? list[0] : (before.length ? before[before.length - 1] : list[list.length - 1]);
+  // --snap closing (the last look before the tip), first (the earliest of the day), or a number of minutes: the last look at least that long before the tip
+  let pick;
+  if (SNAP === 'first') pick = list[0];
+  else if (/^\d+$/.test(SNAP)) { const early = before.filter((s) => tip - Date.parse(s.at) >= +SNAP * 60000); if (!early.length) return null; pick = early[early.length - 1]; }
+  else pick = before.length ? before[before.length - 1] : list[list.length - 1];
   return { at: pick.at, date: (pick.game && pick.game.date) || String(pick.at).slice(0, 10), minsBefore: Math.round((tip - Date.parse(pick.at)) / 60000), lines: E.consensusLines(pick.rows), snaps: list.length };
 };
 const rows = files.flatMap((f) => L.readJSON(path.resolve(f))).filter((r) => (STAGE === 'rep' ? r.g === 'rep' : r.el === 0 && r.g !== 'rep'));
@@ -69,6 +73,21 @@ for (const [, , lab] of STATS) {
   const big = R.filter((x) => (x.ours - x.line) / Math.max(x.line, 1) >= 0.12), winB = big.filter((x) => x.act > x.line).length;
   const pc = (w, n) => (n ? `${fmt((100 * w) / n, 1)}% ± ${fmt(100 * Math.sqrt(0.25 / n), 1)} (${n})` : '—');
   console.log(`All plus edges, every stat (pushes left out): the result beat the line ${pc(win, R.length)}; the wider ones (our number 12%+ ahead of the line): ${pc(winB, big.length)}. Even money is 50%; a book's price needs about 52.4%.`);
+}
+// the share of the line, chosen honestly: for each night, the share that was best on the OTHER nights, graded on that night
+if (nights.length >= 3) {
+  console.log(`\nThe share of the book's line inside the number, chosen on the other nights and graded on the night left out (shares tried: 0 to 100% in steps of 5)`);
+  console.log('stat | share picked for each night left out | our miss | with the picked share | gain ± se (z) | best single share on all nights');
+  const W = Array.from({ length: 21 }, (_, i) => i / 20);
+  for (const [, , lab] of STATS) {
+    const R = S.filter((x) => x.k === lab && x.min >= MINP); if (R.length < 30) continue;
+    const missAt = (rows, w) => mean(rows.map((x) => Math.abs((1 - w) * x.ours + w * x.line - x.act)));
+    const best = (rows) => W.reduce((b, w) => (missAt(rows, w) < missAt(rows, b) - 1e-12 ? w : b), 0);
+    const picks = [], d = [];
+    for (const n of nights) { const tr = R.filter((x) => x.night !== n), te = R.filter((x) => x.night === n); if (!tr.length || !te.length) continue; const w = best(tr); picks.push(`${n.slice(5)}: ${Math.round(w * 100)}%`); for (const x of te) d.push([Math.abs(x.ours - x.act), Math.abs((1 - w) * x.ours + w * x.line - x.act)]); }
+    const g = d.map((x) => x[0] - x[1]), m = mean(g), e = se(g);
+    console.log(`${lab.padEnd(4)} | ${picks.join(', ').padEnd(34)} | ${fmt(mean(d.map((x) => x[0])), 3)} | ${fmt(mean(d.map((x) => x[1])), 3)} | ${m >= 0 ? '+' : ''}${fmt(m, 3)} ± ${fmt(e, 3)} (${fmt(m / e, 1)}), ${fmt((100 * m) / mean(d.map((x) => x[0])), 1)}% closer | ${Math.round(best(R) * 100)}%`);
+  }
 }
 console.log('\nHow far our number sits from the line, and who was closer when the two disagreed');
 for (const [, , lab] of STATS) {

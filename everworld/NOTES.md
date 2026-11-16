@@ -1618,6 +1618,69 @@ was a calm one: points miss at tip-off 3.91 on 91 players (night 1: 5.22).
    88%); the points projection itself exact 7%, within 2 points 38%, within 3 54%, average miss 3.9; FanDuel's marks at
    or below them: 30 plays, 29 came in, +0.1 units. (Night 1 the same way: 286 numbers, 94%.)
 
+**Night 3 graded (Nov 15, nine games; written Nov 16, 10 am ET). Three nights: 22 games in the number tables, 23 in the
+who-played counts. This is the morning the share of the line was chosen.** Night 3 by itself: points miss at tip-off 5.35
+on 171 players (a rough one again).
+
+1. THE LEVEL OF THE LINE, closing lines (about 9 minutes before each tip), players who played 10+ minutes, tip-off stage:
+
+   | stat | lines | our miss | book's miss | half and half | gain of half and half ± se | nights 1 / 2 / 3 |
+   |---|---|---|---|---|---|---|
+   | points | 315 | 5.072 | 4.910 | 4.936 | +0.136 ± 0.042 (z 3.2) | +0.115 / +0.186 / +0.126 |
+   | rebounds | 305 | 1.986 | 1.949 | 1.939 | +0.047 ± 0.020 (z 2.4) | +0.079 / +0.023 / +0.030 |
+   | assists | 226 | 1.556 | 1.544 | 1.531 | +0.025 ± 0.019 (z 1.3) | +0.014 / −0.013 / +0.059 |
+   | threes | 255 | 1.162 | 1.155 | 1.148 | +0.015 ± 0.015 (z 1.0) | −0.006 / +0.058 / +0.013 |
+
+   THE SHARE, CHOSEN HONESTLY (`propgrade.js` now does it: for each night, the share that was best on the other two,
+   graded on the night left out; shares 0 to 100% in steps of 5):
+
+   | stat | tip-off: shares picked | held-out gain | before lineups: shares picked | held-out gain |
+   |---|---|---|---|---|
+   | points | 75 / 100 / 70% | +0.139 ± 0.061 (z 2.3): 2.7% closer | 100 / 100 / 100% | +0.198 ± 0.080 (z 2.5): 3.9% closer |
+   | rebounds | 60 / 65 / 65% | +0.050 ± 0.025 (z 2.0): 2.5% closer | 50 / 65 / 85% | +0.026 ± 0.029 (z 0.9): 1.3% |
+   | assists | 50 / 55 / 30% | +0.019 ± 0.017 (z 1.1): 1.2% | 55 / 55 / 50% | +0.019 ± 0.020 (z 0.9) |
+   | threes | 50 / 30 / 50% | +0.011 ± 0.014 (z 0.8): 0.9% | 100 / 30 / 100% | +0.005 ± 0.026 |
+
+   Points and rebounds pass on nights the share never saw; assists and threes lean the same way and are not proven.
+2. HOW EARLY THE LINE IS WORTH USING (`propgrade.js --snap <minutes>`: the last look at least that long before the tip;
+   points, before-lineups stage, held-out gain as above):
+
+   | line read on average | games / lines | our miss | book's miss | held-out gain |
+   |---|---|---|---|---|
+   | 9 minutes before the tip | 22 / 315 | 5.108 | 4.910 | +3.9% (z 2.5) |
+   | 66 minutes | 22 / 298 | 5.123 | 4.940 | +3.6% (z 2.2) |
+   | 91 minutes | 22 / 292 | 5.121 | 4.973 | +2.6% (z 1.8) |
+   | 2 h 50 | 20 / 247 | 5.313 | 5.172 | +2.4% (z 1.7) |
+   | 5 h 25 | 15 / 176 | 5.177 | 5.165 | −2.1% (the shares picked jump about: no signal) |
+   | 9 h 30 | 10 / 107 | 4.911 | 4.967 | ours is the closer one |
+
+   So in the morning our number is as good as the books' line; the line pulls ahead in the last three hours, as lineup and
+   injury news goes into it faster than into our number. Rebounds: about +2 to +3% inside the last 90 minutes at the
+   tip-off stage, nothing earlier. A share that grows as the tip nears is what the data asks for: none five hours out,
+   full by the last hour (points about 75%, rebounds about 60%).
+3. PLUS EDGES against the closing line, tip-off: 50.1% ± 2.2 of 521 came in; the wider ones 53.5% ± 3.2 of 245. Before
+   lineups 50.2% of 522. Three nights say the same: a coin. With the line inside the number most of these edges go away,
+   which is what the record says they are worth.
+4. FANDUEL'S OWN MENU at its closing prices, 22 games (5,154 marks, 1,035 main lines; four stats): every mark blind −16.8%
+   a play (± 2.8), every main line −4.3%. The engine's chances stay right band by band (said 8.7 / 29.3 / 49.7 / 67.5 /
+   82.5%, happened 8.6 / 28.9 / 49.7 / 68.7 / 81.6%). Marks it likes by 3 to 6 points: 22.6% came in (said 31.8, needed
+   27.5; 434; −26%); by 6 to 10: 24.4% (said 36.8, needed 29.1; 266; −33%); by 10 and more: 38.1% against 33.2 needed
+   (181 marks, +15% ± 15) and on main lines 58.5% against 51.5 needed (65 lines, +13% ± 12): ahead on all three nights
+   together but each inside its error. Marks the engine gives 85%+: 396, 89.1% came in, prices needed 94.2: −5.3% ± 1.7
+   (a real loss by now). Marks at or below the 9-in-10 number: 126, 95.2% came in, needed 97.1: −1.9% ± 2.0. Threes marks
+   liked by 3+: 271, 19.9% came in against 25.6 needed (−42% ± 8): the clearest fault in the engine's chances. FanDuel
+   paying 3 to 6 points more than the other books: 948 marks, −5.6% ± 6.6. NOTHING is ahead with support after three
+   nights. All marks liked by 3+ together: 881, 26.4% came in, prices needed 28.9 (for `FD_NOTE` at the next release).
+5. WHO PLAYS, last look before each tip, 23 games: 325 of 325 players with a line played; of 64 with no line the app gave
+   15+ minutes, 12 never played. ESPN's note wording two hours before the tips, 43 Day-To-Day players: "doubtful" 0 of 4
+   played, "probable" 8 of 9, "questionable" 9 of 27. A questionable player plays one time in three: the app shows him
+   a full number with a CHECK STATUS tag. Lead (enough cases now): read the note; doubtful = out, probable = in.
+
+RECOMMENDATION put to Akara on Nov 16 (his yes is needed before anything changes how picks are shown): put the books'
+line inside the points and rebounds numbers, more of it the closer the tip (see 2), keep assists and threes as they are
+until proven, and show FanDuel's own line and price on every pick. The plus edges before a game will be few after
+that. Build it behind a switch, prove the engine version on the recorded nights (`bt2 --lines`), publish on his yes.
+
 Next: nights 2 to 4 the same way (`tools/nightly.sh <date>` each morning). Decide the share of the line per stat on
 some nights, check it on the others, at least 300 lines per stat. Build the mix only then, inside the number (so the
 plus edges shrink with it), and tell Akara what it does to the picks before it ships.
