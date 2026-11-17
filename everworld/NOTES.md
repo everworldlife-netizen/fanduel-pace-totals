@@ -1473,6 +1473,23 @@ graded" below; this section is the build.
   4.797 → 4.699; 6:00 4.659 → 4.615; 12:00 4.228 → 4.176; 18:00 3.989 → 3.952; halftime 3.450 → 3.415; 30:00
   2.947 → 2.945; from 36:00 identical. The chances (Brier over the ladders) are better at every stage through 30:00:
   before lineups 0.0820 → 0.0807, tip-off 0.0813 → 0.0802, 12:00 0.0720 → 0.0714, halftime 0.0630 → 0.0626.
+- Tested the same night and NOT built (three nights, in-sample, before any Nov 16 result): using the books' PRICE as well
+  as their line (the rate at which our own simulations would give the books' no-vig chance of clearing their line, so
+  that 1.5 threes at +160 reads as a line they expect him to miss). Points and rebounds got worse than with the frozen
+  rule (points before lineups 4.900 against 4.858, rebounds 1.917 against 1.907), threes a little better (1.041 against
+  1.048), and at FanDuel's prices the plays the engine likes by 3+ points went UP on points marks (92 → 407, still
+  −21% a play) with threes marks no better (225 at −43.5%). The frozen rule stays.
+- What the frozen rule does at FanDuel's closing prices (22 games, tip-off, `v19-03-fd.js --tune ...`; engine alone →
+  line inside). Marks the engine likes by 3+ points: points 266 → 92 (−16.7% → −20.9% ± 17 a play), rebounds 207 → 95
+  (−20.7% → −2.1% ± 20), assists 137 → 68 (+20.9% ± 29 → +0.1% ± 27), threes 271 → 283 (−42.4% ± 8 → −31.4% ± 11: the
+  made-threes marks at long prices stay the engine's clear fault: it said 30.7%, 20.1% came in, the prices needed
+  24.7%). Main lines liked by 3+: points 75 → 23, rebounds 59 → 24, assists 38 → 22, threes 52 → 64 (−17.8% → −1.5%).
+  Marks at 85%+: 386, 90.4% came in, prices needed 95.2% (−5.0% ± 1.6). Nothing is ahead with support.
+  LEAD: shrink each mark's chance toward the no-vig chance of the books' own prices for that mark (the plays liked are
+  the ones where the engine is most wrong: the winner's curse), threes first.
+- The 9-in-10 number with the corrected method (22 games, off → on): points before lineups 92.6% of 282 → 95.2% of 289,
+  tip-off 91.2% of 330 → 92.3% of 336, 6:00 90.6 → 91.0, 12:00 94.0 → 92.9, halftime 91.2 → 91.4; rebounds 96.8 → 97.2
+  and 95.9 → 96.3.
 - For PHX at DEN (the 9:00 pm ET game of Nov 16) the last recorded look at the lines is 67 minutes before the tip, not
   10: the machine was restarted and the snapshot's reminder arrived after the tip. Its share by the ramp is 97% of full.
 - The check is one command: `tools/blind20.sh 2026-11-16` (after `tools/nightly.sh 2026-11-16` has fetched the night).
