@@ -1445,13 +1445,45 @@ with a reason behind it; 347 plays cannot carry it yet.
   line of all books); units in the edge record; the price inside the chance; the PTS+REB+AST 9-in-10 number; a
   report card for a game the phone did not see before the tip (would need a replay with the saved tables).
 
-### Version 20 candidate (Nov 16): the books' line inside the number. BUILT, SWITCHED OFF, NOT PUBLISHED
+### Version 20 (Nov 17): the books' line inside the number. PUBLISHED (see the top of these notes for the record)
+
+(The heading used to read "Version 20 candidate (Nov 16) ... BUILT, SWITCHED OFF, NOT PUBLISHED"; the story below is in the order it happened.)
 
 **AKARA SAID YES (Nov 17, 00:55 UTC; his whole message: "Yes").** It answers the question of the Nov 16 report: "say yes
 and I'll publish it as version 20 after tomorrow's blind check and a full review. Say no and Courtside stays as it is."
 So the yes covers publishing AFTER a passed blind check and a full review, not before. The evidence is in "Night 3
 graded" below; this section is the build.
 
+- **THE BLIND CHECK PASSED (run Nov 17 at 14:06 UTC, `tools/blind20.sh 2026-11-16`; Akara had written "Publish version 20
+  and stop" at 14:00 UTC, before it was due; it was run first all the same, as the rule asked).** Nov 16, 8 games the
+  settings had never seen, 151 scored players, closing lines, average miss off → on:
+
+  | stage | points | rebounds | assists | threes |
+  |---|---|---|---|---|
+  | before lineups | 4.568 → 4.482 (−1.9%) | 2.092 → 2.048 (−2.1%) | 1.464 → 1.451 (−0.9%) | 0.839 → 0.838 |
+  | tip-off | 4.562 → 4.485 (−1.7%) | 2.066 → 2.031 (−1.7%) | 1.440 → 1.431 (−0.6%) | 0.850 → 0.849 |
+  | 3:00 | 4.532 → 4.420 | 1.953 → 1.922 | 1.350 → 1.344 | 0.836 → 0.822 |
+  | 6:00 | 4.364 → 4.262 | 1.803 → 1.789 | 1.332 → 1.323 | 0.803 → 0.804 |
+  | 12:00 | 3.933 → 3.872 | 1.775 → 1.745 | 1.109 → 1.108 | 0.780 → 0.764 |
+  | 18:00 | 3.838 → 3.806 | 1.390 → 1.363 | 1.027 → 1.020 | 0.706 → 0.702 |
+  | halftime | 3.305 → 3.242 | 1.289 → 1.273 | 0.990 → 0.986 | 0.634 → 0.626 |
+  | 30:00 | 2.944 → 2.930 | 1.160 → 1.158 | 0.803 → 0.798 | 0.498 → 0.494 |
+  | 36:00 | identical | identical | identical | identical |
+
+  Rule 1: points closer at both pre-game stages: PASS. Rule 2 (all four nights, 30 games, 558 and 563 players): before
+  lineups points 4.882 → 4.755 (−2.6%), rebounds 1.978 → 1.946 (−1.6%), assists 1.415 → 1.405, threes 1.000 → 0.991;
+  tip-off 4.874 → 4.760 (−2.3%), 1.975 → 1.936 (−2.0%), 1.398 → 1.387, 0.986 → 0.978; 12:00 4.155 → 4.099; halftime
+  3.412 → 3.370; 30:00 2.945 → 2.940. Every secondary stat is closer at both pre-game stages: no share was taken away.
+  The 9-in-10 number with the line inside, four nights: points 94.7% of 396 before lineups (off 92.5% of 387), 92.5% of
+  455 at tip-off (91.5%), 6:00 91.0%, 12:00 94.0%, halftime 92.5%; rebounds 95.7% and 94.7%; the blind night alone:
+  points 93.3% of 105 and 92.5% of 120, rebounds 92.4% and 91.4%.
+  FanDuel's closing prices with the line inside, four nights (30 games, tip-off): 7,052 marks blind −18.9% a play; marks
+  liked by 3+ points: 703, 21.6% came in, the prices needed 26.0% (3 to 6: 464 at −33.9% ± 8.5; 6 to 10: 186 at −29.8%
+  ± 10; 10+: 53 at −0.7% ± 24); by stat: points 108 (−29% ± 15), rebounds 124 (−14% ± 16), assists 86 (−13% ± 22),
+  threes 385 (said 30.7%, 18.4% came in, needed 24.7%: −40% ± 8); marks at 85%+: 539, 89.4% came in, needed 95.2%
+  (−6.1% ± 1.4); at or below the 9-in-10 number: 171, 95.3% came in, needed 97.9%. Main lines liked by 3+: points 27
+  (+4.5% ± 18), rebounds 28 (+23% ± 19), assists 25 (+8% ± 22), threes 86 (−8% ± 12). On the blind night alone the liked
+  marks did badly on every stat (171 marks, 14% came in). NOTHING IS AHEAD AT FANDUEL'S PRICES; the app says so.
 - THE BLIND CHECK'S PASS RULE (written Nov 17 at 01:00 UTC, while the Nov 16 games were being played and before any of
   them was fetched or graded). Frozen settings, Nov 16 games, every scored player, closing lines, `bt2.js` off and on:
   1. PASS = the points number is closer with the lines on than off at BOTH pre-game stages (before lineups `rep`, and
@@ -1631,7 +1663,20 @@ graded" below; this section is the build.
   probable 8 of 9, questionable 9 of 27), a running total for the came-true record, an even count of books takes the
   upper middle line.
 
-### The books' player lines: the one source the numbers do not use yet (started Nov 13, evening)
+### The books' player lines (started Nov 13, evening; inside the number since version 20)
+
+**Night 4 graded (Nov 16, 8 games; four nights = 30 games with recorded lines, 431 points lines).** `tools/nightly.sh
+2026-11-16` with the engine of version 19 (the app's own number), closing lines, tip-off: points ours 5.037 / book
+4.892 / half 4.913 (gain of half the book +0.124 ± 0.035, z 3.6; night by night +0.111, +0.193, +0.135, +0.083),
+rebounds 2.033 / 1.992 / 1.986 (z 2.7), assists 1.591 / 1.580 / 1.571 (z 1.2), threes 1.100 / 1.121 / 1.099 (z 0.1).
+Share chosen on the other nights and graded on the night left out: points 75/100/70/90% → 2.6% closer (z 2.4),
+rebounds 60/70/70/60% → 2.3% (z 2.2), assists 50/55/35/45% → 1.1% (z 1.2), threes 30/15/25/45% → −0.2%. Before
+lineups: points 5.062 / 4.892, half-book gain +0.121 ± 0.034 (z 3.5). Plus edges against the closing line: 50.6% ± 1.9
+of 701 (the wider ones 54.8% ± 2.8 of 323). Who played: with a line 431 players, none sat; no line at any book 91
+players, 11 sat and 17 played less than 10 minutes. ESPN's status field: Day-To-Day 1 of 5 played, Out 0 of 196.
+For PHX at DEN the last look was 66 minutes before the tip (machine restart).
+
+(The section below was headed "the one source the numbers do not use yet" until version 20.)
 
 Akara, Nov 13: "Significantly improve courtside". Where the numbers stand (see "How close can a number get?"): with the
 REAL minutes known, points would miss by about 4.1 at tip-off against the 4.65 shown; about 85% of the miss is the bounce
