@@ -1462,6 +1462,19 @@ graded" below; this section is the build.
   3. If points are closer at only one of the two stages, or at neither: nothing is published that day; Akara gets the
      four nights as they are and the decision is taken with him.
   4. The stages during a game (6:00, 12:00, halftime) are reported, not part of the rule: one night of them is noise.
+- **THE SETTINGS AND THE METHOD WERE CORRECTED AND FROZEN AGAIN on Nov 17 at 02:30 UTC, after the evening's two reviews and
+  before any Nov 16 game was fetched or graded** (the only Nov 16 facts seen by then: the lines themselves and, in the
+  phone-size watches, the first minutes of two live games). Frozen now:
+  `lineWPts=0.75,lineWReb=0.6,lineWAst=0.45,lineW3=0.45,lineFar=300,lineNear=60,lineLive=36,lineMinBooks=2`
+  (the four shares and the ramp are unchanged; `lineLive` 48 → 36; one book alone no longer counts). What changed in the
+  engine and why is in "The evening's reviews" below. The three nights with the corrected engine, off → on (22 games,
+  every scored player; in-sample for the shares): before lineups points 4.998 → 4.858, rebounds 1.935 → 1.907, assists
+  1.398 → 1.387, threes 1.061 → 1.048; tip-off 4.981 → 4.855, 1.941 → 1.900, 1.385 → 1.371, 1.036 → 1.026; 3:00 points
+  4.797 → 4.699; 6:00 4.659 → 4.615; 12:00 4.228 → 4.176; 18:00 3.989 → 3.952; halftime 3.450 → 3.415; 30:00
+  2.947 → 2.945; from 36:00 identical. The chances (Brier over the ladders) are better at every stage through 30:00:
+  before lineups 0.0820 → 0.0807, tip-off 0.0813 → 0.0802, 12:00 0.0720 → 0.0714, halftime 0.0630 → 0.0626.
+- For PHX at DEN (the 9:00 pm ET game of Nov 16) the last recorded look at the lines is 67 minutes before the tip, not
+  10: the machine was restarted and the snapshot's reminder arrived after the tip. Its share by the ramp is 97% of full.
 - The check is one command: `tools/blind20.sh 2026-11-16` (after `tools/nightly.sh 2026-11-16` has fetched the night).
   It replays the blind night and all nights with the line off and on and prints the rule's verdict
   (`tools/blind20cmp.js`). Dry run on Nov 15 as if blind reproduced the three-night table below to the last digit.
