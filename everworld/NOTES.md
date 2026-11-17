@@ -1522,9 +1522,9 @@ graded" below; this section is the build.
   player or team number changes. The ladders, the range, the 9-in-10 number, FanDuel's menu and the picks all read the
   changed nights. `p.lineIn[stat] = { line, books, share, from, now, to }`: `from` is the app's own shown number, `now`
   the line as read at this moment, `to` the shown number as it BECAME. Explanations (`why`, chips, `shift`, usage-shift
-  alerts, "from here he projects") are worked out from the app's own numbers, and every amount a reason states is
-  multiplied by (1 − share): what is really left of it in the number on the card. The fade warning measures from the
-  shown number, as its text says. Team totals, minutes and players with no line are untouched.
+  alerts, "from here he projects") are worked out from the app's own numbers with the app's own amounts, and for a
+  player with the line inside the sentences say "the app's own number" where they said "his projection". The fade
+  warning measures from the shown number, as its text says. Team totals, minutes and players with no line are untouched.
   `consensusLines` now leaves out a "points" row that is a first-quarter line (two books file theirs under "points":
   833 of 1,873 recorded points lines carry one; with it the middle sat one line low in 87 of 8,048 keys) and returns `n`
   (books posting). This one changes the published picks a little even with every share at 0.
@@ -1553,7 +1553,8 @@ graded" below; this section is the build.
      → `to` is the number as it became; unmoved stats are not listed.
   4. MEDIUM: multiplying whole counts left "at least one more" where it was (41 threes ladders with two neighbouring
      marks at the same chance). → the change of rate.
-  5. MEDIUM/LOW: usage-shift alerts and reasons were driven by the line's pull. → the app's own numbers, amounts scaled.
+  5. MEDIUM/LOW: usage-shift alerts and reasons were driven by the line's pull. → the app's own numbers (the amounts
+     were first scaled by 1 − share; the second review showed that broke sentences, see below).
   6. LOW (serious if it fires): the first-quarter rows in the middle line. → left out; two books needed.
   7. App: a shorter look wiped the others; lines were read by the day on screen (a projection finishing after the day
      arrow was tapped rewrote the report card and saved edges that were never shown); a look could be kept after the
@@ -1570,6 +1571,33 @@ graded" below; this section is the build.
   Its waits follow the app (a fixed five-second wait in an older check failed once on a busy machine).
   Broken copies: 19 of the engine (all caught but one that duplicates another safeguard: a player who is done has
   nothing still to come) and 18 of the app (16 caught; the two not caught are doubled by a second guard).
+- THE SECOND REVIEW (Nov 17, 03:00 to 03:40 UTC, a fresh reviewer on the fixes): the engine rework held up (every
+  earlier engine finding confirmed fixed: stepped every 30 game seconds the factor stays within 0.94 to 1.22 from 30:00,
+  the biggest unexplained move of a shown number is 0.33; rescaled nights against nights truly simulated at the changed
+  rate agree within about a point of chance; with every share at 0 the output is the published engine's, every
+  simulated night included, apart from 27 of 821 picks that moved with the cleaned middle line; the added time before
+  the tip is 7 to 21%). Ten smaller findings, all in texts and app edge cases, fixed the same night:
+  1. Scaling the reasons' amounts by (1 − share) printed "each minute is worth about 0.1 pts" for a 14-point player,
+     flipped sentences on their thresholds and printed "+0.0". → nothing is scaled: reasons carry the app's own
+     amounts exactly as before, and for a player with the line inside they say "the app's own number" where they said
+     "his projection" / "his number" (`ownWords`).
+  2. A refused write of the kept lines (storage blocked or full) lost other games' lines from memory. → memory and phone
+     are joined line by line, the row seen last wins (`plMerge`).
+  3. The 2.5 s wait for the server's clock repeated for every pre-game projection while the clock never answered. → one
+     wait, shared by the first cards, once per session (`clockFirst`).
+  4. A kept line's own age given as a blank or `true` read as a fresh look. → read strictly, like the look's age.
+  5. The note under the sheet's rows printed fixed shares. → built from the engine's settings (`lineNote`); the Scorers
+     and Settings sentences speak of the line only while it is in use.
+  6. A made-threes row that cannot be reconciled by arithmetic (the number is a middle and moves in whole steps: 25 of
+     7,000 rows). → the row says "(A number this small moves in steps.)".
+  7. Kept lines were dropped after two days while a night can be graded up to four days late. → kept four days.
+  8. The shot counts and usage on the sheet do not move with the line. → a line under SHOT PROFILE says they are the
+     app's own read.
+  Left as it is, and why: the "top scorer has changed hands" card compares the number shown at the tip with the number
+  shown now, both with the line as it stood (true as stated; with the line it appears in different games than without:
+  11 against 13 of 132 game-stages). The reviewer's small-sample note (where the line's pace sat 3 to 6 points above
+  the app's own number the pull made the miss worse from 18:00: n 14 and n 44) is a lead, not a finding.
+  Tests after it: engine 103 checks, app 55, GG 8, 10, 15; broken copies: engine 20 of 20 caught; app: see below.
 - FIRST VERSION (Nov 16, before the reviews; kept for the record, its numbers are NOT those of the build): the shown
   number was moved toward the line by the share and every night multiplied (rounding carried), `lineLive` 48, the
   share by minutes to the tip at the moment of the projection. Three nights, off → on: before lineups points
