@@ -762,7 +762,7 @@ test('FanDuel\'s own menu: its main line and "N+" marks with the chance each pri
 // The settings it is published with. Until the release the build ships with every share at 0 (LINE_SHIPPED = false).
 const LINE_REL = { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2 };
 const LINE_OFF = { lineWPts: 0, lineWReb: 0, lineWAst: 0, lineW3: 0, lineLive: 0 };
-const LINE_SHIPPED = false;
+const LINE_SHIPPED = true;
 const ou = (pid, prop, line, vendor = 'a', odds = [-110, -110]) => ({ player_id: +pid, prop_type: prop, line_value: String(line), vendor, market: { type: 'over_under', over_odds: odds[0], under_odds: odds[1] } });
 const ou2 = (pid, prop, line) => [ou(pid, prop, line, 'a'), ou(pid, prop, line, 'b')];
 const getP = (P, p) => P.players.find((x) => x.pid === p.pid);

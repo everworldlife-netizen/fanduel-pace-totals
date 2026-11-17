@@ -12,7 +12,21 @@ const { JSDOM } = require(path.join(__dirname, '..', '..', 'nm', 'node_modules',
 const BUILD = process.env.CS_BUILD ? path.resolve(process.env.CS_BUILD) : path.join(__dirname, '..', 'build'); // CS_BUILD=<folder> tests another build
 const FX = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', 'games.json.gz'))).toString('utf8'));
 const read = (f) => fs.readFileSync(path.join(BUILD, f), 'utf8');
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The checks wait fixed times for the app to do its work. Those times were set on a machine that runs one projection of a
+// fixture game (2,000 simulations) in about 280 ms; on a slower one every wait is stretched by the same factor (never
+// shortened; CS_SLOW=<factor> sets it by hand). A slow machine must not fail a check, and must not pass one either.
+const SLOW = (() => {
+  if (+process.env.CS_SLOW > 0) return +process.env.CS_SLOW;
+  try {
+    const E0 = require(path.join(BUILD, 'engine.js')), fx = FX[0];
+    const game = { ...fx.g, status_state: 'scheduled', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+    const once = () => { const t = process.hrtime.bigint(); E0.projectGame({ ...fx.base, game, plays: [], nsims: 2000, seed: 1, patterns: E0.patBeta(null) }); return Number(process.hrtime.bigint() - t) / 1e6; };
+    once(); // (the first run also compiles)
+    const ms = Math.min(once(), once());
+    return Math.min(4, Math.max(1, (1.25 * ms) / 280));
+  } catch { return 1; }
+})();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
 let pass = 0;
 const test = async (name, fn) => { if (process.env.ONLY && !name.includes(process.env.ONLY)) return; try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
 
@@ -83,6 +97,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
 
 (async () => {
   console.log('Courtside app shell (simulated phone browser)');
+  if (SLOW > 1.05) console.log(`  (this machine is slower than the one the waits were set on: every wait is stretched ×${SLOW.toFixed(2)})`);
   let A, callsAtTip = null; // what the app had said when the games tipped (set by the pregame tests)
   await test('boots before tip-off and projects the fixture games', async () => {
     A = await boot('pre');
@@ -367,7 +382,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
   // The settings it is published with; until the release the build ships with every share at 0 (LINE_SHIPPED = false).
   const LINE_REL = { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2 };
   const LINE_OFF = { lineWPts: 0, lineWReb: 0, lineWAst: 0, lineW3: 0, lineLive: 0 };
-  const LINE_SHIPPED = false;
+  const LINE_SHIPPED = true;
   const LTIP = Date.parse(FX[0].g.datetime), LDAY = FX[0].g.date;
   // In these tests the server's clock stands `lead` minutes before the fixture's tip (everywhere else it is a week later, so no
   // look is ever kept there), two books post every line, and everything handed to the engine is kept in w.__sent.
