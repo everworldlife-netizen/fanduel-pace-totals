@@ -867,6 +867,12 @@ test('the books\' line during a game: what he has plus the line\'s share of the 
     assert.ok(meanRem(low, 'pts') >= 0.5 * meanRem(hi, 'pts') - 0.01 && meanRem(low, 'pts') < meanRem(hi, 'pts'), `a 0.5 line took ${meanRem(hi, 'pts').toFixed(1)} to come to ${meanRem(low, 'pts').toFixed(1)}`);
     for (const X of [q, big, low]) { assert.ok(X.proj.pts >= X.now.pts && X.sure.pts >= X.now.pts); for (let i = 0; i < N; i++) assert.ok(X._sims.pts[i] >= X.now.pts, 'a simulated night ends below what he already has'); }
     assert.strictEqual(big.lineIn.pts.to, +big.proj.pts.toFixed(2), 'the sheet would print a target the number never reached');
+    // before the tip, where the share is at its largest, the hold really binds: a 99.5 line doubles what is to come and no more, a 0.5 line halves it and no less
+    { const pre0 = run(fx, 0), s0 = pre0.players.filter((p) => p.mean.pts >= 14)[0];
+      const up = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', 99.5), toTip: 5 }), s0), dn = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', 0.5), toTip: 5 }), s0);
+      assert.ok(Math.abs(up.mean.pts - 2 * s0.mean.pts) <= 0.02, `a 99.5 line took ${s0.mean.pts.toFixed(2)} to ${up.mean.pts.toFixed(2)}`);
+      assert.ok(Math.abs(dn.mean.pts - 0.5 * s0.mean.pts) <= 0.02, `a 0.5 line took ${s0.mean.pts.toFixed(2)} to ${dn.mean.pts.toFixed(2)}`);
+      assert.strictEqual(up.lineIn.pts.to, +up.proj.pts.toFixed(2)); }
     // every stat with a line, at every stage: the average moves by the share of the gap or less (never more), and the sheet's "to" is the number
     const all = live0.players.filter((p) => p.mean.min > 6).flatMap((p) => [...ou2(p.pid, 'points', Math.max(1.5, Math.round(p.proj.pts) + 3.5)), ...ou2(p.pid, 'rebounds', Math.max(0.5, Math.round(p.proj.reb) + 1.5)), ...ou2(p.pid, 'assists', Math.max(0.5, Math.round(p.proj.ast) + 1.5)), ...ou2(p.pid, 'threes', Math.max(0.5, Math.round(p.proj.fg3m) + 0.5))]);
     let seen = 0;
@@ -965,6 +971,12 @@ test('the books\' line: explanations, alerts and reasons speak of the app\'s own
       let n = 0;
       for (const p of b0.players) { const q = getP(b1, p); if (!q.lineIn || !q.lineIn.pts) continue; const m1 = new Map(pts(q)); for (const [k, v] of pts(p)) if (m1.has(k) && v >= 0.8) { n++; assert.ok(Math.abs(m1.get(k) - 0.25 * v) <= 0.11, `${p.name} ${k}: ${v} pts alone, ${m1.get(k)} with three quarters of the line inside`); } }
       assert.ok(n >= 3, `only ${n} stated amounts could be compared`);
+      // the amounts come from the app's OWN number: with a line far above every scorer (the shown number near double) they are still a quarter of the app's own
+      const far = b0.players.filter((p) => p.mean.pts >= 6).flatMap((p) => ou2(p.pid, 'points', 99.5));
+      const b2 = run(fx, 0, { lines: far, toTip: 5 });
+      let n2 = 0;
+      for (const p of b0.players) { const q = getP(b2, p); if (!q.lineIn || !q.lineIn.pts) continue; const m2 = new Map(pts(q)); for (const [k, v] of pts(p)) if (m2.has(k) && v >= 0.8) { n2++; assert.ok(Math.abs(m2.get(k) - 0.25 * v) <= 0.11, `${p.name} ${k}: ${v} pts alone, ${m2.get(k)} stated with a 99.5 line inside (a quarter of the app's own is ${(0.25 * v).toFixed(2)})`); } }
+      assert.ok(n2 >= 3, `only ${n2} stated amounts could be compared with the far line`);
     }
     const base = run(fx, 0), star = base.players.filter((p) => p.mean.pts >= 14)[0], L = Math.round(star.proj.pts) + 6.5;
     const moved = (lines, extra = {}) => getP(run(fx, 0, { lines, toTip: 5, ...extra }), star).lineIn;
