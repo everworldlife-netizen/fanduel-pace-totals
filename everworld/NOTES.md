@@ -1598,7 +1598,7 @@ graded" below; this section is the build.
   11 against 13 of 132 game-stages). The reviewer's small-sample note (where the line's pace sat 3 to 6 points above
   the app's own number the pull made the miss worse from 18:00: n 14 and n 44) is a lead, not a finding.
   Tests after it: engine 103 checks, app 55, GG 8, 10, 15. Broken copies (`node tools/mut20.js engine|app`): engine 20
-  of 20 caught, app 22 of 22 caught (after the third review the list holds 24 engine and 26 app changes; every one that was run after its fix was caught).
+  of 20 caught, app 22 of 22 caught (after the third review the list holds 24 engine and 26 app changes: run whole against the final code, 24 of 24 and 26 of 26 caught).
 - THE THIRD REVIEW (Nov 17, 04:00 to 04:35 UTC, narrow, on the second round of fixes): nothing that breaks the app at
   load or on a common path (both suites also passed on a copy with the eight release values written in and
   `LINE_SHIPPED = true`: 103 and 55). Four low findings, fixed: (1) a change the engine holds (a line above about 2.3

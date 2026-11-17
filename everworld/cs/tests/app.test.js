@@ -614,6 +614,10 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     await until(() => D.w.localStorage.getItem(`pl:${LDAY}`) != null, 5000);
     assert.ok(D.w.localStorage.getItem(`pl:${LDAY}`) != null);
     assert.strictEqual(hardOf(D).length, 0, hardOf(D).slice(0, 3).join(' | '));
+    // a clock that answers inside the wait (a second and a half): the very first cards already carry the books' line
+    const F = await lineBoot('pre', { hook: (w) => { const f = w.fetch; w.fetch = (u, o) => (o && o.method === 'HEAD' ? new Promise((r) => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o)); } }); await settled(F);
+    for (const fx of FX) { const q = games(F).find((x) => +x.game.id === +fx.g.id); assert.ok(q && q.lines && Object.keys(q.lines).length >= 8, 'the first cards did not wait for a clock that answered in a second and a half'); }
+    assert.strictEqual(hardOf(F).length, 0, hardOf(F).slice(0, 3).join(' | '));
     // a clock that answers gets its one wait too, and then the look is kept
     const C = await lineBoot('pre'); await settled(C);
     assert.ok(C.w.__clockWaits <= 1 && C.w.localStorage.getItem(`pl:${LDAY}`) != null);

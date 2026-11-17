@@ -56,7 +56,7 @@ const APP = [
   ['unmoved rows are printed', 'app.js', " && Math.round(x.share * 100) >= 1 && Math.abs(x.to - x.from) >= 0.05;", ";", "sheet's rows"],
   ['the live row reads like the pre-game one', 'app.js', "${pre ? `the books' line is <b>${x.line}</b>` : `at the pace", "${true ? `the books' line is <b>${x.line}</b>` : `at the pace", "during a game"],
   ['junk kept lines are read', 'app.js', "const plRowOk = (v) => Array.isArray(v) && +v[0] > 0 && +v[0] < 100 && Number.isFinite(+v[3]) && +v[3] > 0;", "const plRowOk = (v) => Array.isArray(v) && +v[0] > 0;", "no look is kept"],
-  ['the first projection does not wait for the clock', 'app.js', "if (s.phase === 'pre' && clockOff == null) { try { await clockFirst(); } catch { /* no clock: no look is kept this time */ } }", "", "switched on"],
+  ['the first projection does not wait for the clock', 'app.js', "if (s.phase === 'pre' && clockOff == null) { try { await clockFirst(); } catch { /* no clock: no look is kept this time */ } }", "", "never answers"],
   ['old pl: keys are never cleared', 'data.js', "if (m[1] < addDays(today, -5)) localStorage.removeItem(k); }", "}", "dated keys"],
 ];
 const which = process.argv[2], filt = process.argv[3] || '';
