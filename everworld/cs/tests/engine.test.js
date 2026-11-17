@@ -838,6 +838,9 @@ test('the books\' line inside the number: the average moves by the share of the 
     const mixed = run(fx, 0, { lines: table, toTip: 5 });
     assert.strictEqual(getP(mixed, hi).lineIn && getP(mixed, hi).lineIn.pts, undefined, 'a line read 400 minutes before the tip was used because another was fresh');
     assert.strictEqual(getP(mixed, lo).lineIn.pts.share, 0.75);
+    // a kept line whose own age is not a number counts for nothing, whatever the look's age says
+    for (const bad of ['', ' ', [], true, false, {}, 'soon', NaN]) { const t = E.consensusLines(lines); t[hi.pid + ':pts'].toTip = bad; const X = getP(run(fx, 0, { lines: t, toTip: 5 }), hi); assert.ok(!X.lineIn || !X.lineIn.pts, `a kept line with age ${JSON.stringify(bad)} went in`); }
+    { const t = E.consensusLines(lines); t[hi.pid + ':pts'].toTip = '5'; assert.strictEqual(getP(run(fx, 0, { lines: t, toTip: 400 }), hi).lineIn.pts.share, 0.75); }
     // the 59-minute-old look and the share that would print as nothing
     assert.strictEqual(getP(run(fx, 0, { lines, toTip: 299.9 }), hi).lineIn, null, 'a share of a tenth of a percent was used (and would print as 0%)');
     // once the game is on with lineLive at 0, nothing: the play-by-play has taken over
@@ -934,6 +937,9 @@ test('the books\' line and small counts: a pull upward raises the chance of "at 
     assert.ok(b.every((v) => v >= 4));
     const c = mk(); E.rescaleRate(c, 4, kf, E.mulberry32(9)); assert.ok(b.every((v, i) => v === c[i]), 'the same stream gave different nights');
     if (kf > 1) assert.ok(b.filter((v) => v >= 5).length > a.filter((v) => v >= 5).length, 'a higher rate left "at least one more" where it was');
+    { const sdOf = (x) => { const m = x.reduce((q, v) => q + v, 0) / x.length; return Math.sqrt(x.reduce((q, v) => q + (v - m) * (v - m), 0) / x.length); }; const r = sdOf(b) / sdOf(a);
+      // the spread of nights goes with the rate: between the square root of the factor (pure chance) and the factor itself (nights that truly differ)
+      if (kf !== 1) assert.ok(r > Math.min(Math.sqrt(kf), kf) - 0.06 && r < Math.max(Math.sqrt(kf), kf) + 0.06, `factor ${kf}: the spread of nights went ×${r.toFixed(2)}`); }
     if (kf < 1) assert.ok(b.filter((v) => v >= 5).length < a.filter((v) => v >= 5).length);
   }
   { const z = new Int16Array(50).fill(3); E.rescaleRate(z, 3, 2, E.mulberry32(1)); assert.ok(z.every((v) => v === 3), 'nothing to come became something'); E.rescaleRate(z, 3, 0, E.mulberry32(1)); E.rescaleRate(z, 3, NaN, E.mulberry32(1)); assert.ok(z.every((v) => v === 3)); }
@@ -941,43 +947,31 @@ test('the books\' line and small counts: a pull upward raises the chance of "at 
 test('the books\' line: explanations, alerts and reasons speak of the app\'s own number; a player who is done, a lone book and junk lines change nothing', () => {
   const fx = FX[0];
   withTune(LINE_REL, () => {
-    for (const el of [6, 12, 24]) {
-      const A = run(fx, el);
-      const lines = A.players.filter((p) => p.mean.pts - p.now.pts >= 4).slice(0, 6).flatMap((p, i) => ou2(p.pid, 'points', Math.round(p.proj.pts * (i % 2 ? 0.6 : 1.5)) + 0.5));
-      const B = run(fx, el, { lines, toTip: 5 });
+    // the same reasons, the same amounts, the same words as the app alone, except that for a player with the line inside they
+    // say "the app's own number" where they said "his projection" / "his number" (the amounts are the app's own, exactly)
+    const plain = (so) => String(so || '').replace(/on the app's own number\./g, 'on his projection.').replace(/Already taken off the app's own number:/g, 'Already taken off his number:');
+    let shifts = 0, ownSaid = 0, lined = 0;
+    for (const f of FX) for (const el of [0, 6, 12, 21, 24]) {
+      const A = run(f, el);
+      const lines = A.players.filter((p) => p.mean.pts - p.now.pts >= 4).slice(0, 8).flatMap((p, i) => ou2(p.pid, 'points', Math.round(p.proj.pts * (i % 2 ? 0.6 : 1.5)) + 0.5));
+      const B = run(f, el, { lines, toTip: 5 });
       assert.ok(B.players.some((p) => p.lineIn), `no line went in at ${el}:00`);
-      // usage-shift alerts, the "from here he projects" numbers and every reason are those of the app alone
       // (the alert card also prints each player's number as shown, which does carry the line; the fade warning measures from the shown number by design)
-      const shifts = (P) => P.alerts.filter((a) => a.type === 'shift').map((a) => ({ ...a, up: { ...a.up, proj: null }, down: a.down ? { ...a.down, proj: null } : null }));
-      assert.deepStrictEqual(shifts(B), shifts(A), `a usage-shift alert appeared or changed with the line at ${el}:00`);
+      const shiftsOf = (P) => P.alerts.filter((a) => a.type === 'shift').map((a) => ({ ...a, up: { ...a.up, proj: null }, down: a.down ? { ...a.down, proj: null } : null }));
+      assert.deepStrictEqual(shiftsOf(B), shiftsOf(A), `a usage-shift alert appeared or changed with the line at ${el}:00`);
+      shifts += shiftsOf(A).length;
       for (const a of B.alerts.filter((x) => x.type === 'shift')) assert.strictEqual(a.up.proj, +getP(B, { pid: a.up.pid }).proj.pts.toFixed(1), 'an alert prints a number that is not the one on the card');
-      // the same reasons in the same words; only the amounts they state shrink, to what is really left of them in the shown number
-      const said = (X) => X.why.filter((x) => x.key !== 'fade').map((x) => [x.icon, x.key || '', x.text]);
-      const amounts = (X) => X.why.filter((x) => x.key !== 'fade').map((x) => (String(x.so || '').match(/[+−]\d+\.\d/g) || []).map((t) => Math.abs(parseFloat(t.replace('−', '-')))));
       for (const p of A.players) {
-        const q = getP(B, p);
+        const q = getP(B, p), w0 = p.why.filter((x) => x.key !== 'fade'), w1 = q.why.filter((x) => x.key !== 'fade');
         assert.deepStrictEqual(q.shift, p.shift, `${p.name}: the usage-shift numbers moved with the line`);
-        if (!q.lineIn) { assert.deepStrictEqual(q.why.filter((x) => x.key !== 'fade'), p.why.filter((x) => x.key !== 'fade'), `${p.name}: a reason changed with no line inside`); assert.deepStrictEqual(q.chips, p.chips); continue; }
-        const a0 = amounts(p), a1 = amounts(q);
-        if (JSON.stringify(said(q)) !== JSON.stringify(said(p))) { // a reason whose amount fell under its own threshold may drop out; none may appear
-          for (const x of said(q)) assert.ok(said(p).some((y) => JSON.stringify(y) === JSON.stringify(x)), `${p.name}: a reason appeared with the line: ${x[2]}`);
-        } else for (let i = 0; i < a0.length; i++) for (let j = 0; j < Math.min(a0[i].length, a1[i].length); j++) assert.ok(a1[i][j] <= a0[i][j] + 0.051, `${p.name}: a reason states ${a1[i][j]} with the line inside and ${a0[i][j]} without`);
+        assert.deepStrictEqual(q.chips, p.chips, `${p.name}: a chip changed with the line`);
+        assert.deepStrictEqual(w1.map((x) => ({ ...x, so: plain(x.so) })), w0.map((x) => ({ ...x, so: plain(x.so) })), `${p.name} at ${el}:00: a reason or an amount changed with the line`);
+        const own = w1.filter((x) => /the app's own number/.test(x.so || '')).length, his = w1.filter((x) => /on his projection\.|taken off his number:|pts on his number\./.test(x.so || '')).length;
+        if (q.lineIn) { lined++; ownSaid += own; assert.strictEqual(his, 0, `${p.name}: a reason says "his projection" while the books' line is inside it`); } else assert.strictEqual(own, 0, `${p.name}: a reason says "the app's own number" with no line inside`);
       }
     }
-    { // before the tip, full share: a points amount stated in a reason is a quarter of what the app alone states
-      const b0 = run(fx, 0), all = b0.players.filter((p) => p.mean.pts >= 6).flatMap((p) => ou2(p.pid, 'points', Math.round(p.proj.pts) + 0.5));
-      const b1 = run(fx, 0, { lines: all, toTip: 5 });
-      const pts = (X) => X.why.map((x) => { const m = String(x.so || '').match(/about ([+−]\d+\.\d) pts/); return m ? [x.key || x.icon, Math.abs(parseFloat(m[1].replace('−', '-')))] : null; }).filter(Boolean);
-      let n = 0;
-      for (const p of b0.players) { const q = getP(b1, p); if (!q.lineIn || !q.lineIn.pts) continue; const m1 = new Map(pts(q)); for (const [k, v] of pts(p)) if (m1.has(k) && v >= 0.8) { n++; assert.ok(Math.abs(m1.get(k) - 0.25 * v) <= 0.11, `${p.name} ${k}: ${v} pts alone, ${m1.get(k)} with three quarters of the line inside`); } }
-      assert.ok(n >= 3, `only ${n} stated amounts could be compared`);
-      // the amounts come from the app's OWN number: with a line far above every scorer (the shown number near double) they are still a quarter of the app's own
-      const far = b0.players.filter((p) => p.mean.pts >= 6).flatMap((p) => ou2(p.pid, 'points', 99.5));
-      const b2 = run(fx, 0, { lines: far, toTip: 5 });
-      let n2 = 0;
-      for (const p of b0.players) { const q = getP(b2, p); if (!q.lineIn || !q.lineIn.pts) continue; const m2 = new Map(pts(q)); for (const [k, v] of pts(p)) if (m2.has(k) && v >= 0.8) { n2++; assert.ok(Math.abs(m2.get(k) - 0.25 * v) <= 0.11, `${p.name} ${k}: ${v} pts alone, ${m2.get(k)} stated with a 99.5 line inside (a quarter of the app's own is ${(0.25 * v).toFixed(2)})`); } }
-      assert.ok(n2 >= 3, `only ${n2} stated amounts could be compared with the far line`);
-    }
+    assert.ok(shifts >= 1, 'no usage-shift alert in any fixture moment: the alert check checked nothing');
+    assert.ok(lined >= 20 && ownSaid >= 10, `${lined} lined players, ${ownSaid} reasons in the app's own words`);
     const base = run(fx, 0), star = base.players.filter((p) => p.mean.pts >= 14)[0], L = Math.round(star.proj.pts) + 6.5;
     const moved = (lines, extra = {}) => getP(run(fx, 0, { lines, toTip: 5, ...extra }), star).lineIn;
     assert.ok(moved(ou2(star.pid, 'points', L)));

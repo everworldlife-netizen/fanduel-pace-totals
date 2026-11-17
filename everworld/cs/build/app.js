@@ -223,7 +223,7 @@ if (playKey && before && before.playKey === playKey && Date.now() - before.at < 
 // share the engine gives a line goes by how long before the tip it was seen, so the server's time is waited for, briefly)
 let lines = null;
 if (s.phase !== 'final') {
-if (s.phase === 'pre' && clockOff == null) { try { await Promise.race([clockSync(), new Promise((r) => setTimeout(r, 2500))]); } catch { /* no clock: no look is kept this time */ } }
+if (s.phase === 'pre' && clockOff == null) { try { await clockFirst(); } catch { /* no clock: no look is kept this time */ } }
 try { rememberLines(g, s, props); } catch (e) { console.warn('lines', e); }
 try { lines = keptLines(g); } catch (e) { lines = null; console.warn('lines', e); }
 }
@@ -290,15 +290,27 @@ const plKey = (day) => `pl:${day}`;
 const PL_STATS = ['pts', 'reb', 'ast', 'fg3m'];
 const plCache = new Map(); // day -> that day's record as last read or written here
 const gameDay = (g) => String((g && g.date) || '').slice(0, 10);
+const plRowOk = (v) => Array.isArray(v) && +v[0] > 0 && +v[0] < 100 && Number.isFinite(+v[3]) && +v[3] > 0;
+// Two records of a day, joined line by line: the row seen last wins. What is in memory and what is on the phone can each hold
+// what the other lacks (a write the phone refused, a later look kept by another open copy of the app); rows that are not
+// lines are dropped here.
+function plMerge(a, b) {
+const out = {};
+for (const src of [a, b]) for (const [gid, rec] of Object.entries(src && typeof src === 'object' && !Array.isArray(src) ? src : {})) {
+if (!rec || !rec.m || typeof rec.m !== 'object' || Array.isArray(rec.m)) continue;
+const m = (out[gid] = out[gid] || { m: {} }).m;
+for (const [k, v] of Object.entries(rec.m)) if (plRowOk(v) && !(m[k] && +m[k][3] >= +v[3])) m[k] = v;
+}
+return out;
+}
 function plRead(day, fresh) {
 if (!fresh && plCache.has(day)) return plCache.get(day);
-let P = null;
-try { P = DB.store.get(plKey(day)); } catch { P = null; }
-if (!P || typeof P !== 'object' || Array.isArray(P)) P = {};
+let disk = null;
+try { disk = DB.store.get(plKey(day)); } catch { disk = null; }
+const P = plMerge(plCache.get(day), disk);
 plCache.set(day, P);
 return P;
 }
-const plRowOk = (v) => Array.isArray(v) && +v[0] > 0 && +v[0] < 100 && Number.isFinite(+v[3]) && +v[3] > 0;
 function rememberLines(g, s, props) {
 const day = gameDay(g), tip = Date.parse(g.datetime);
 if (s.phase !== 'pre' || !/^\d{4}-\d\d-\d\d$/.test(day) || !Number.isFinite(tip)) return;
@@ -315,12 +327,10 @@ for (const c of Object.values(E.consensusLines(props || []))) if (c && PL_STATS.
 if (!Object.keys(seen).length) return; // the lines did not load this time: the last good look stays
 // start from what is on the phone, not from memory (another open copy of the app may have kept a later look); a line that
 // is missing from this look stays, with its own older time (the feed drops and returns players between looks)
-const P = plRead(day, true), before = P[g.id] && P[g.id].m && typeof P[g.id].m === 'object' && !Array.isArray(P[g.id].m) ? P[g.id].m : {};
-const m = {};
-for (const [k, v] of Object.entries(before)) if (plRowOk(v)) m[k] = v;
+const P = plRead(day, true), m = { ...((P[g.id] && P[g.id].m) || {}) };
 for (const [k, v] of Object.entries(seen)) m[k] = v;
 P[g.id] = { m };
-try { DB.store.set(plKey(day), P); } catch { /* storage full or blocked: the look lives until the app is closed */ }
+try { DB.store.set(plKey(day), P); } catch { /* storage full or blocked: the look stays in memory (plRead joins memory and phone) until the app is closed */ }
 }
 /** The kept lines of a game in the shape the engine reads ({ 'player:stat': { pid, stat, line, books, n, toTip } }), or null.
 * toTip = how many minutes before the scheduled tip that line was last seen. */
@@ -328,7 +338,7 @@ function keptLines(g) {
 const tip = Date.parse(g && g.datetime);
 if (!Number.isFinite(tip)) return null; // no tip time: no age, no share
 const rec = plRead(gameDay(g))[g.id];
-if (!rec || !rec.m || typeof rec.m !== 'object' || Array.isArray(rec.m)) return null;
+if (!rec || !rec.m) return null;
 const out = {};
 for (const [k, v] of Object.entries(rec.m)) {
 if (!plRowOk(v)) continue;
@@ -666,7 +676,10 @@ const snapKey = (d) => `psnap:${d}`;
 let snapDay = ''; // the day whose copy is known to be complete (so a refresh does not read it back every time)
 // A copy is stamped with the server's time, not the phone's: a phone whose clock runs a day slow would otherwise stamp a table
 // that already holds last night's games as "saved before last night's first tip". Until the server's time is known no copy is saved.
-let clockOff = null, clockAsked = null;
+let clockOff = null, clockAsked = null, clockOnce = null;
+// The first pre-game projections wait for the server's time, together and once, for at most 2.5 seconds: a clock that never
+// answers must not hold up every card on every pass (after that wait the cards come without it; no look is kept until it is known).
+function clockFirst() { if (!clockOnce) clockOnce = Promise.race([clockSync(), new Promise((r) => setTimeout(r, 2500))]); return clockOnce; }
 function clockSync() {
 if (clockOff != null) return Promise.resolve();
 if (!clockAsked) clockAsked = DB.serverNow().then((t) => { if (t != null) { clockOff = t - Date.now(); snapSave(); } }).catch(() => {}).finally(() => { clockAsked = null; });
@@ -1257,7 +1270,7 @@ ${p.doubt ? `<div class="card small" style="margin-top:12px;font-weight:700;back
 ${sheetNow(p, s)}
 ${(p.why || []).length ? `<h3>WHY THIS NUMBER</h3>${whyLines(p)}` : ''}
 ${ladder('pts', 'POINTS')}${ladder('reb', 'REBOUNDS')}${ladder('ast', 'ASSISTS')}${ladder('fg3m', 'THREES')}${ladder('pra', 'PTS+REB+AST')}
-<h3>SHOT PROFILE</h3>
+<h3>SHOT PROFILE</h3>${CARD_STATS.some(([k]) => lineShown(p.lineIn && p.lineIn[k])) ? '<p class="small muted" style="font-weight:700;margin:0 0 8px">Shots and usage here are the app\'s own read: the books\' line moves the totals above, not these.</p>' : ''}
 <div class="grid3">
 <div class="kv"><small>Usage now</small><b>${usage(p.usage.tonight)}</b></div>
 <div class="kv"><small>Usage season</small><b>${usage(p.usage.season)}</b></div>
@@ -1294,8 +1307,17 @@ ${sureHTML(p, s.phase === 'pre')}
 ${lineInHTML(p, s.phase === 'pre')}
 ${bits.length ? `<h3>WHAT CHANGED</h3><ul class="why">${bits.join('')}</ul>` : ''}`;
 }
-// measured on the recorded nights (tools/blind20.sh, tools/propgrade.js): update with every night graded
-const LINE_NOTE = 'How much the books\' line counts goes by how fresh it is: nothing when it was last seen five hours or more before the tip, the full share (points 75%, rebounds 60%, assists and threes 45%) inside the last hour. Once the game is on the share shrinks, and it is gone by the end of the third quarter. Measured on 22 recorded games: before a game the points number landed 2.5% closer with the line inside and rebounds 2% closer; assists and threes about level.';
+// (the measured sentence: update with every night graded; the rest follows the engine's own settings)
+const LINE_LAB = 'Measured on 22 recorded games: before a game the points number landed 2.5% closer with the line inside and rebounds 2% closer; assists and threes about level.';
+const lineOnApp = () => ['lineWPts', 'lineWReb', 'lineWAst', 'lineW3'].some((k) => E.TUNE[k] > 0);
+function lineNote() {
+const T = E.TUNE, by = new Map();
+for (const [name, w] of [['points', T.lineWPts], ['rebounds', T.lineWReb], ['assists', T.lineWAst], ['threes', T.lineW3]]) if (w > 0) { const k = Math.round(w * 100); by.set(k, [...(by.get(k) || []), name]); }
+const shares = [...by.entries()].sort((x, y) => y[0] - x[0]).map(([k, names]) => `${names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]} ${k}%`).join(', ');
+const hrs = (m) => (m % 60 === 0 ? `${m / 60 === 1 ? 'an hour' : `${m / 60} hours`}` : `${m} minutes`);
+const live = !(T.lineLive > 0) ? 'Once the game is on it is not used.' : `Once the game is on the share shrinks, and it is gone ${T.lineLive === 36 ? 'by the end of the third quarter' : T.lineLive === 24 ? 'by halftime' : `${T.lineLive} game minutes in`}.`;
+return `How much the books' line counts goes by how fresh it is: nothing when it was last seen ${hrs(T.lineFar)} or more before the tip, the full share (${shares}) inside the last ${T.lineNear === 60 ? 'hour' : hrs(T.lineNear)}. ${live} ${LINE_LAB}`;
+}
 const lineShown = (x) => x && Number.isFinite(x.from) && Number.isFinite(x.to) && Number.isFinite(x.share) && Math.round(x.share * 100) >= 1 && Math.abs(x.to - x.from) >= 0.05;
 /** What the books' line did to each number it is inside of (only the stats it really moved). */
 function lineInHTML(p, pre) {
@@ -1304,10 +1326,10 @@ if (!L) return '';
 const rows = CARD_STATS.filter(([k]) => lineShown(L[k])).map(([k, lbl]) => {
 const x = L[k], sh = Math.round(x.share * 100);
 // before the tip the line is the books' number for the whole game; during a game it is read as what he has plus the line's pace for the time left
-return `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: ${pre ? `the books' line is <b>${x.line}</b>` : `at the pace of the books' line before the tip (${x.line}) he would finish near <b>${Number.isFinite(x.now) ? x.now.toFixed(1) : x.line}</b>`}; the app alone says ${x.from.toFixed(1)}. The line counts for <b>${sh}%</b>${pre ? '' : ' now'}, so the number shown is <b>${x.to.toFixed(1)}</b>.</span></li>`;
+return `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: ${pre ? `the books' line is <b>${x.line}</b>` : `at the pace of the books' line before the tip (${x.line}) he would finish near <b>${Number.isFinite(x.now) ? x.now.toFixed(1) : x.line}</b>`}; the app alone says ${x.from.toFixed(1)}. The line counts for <b>${sh}%</b>${pre ? '' : ' now'}, so the number shown is <b>${x.to.toFixed(1)}</b>.${Number.isFinite(x.now) && Math.abs(x.to - (x.from + x.share * (x.now - x.from))) > 0.25 ? ' (A number this small moves in steps.)' : ''}</span></li>`;
 });
 if (!rows.length) return '';
-return `<h3>THE BOOKS' LINE INSIDE THE NUMBER</h3><ul class="why">${rows.join('')}</ul><p class="small muted" style="font-weight:700;margin:8px 0 0">${LINE_NOTE}</p>`;
+return `<h3>THE BOOKS' LINE INSIDE THE NUMBER</h3><ul class="why">${rows.join('')}</ul><p class="small muted" style="font-weight:700;margin:8px 0 0">${lineNote()}</p>`;
 }
 /** The 9-in-10 numbers on the player sheet, with what they mean and how often they have held. */
 function sureHTML(p, pre) {
@@ -1527,7 +1549,7 @@ let html = `<div class="section-title" style="margin-top:4px">🏆 TOP SCORERS <
 html += progressHTML();
 if (!rows.length) return html + (state.busy || state.progress ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div><div class="skeleton"></div></div>' : emptyHTML('No projections yet', 'Top scorers show once tonight\'s games load.'));
 if (open.length) {
-html += `<div class="card small" style="font-weight:700">Ranked by projected points for the whole game. It counts his minutes, role, matchup, pace, foul trouble, blowout risk, and how he scores by quarter, score and crunch time; from five hours before a tip until the end of the third quarter the books' own points line counts too. ${anyLive ? 'Live games update with every refresh.' : ''}</div>`;
+html += `<div class="card small" style="font-weight:700">Ranked by projected points for the whole game. It counts his minutes, role, matchup, pace, foul trouble, blowout risk, and how he scores by quarter, score and crunch time${E.TUNE.lineWPts > 0 ? '; in the last hours before a tip and early in a game the books\' own points line counts too' : ''}. ${anyLive ? 'Live games update with every refresh.' : ''}</div>`;
 html += `<div class="stack">${open.slice(0, 15).map((r, i) => scorerCard(r, i + 1)).join('')}</div>`;
 const races = state.slate.filter((g) => st(g).phase !== 'final').map((g) => { const pr = state.proj.get(g.id); return pr && pr.proj ? gameRaceCard(g, st(g), pr.proj) : ''; }).filter(Boolean);
 if (races.length) html += `<div class="section-title">🥇 WHO LEADS EACH GAME <span class="count">chance to be the game's top scorer</span></div><div class="stack">${races.join('')}</div>`;
@@ -1567,7 +1589,7 @@ const G = { pre: 'pre', q1: 's12', half: 's24', q3: 's36', late: 's42' };
 const rows = CP2.map(([k, l]) => { const x = sum.acc[G[k]]; return x && x.g >= 1 && x.n >= 8 ? `<tr><td>${l}</td><td><b>${(x.pts / x.n).toFixed(2)}</b></td><td>${(x.reb / x.n).toFixed(2)}</td><td>${(x.ast / x.n).toFixed(2)}</td><td>${x.g ? Math.round((100 * x.top3) / x.g) + '%' : '–'}</td></tr>` : ''; }).join('');
 if (rows) mine = `<div class="small" style="font-weight:800;margin:14px 0 4px">On this phone since ${new Date(PAT_FROM + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}: ${learnedGames()} games graded</div>
 <table class="mtable acc2"><tr><th></th><th>PTS miss</th><th>REB</th><th>AST</th><th>Top scorer in our top 3</th></tr>${rows}</table>
-<div class="small muted" style="margin-top:6px">Each finished game is replayed with the season stats this phone saved before that game tipped and the books' lines it had kept for it, so the app is graded on what it knew at the time. Everyone who played 10+ minutes counts, and a player the app had no number for counts as a full miss. A night with no saved copy from before tip-off is left out.</div>`;
+<div class="small muted" style="margin-top:6px">Each finished game is replayed with the season stats this phone saved before that game tipped${lineOnApp() ? ' and the books\' lines it had kept for it' : ''}, so the app is graded on what it knew at the time. Everyone who played 10+ minutes counts, and a player the app had no number for counts as a full miss. A night with no saved copy from before tip-off is left out.</div>`;
 }
 return `<div class="section-title">🎯 ACCURACY REPORT</div>
 <div class="card">

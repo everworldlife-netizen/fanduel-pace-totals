@@ -378,6 +378,8 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     w.DB.props = async (gid) => { const two = (await orig(gid)).flatMap((x) => [x, { ...x, vendor: 'book2' }]); return w.__props ? w.__props(two, gid) : two; };
     const post = w.Worker.prototype.postMessage; w.__sent = [];
     w.Worker.prototype.postMessage = function (m) { if (m && m.payload) w.__sent.push(m.payload); return post.call(this, m); };
+    // (how often the app sits out the 2.5 s it gives the server's clock)
+    const st0 = w.setTimeout; w.__clockWaits = 0; w.setTimeout = function (fn, ms, ...a) { if (ms === 2500) w.__clockWaits++; return st0.call(this, fn, ms, ...a); };
     if (hook) hook(w, state, fxOf);
   });
   const later = (X, min) => { const orig = X.w.Date.now.bind(X.w.Date); X.w.Date.now = () => orig() + min * 60000; };
@@ -408,6 +410,8 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const pid = Object.keys(Object.values(kept)[0].m)[0].split(':')[0], gid = Object.keys(kept)[0];
     assert.ok(!SECTION.test(await sheetOf(off, gid, pid)), 'with every share at 0 the sheet says the line is inside the number');
     assert.ok(!/books' own line counts for most/.test((await off.go('#/edges', 400)).textContent));
+    assert.ok(!/books' own points line counts too/.test((await off.go('#/scorers', 400)).textContent), 'with every share at 0 the Scorers screen says the books\' line counts');
+    assert.ok(!/books' lines it had kept/.test((await off.go('#/settings', 400)).textContent), 'with every share at 0 Settings says last night was replayed with kept lines');
     assert.strictEqual(hardOf(plain, off).length, 0, hardOf(plain, off).slice(0, 3).join(' | '));
   });
   await test('the books\' line inside the number, switched on: lined players move three quarters of the way, the sheet, the card, the report card and the Edges screen agree, and an older look counts for less', async () => {
@@ -436,7 +440,8 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.strictEqual(+m[1], kept[gid].m[`${pid}:pts`][0]);
     assert.ok(Math.abs(+m[3] - (0.25 * +m[2] + 0.75 * +m[1])) <= 0.45, `${m[2]} alone, line ${m[1]}, shown ${m[3]}`);
     assert.ok(Math.abs(+m[3] - onPts[pid]) <= 0.26, `the sheet says the number shown is ${m[3]}, the card shows ${onPts[pid]}`);
-    assert.ok(/nothing when it was last seen five hours or more before the tip/.test(sheet) && !/in the morning/.test(sheet));
+    assert.ok(/nothing when it was last seen 5 hours or more before the tip, the full share \(points 75%, rebounds 60%, assists and threes 45%\) inside the last hour\. Once the game is on the share shrinks, and it is gone by the end of the third quarter\./.test(sheet) && !/in the morning/.test(sheet), (sheet.match(/How much the books.{0,330}/) || ['(no note)'])[0]);
+    assert.ok(/Shots and usage here are the app's own read/.test(sheet), 'the shot profile does not say its counts are the app\'s own');
     assert.strictEqual(banned(sheet).length, 0);
     const call = JSON.parse(on.w.localStorage.getItem('calls:v1'))[gid];
     assert.ok(call && Math.abs(call.p[pid][3] - +m[3]) <= 0.051, `the report card kept ${call && call.p[pid][3]} points, the screen showed ${m[3]}`);
@@ -539,8 +544,8 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const vm = require('vm');
     const src = read('app.js');
     const pick = (re) => { const m = src.match(re); assert.ok(m, `not found in app.js: ${re}`); return m[0]; };
-    const ctx = vm.createContext({});
-    vm.runInContext([pick(/^const CARD_STATS = .*$/m), pick(/^const LINE_NOTE = .*$/m), pick(/^const lineShown = .*$/m), pick(/^function lineInHTML\(p, pre\) \{[\s\S]*?^\}$/m)].join('\n') + '\nthis.lineInHTML = lineInHTML;', ctx);
+    const ctx = vm.createContext({ E: { TUNE: { ...LINE_REL } } });
+    vm.runInContext([pick(/^const CARD_STATS = .*$/m), pick(/^const LINE_LAB = .*$/m), pick(/^function lineNote\(\) \{[\s\S]*?^\}$/m), pick(/^const lineShown = .*$/m), pick(/^function lineInHTML\(p, pre\) \{[\s\S]*?^\}$/m)].join('\n') + '\nthis.lineInHTML = lineInHTML; this.lineNote = lineNote; this.T = E.TUNE;', ctx);
     const text = (L, pre) => ctx.lineInHTML({ lineIn: L }, pre).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
     const row = (o) => ({ line: 22.5, books: 3, share: 0.75, from: 20, now: 22.5, to: 21.9, ...o });
     assert.strictEqual(text(null, true), ''); assert.strictEqual(text({}, true), '');
@@ -555,6 +560,42 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const live = text({ pts: row({ line: 19.5, share: 0.25, from: 26.7, now: 29.8, to: 27.5 }) }, false);
     assert.ok(/PTS: at the pace of the books' line before the tip \(19\.5\) he would finish near 29\.8 ; the app alone says 26\.7\. The line counts for 25% now, so the number shown is 27\.5 \./.test(live), live);
     for (const t of [two, live, text({ pts: row() }, true)]) { assert.ok(!/undefined|NaN|null/.test(t), t); assert.strictEqual(banned(t).length, 0); assert.ok(/gone by the end of the third quarter/.test(t)); }
+    // a small number that moved in a whole step says so instead of leaving an arithmetic nobody can follow
+    const step = text({ fg3m: row({ line: 2.5, share: 0.4, from: 0.3, now: 1.4, to: 1.0 }) }, false);
+    assert.ok(/3PM: .*the number shown is 1\.0 \. \(A number this small moves in steps\.\)/.test(step), step);
+    assert.ok(!/moves in steps/.test(text({ pts: row() }, true)));
+    // the note under the rows follows the engine's own settings (a share taken away at the release is not printed)
+    const note = () => ctx.lineNote();
+    assert.ok(/the full share \(points 75%, rebounds 60%, assists and threes 45%\) inside the last hour/.test(note()), note());
+    ctx.T.lineW3 = 0; assert.ok(/\(points 75%, rebounds 60%, assists 45%\)/.test(note()) && !/threes 4/.test(note()), note());
+    ctx.T.lineWAst = 0; ctx.T.lineWReb = 0.75; assert.ok(/\(points and rebounds 75%\)/.test(note()), note());
+    ctx.T.lineLive = 0; assert.ok(/Once the game is on it is not used\./.test(note()) && !/third quarter/.test(note()), note());
+    ctx.T.lineLive = 24; ctx.T.lineFar = 240; ctx.T.lineNear = 30; assert.ok(/4 hours or more before the tip/.test(note()) && /inside the last 30 minutes/.test(note()) && /gone by halftime/.test(note()), note());
+  });
+  await test('a phone that refuses to store the kept lines (blocked or full) still has every game\'s look in memory, through later looks and into the game', async () => {
+    const B = await lineBoot('pre', { hook: (w) => { const set = w.Storage.prototype.setItem; w.Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('pl:')) throw new Error('QuotaExceededError'); return set.call(this, k, v); }; } }); await settled(B);
+    assert.strictEqual(B.w.localStorage.getItem(`pl:${LDAY}`), null, 'the write was not refused');
+    const lastOf = (id) => games(B).filter((q) => +q.game.id === +id).pop();
+    const has = (why) => { for (const fx of FX) { const q = lastOf(fx.g.id); assert.ok(q.lines && Object.keys(q.lines).length >= 8, `${why}: game ${fx.g.id} was projected with ${q.lines ? Object.keys(q.lines).length : 'no'} lines`); } };
+    has('first look');
+    // later looks reach the second game only (the first game's lines do not load): the first game's look must not be lost to them
+    B.w.__props = (rows, g) => (+g === +FX[0].g.id ? [] : rows);
+    await again(B); has('a later look at the other game');
+    await again(B); has('two later looks at the other game');
+    B.state.phase = 'live'; await again(B, 40); has('once the games are on');
+    assert.strictEqual(hardOf(B).length, 0, hardOf(B).slice(0, 3).join(' | '));
+  });
+  await test('a server clock that never answers is waited for once, by all the first cards together, and never again', async () => {
+    const B = await lineBoot('pre', { hook: (w) => { const f = w.fetch; w.fetch = (u, o) => (o && o.method === 'HEAD' ? new Promise(() => {}) : f(u, o)); } }); await settled(B);
+    assert.strictEqual(B.w.__clockWaits, 1, `the 2.5 s wait for the clock ran ${B.w.__clockWaits} times on the first pass`);
+    await again(B); await again(B);
+    assert.strictEqual(B.w.__clockWaits, 1, `the 2.5 s wait for the clock ran ${B.w.__clockWaits} times over three passes`);
+    assert.strictEqual(B.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept without the server\'s time');
+    assert.ok(games(B).length >= 3 * FX.length && games(B).every((q) => !q.lines));
+    // a clock that answers gets its one wait too, and then the look is kept
+    const C = await lineBoot('pre'); await settled(C);
+    assert.ok(C.w.__clockWaits <= 1 && C.w.localStorage.getItem(`pl:${LDAY}`) != null);
+    assert.strictEqual(hardOf(B, C).length, 0, hardOf(B, C).slice(0, 3).join(' | '));
   });
   await test('a game gets its kept lines whatever day is on screen: a projection that finishes after the day arrow was tapped still has them, and saves the numbers that were shown', async () => {
     let gate = null, waiting = 0;
@@ -833,13 +874,13 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       L.setItem(`slate:v6:${back(40)}`, '[]'); L.setItem(`slate:v6:${back(10)}`, '[]'); L.setItem(`slate:v5:${back(4)}`, '[]'); // (v5: saved by the version before)
       L.setItem(`slate:last:${back(3)}`, '[]'); L.setItem(`slate:last:${back(1)}`, '[]');
       L.setItem(`tip:${back(5)}`, '{}'); L.setItem(`tip:${back(1)}`, '{}'); L.setItem(`overrides:${back(9)}`, '{}');
-      L.setItem(`pl:${back(5)}`, '{}'); L.setItem(`pl:${back(1)}`, '{}');
+      L.setItem(`pl:${back(5)}`, '{}'); L.setItem(`pl:${back(3)}`, '{}'); L.setItem(`pl:${back(1)}`, '{}');
       L.setItem('glines:111', JSON.stringify({ at: Date.now() - 9 * 86400000, c: {} })); L.setItem('glines:222', JSON.stringify({ at: Date.now() - 3600000, c: {} }));
       L.setItem('ledger:v1', '[]'); L.setItem('settings', '{}');
     });
     const has = (k) => B.w.localStorage.getItem(k) != null;
     for (const k of [`slate:v6:${back(40)}`, `slate:v5:${back(4)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, `pl:${back(5)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
-    for (const k of [`slate:v6:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, `pl:${back(1)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
+    for (const k of [`slate:v6:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, `pl:${back(1)}`, `pl:${back(3)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
   });
   await test('a number of calendar days from today is right in the hour around a daylight-saving change', async () => {
     const vm = require('vm');

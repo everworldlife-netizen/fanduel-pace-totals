@@ -1392,12 +1392,10 @@ pra: [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
 const sgn1 = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`;
 const pct0 = (x) => `${Math.round(x * 100)}%`;
 /** His projected stat per remaining minute (what one minute more or less is worth). */
-// (v20) c.proj is the app's OWN number. Where the books' line is inside the shown number with share w, a reason that moves
-// the app's own number by x moves the shown one by (1 - w) x: c.keep[s] = 1 - w, so every amount a reason states is the
-// amount that is really in the number on the card.
-const keepOf = (c, s) => (c.keep && c.keep[s] != null ? c.keep[s] : 1);
-function perMin(c, s) { return c.minProj > 0.5 ? (Math.max(c.proj[s] - c.now[s], 0) / c.minProj) * keepOf(c, s) : 0; }
-function remOf(c, s) { return Math.max(c.proj[s] - c.now[s], 0) * keepOf(c, s); }
+// (v20) c.proj is the app's OWN number: every reason and every amount below is the app's own read. For a player whose shown
+// number has the books' line inside, the sentences say "the app's own number" where they said "his projection" (ownWords).
+function perMin(c, s) { return c.minProj > 0.5 ? Math.max(c.proj[s] - c.now[s], 0) / c.minProj : 0; }
+function remOf(c, s) { return Math.max(c.proj[s] - c.now[s], 0); }
 /** "+1.8 pts, +0.6 reb" for a change of dmin minutes. */
 function minEffect(c, dmin) {
 const parts = [['pts', 'pts'], ['reb', 'reb'], ['ast', 'ast']].map(([s, l]) => [dmin * perMin(c, s), l]).filter(([v]) => Math.abs(v) >= 0.2);
@@ -1405,6 +1403,9 @@ return parts.length ? parts.map(([v, l]) => `${sgn1(v)} ${l}`).join(', ') : `${s
 }
 const helps = (what) => `Helps his picks: about ${what} on his projection.`;
 const cuts = (what) => `Already taken off his number: about ${what}. Any edge shown is after this.`;
+// (v20) the same reasons for a player with the books' line inside his number: they moved the app's own number, and the line
+// then counts on top (the sheet's "THE BOOKS' LINE INSIDE THE NUMBER" gives both). Nothing is rescaled: the amounts are exact.
+const ownWords = (items) => items.map((x) => (x && typeof x.so === 'string' ? { ...x, so: x.so.replace(/on his projection\./g, 'on the app\'s own number.').replace(/Already taken off his number:/g, 'Already taken off the app\'s own number:').replace(/pts on his number\./g, 'pts on the app\'s own number.') } : x));
 const lastName = (n) => { const w = String(n).split(' ').filter((x) => !/^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(x)); return w[w.length - 1] || String(n); };
 
 function explain(p, r, c) {
@@ -2297,7 +2298,8 @@ const lineOn = TUNE.lineWPts > 0 || TUNE.lineWReb > 0 || TUNE.lineWAst > 0 || TU
 const lineW = { pts: TUNE.lineWPts, reb: TUNE.lineWReb, ast: TUNE.lineWAst, fg3m: TUNE.lineW3 };
 const lineAge = (lead) => (typeof lead === 'number' && Number.isFinite(lead) ? clamp((TUNE.lineFar - Math.max(lead, 0)) / Math.max(TUNE.lineFar - TUNE.lineNear, 1), 0, 1) : 0);
 const lineFade = !lineOn || !o.lines || st.phase === 'final' ? 0 : st.phase === 'pre' ? 1 : TUNE.lineLive > 0 && st.period <= 4 ? clamp(1 - el / TUNE.lineLive, 0, 1) : 0;
-const lineLead = typeof o.toTip === 'number' ? o.toTip : typeof o.toTip === 'string' && o.toTip.trim() !== '' ? +o.toTip : NaN;
+const lineLeadOf = (x) => (typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? +x : NaN); // minutes before the tip, or not known
+const lineLead = lineLeadOf(o.toTip);
 const lineMap = lineFade > 0 ? (Array.isArray(o.lines) ? consensusLines(o.lines) : o.lines) || {} : null;
 const lineK = {};
 if (st.phase === 'pre' && o.lines && (TUNE.lineNoK !== 1 || TUNE.lineYesK !== 1)) {
@@ -2502,7 +2504,7 @@ let s0 = 0; for (let i = 0; i < N; i++) s0 += a[i];
 const rem = s0 / N - base; // what the app alone has still to come, on average
 // (next to nothing still to come: he is done, or we give him no minutes. A line does not make a night; the share comes in
 // smoothly between a quarter and three quarters of a unit still to come, so nothing switches on or off between two moments)
-const w = lineW[k] * lineFade * lineAge(c.toTip != null ? +c.toTip : lineLead) * clamp((rem - 0.25) / 0.5, 0, 1);
+const w = lineW[k] * lineFade * lineAge(c.toTip != null ? lineLeadOf(c.toTip) : lineLead) * clamp((rem - 0.25) / 0.5, 0, 1);
 if (!(w >= 0.02)) continue; // a share too small to print is not used at all
 const srt0 = a.slice().sort(); // (a typed array sorts by number)
 let m0 = 0, c0 = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m0 += srt0[q]; c0++; }
@@ -2579,7 +2581,7 @@ const stints = r.stints || [];
 const lastSt = stints[stints.length - 1];
 const cx = { phase: st.phase, el, left, minProj: minSum / N, minShown: landW && landW.min > 0 ? (1 - landW.min) * (minSum / N) + landW.min * Math.max(mid.min - r.min, 0) : minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
 pace: seasonPace, livePace, mk, b2b: b2b[p.tm], doubt: st.phase === 'pre' ? doubt[r.pid] || null : null, lineup, inList: availIn.has(+r.pid), oppCtx: ctx[p.opp], lgP3: lgZ.three,
-b2b: b2b[p.tm], proj: own, keep: Object.keys(lineIn).length ? Object.fromEntries(Object.entries(lineIn).map(([k, x]) => [k, 1 - x.share])) : null, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
+b2b: b2b[p.tm], proj: own, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
 // vs a normal night from this point: his usual remaining minutes at his usual scoring rate
 const usualRem = st.phase === 'live' ? (p.rotInfo ? p.rotInfo.remMap : (p.mpg * left) / 48) : null;
 const remPts = own.pts - r.pts, remMinP = minSum / N;
@@ -2587,8 +2589,9 @@ const baseRem = usualRem != null ? p.ratePM.pts * usualRem : null;
 cx.shift = usualRem != null ? { usualRem, remMin: remMinP, baseRem, rem: remPts, dMin: (remMinP - usualRem) * p.ratePM.pts, dRate: remPts - remMinP * p.ratePM.pts } : null;
 cx.fade = st.phase === 'live' ? fadeCheck(p, r, cx, shown, patF) : null;
 const ctxItems = contextItems(p, r, cx);
-const why = done ? [{ icon: '🟥', key: 'done', effect: 'down', text: r.ejected ? 'Ejected: he is done for the night.' : r.pf >= 6 ? 'Fouled out: he is done for the night.' : 'You marked him out: he is done for the night.', so: `His projection is locked at what he has now${r.ejected || r.pf >= 6 ? ', so skip any pick that needs more from him.' : ', and his minutes go to his teammates.'}` }]
+const why0 = done ? [{ icon: '🟥', key: 'done', effect: 'down', text: r.ejected ? 'Ejected: he is done for the night.' : r.pf >= 6 ? 'Fouled out: he is done for the night.' : 'You marked him out: he is done for the night.', so: `His projection is locked at what he has now${r.ejected || r.pf >= 6 ? ', so skip any pick that needs more from him.' : ', and his minutes go to his teammates.'}` }]
 : st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(explain(p, r, cx), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
+const why = Object.keys(lineIn).length ? ownWords(why0) : why0;
 if (cx.fade && !done) flags.push('fade');
 if (cx.fade === null && st.phase === 'live' && p.lu && r.min >= 8 && flags.includes('hot') && p.pat.x.pts[PAT_IX.uReal] >= 1) flags.push('realhot');
 results.push({
