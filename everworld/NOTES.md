@@ -43,14 +43,14 @@ about that is measured in "Version 19 (Nov 14)": read it before changing how pic
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 01:00 UTC, Nov 17)
+### Where the build stands at this commit (updated 05:00 UTC, Nov 17)
 
 **PUBLISHED on Nov 14, 2026 at 23:26 UTC: Courtside 19 (`ca-shell-v19`, Space commit `3c3aaa8`). Full story: "Version 19
 (Nov 14)" below.**
 
 **Nov 16: a version 20 candidate (the books' line inside the points and rebounds numbers) is built in `cs/build`, switched
 OFF and NOT published. AKARA SAID YES on Nov 17 at 00:55 UTC: it is published after the blind check on the Nov 16 games
-passes (rule written down before the games ended) and the review's findings are fixed. See "Version 20 candidate (Nov 16)". With the switch off `cs/build`
+passes (rule written down before the games ended). THREE REVIEWS were run on the night of the yes (engine and app, then the fixes, then the last fixes) and every finding is fixed: engine 103 checks, app 55, GG 8/10/15, broken copies all caught (`node tools/mut20.js engine|app`). The method and settings were corrected and frozen again at 02:30 UTC, before any Nov 16 result was fetched; what changed after that is wording, storage and timing only (the three-night numbers are the same to the last digit). See "Version 20 candidate (Nov 16)". With the switch off `cs/build`
 gives the numbers of the published 19; the files differ from `baseline/cs` (engine.js, app.js, data.js).** What it adds: the 9-in-10 number on every card, a report
 card that grades what the app said before each tip, FanDuel's own prices on the player sheet. GG Winner is unchanged
 (3.11.1). The nightly recording of the books' lines goes on (see "The books' player lines"): snapshots through the day,
@@ -1598,7 +1598,7 @@ graded" below; this section is the build.
   11 against 13 of 132 game-stages). The reviewer's small-sample note (where the line's pace sat 3 to 6 points above
   the app's own number the pull made the miss worse from 18:00: n 14 and n 44) is a lead, not a finding.
   Tests after it: engine 103 checks, app 55, GG 8, 10, 15. Broken copies (`node tools/mut20.js engine|app`): engine 20
-  of 20 caught, app 22 of 22 caught.
+  of 20 caught, app 22 of 22 caught (after the third review the list holds 25 engine and 29 app changes, all caught).
 - THE THIRD REVIEW (Nov 17, 04:00 to 04:35 UTC, narrow, on the second round of fixes): nothing that breaks the app at
   load or on a common path (both suites also passed on a copy with the eight release values written in and
   `LINE_SHIPPED = true`: 103 and 55). Four low findings, fixed: (1) a change the engine holds (a line above about 2.3
