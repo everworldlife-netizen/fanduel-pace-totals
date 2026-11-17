@@ -2,7 +2,7 @@
 /* "Comes true" numbers: for every player and stat, the highest whole number he reaches with a stated chance (the engine's
  * own calibrated chances, every whole number, not only the ladder rungs), against what he really finished with.
  *   node tools/research/v19-02-sure.js --seasons 2026 --from 2026-01-18 --lessons data/lessons/P1H-v17a.json [--to] [--stages rep,0,12,24,36]
- *        [--levels 0.75,0.8,0.85,0.9,0.95] [--jobs 4] [--nsims 500] [--engine cs/build/engine.js] [--out file.json] [--tune k=v]
+ *        [--levels 0.75,0.8,0.85,0.9,0.95] [--jobs 4] [--nsims 500] [--engine cs/build/engine.js] [--out file.json] [--tune k=v] [--lines closing]
  * Prints per stage, stat and level: statements made, how many came true, how big the number is next to the projection.
  * Before the tip a player who does not play is not graded ("if he plays"); once the game is on everyone shown is graded.
  */
@@ -16,7 +16,7 @@ const arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] :
 const opt = {
   engine: arg('--engine', 'cs/build/engine.js'), seasons: String(arg('--seasons', '2027')).split(',').map(Number), from: arg('--from', '0000'), to: arg('--to', '9999'),
   stages: String(arg('--stages', 'rep,0,6,12,18,24,30,36,42')).split(',').map((x) => (x === 'rep' ? 'rep' : Number(x))), nsims: +arg('--nsims', 500), lessons: arg('--lessons', 'builtin'),
-  levels: String(arg('--levels', 'e,0.75,0.9,0.95')).split(',').map((x) => (x === 'e' ? 'e' : Number(x))) /* e = the engine's own 9-in-10 number (p.sure) */, jobs: +arg('--jobs', 4), out: arg('--out', null), tune: arg('--tune', ''), shard: arg('--shard', null), minMin: +arg('--min', 0),
+  levels: String(arg('--levels', 'e,0.75,0.9,0.95')).split(',').map((x) => (x === 'e' ? 'e' : Number(x))) /* e = the engine's own 9-in-10 number (p.sure) */, jobs: +arg('--jobs', 4), out: arg('--out', null), tune: arg('--tune', ''), shard: arg('--shard', null), minMin: +arg('--min', 0), lines: arg('--lines', 'off') /* closing | first | <minutes>: hand the recorded books' lines to the engine (with --tune lineWPts=... it puts them inside the number) */,
 };
 const STATS = ['pts', 'reb', 'ast', 'fg3m', 'pra'];
 const statOf = (r, k) => (k === 'pra' ? (r.pts || 0) + (r.reb || 0) + (r.ast || 0) : r[k] || 0);
@@ -42,14 +42,14 @@ function work(shard, n) {
   const pick = S.games.filter((it) => it.g.date >= opt.from && it.g.date <= opt.to && !it.g.postseason);
   for (const it of pick) {
     if (k0++ % n !== shard) continue;
-    const ctx = R.contextFor(E, S, it, { avail: 'tip' });
+    const ctx = R.contextFor(E, S, it, { avail: 'tip', lines: opt.lines });
     if (!ctx.ok) continue;
     const plays = L.readJSON(path.join(L.DATA, 'plays', `${it.g.id}.json.gz`));
     const rows = it.truth || it.log.rows;
     const byName = {}; for (const [pid, r] of Object.entries(rows)) byName[`${r.team}:${E.norm(r.name)}`] = +pid;
     for (const el of opt.stages) {
       const m = R.momentAt(E, it.g, plays, el === 'rep' ? 0 : el);
-      const proj = E.projectGame({ ...ctx.base, ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season) });
+      const proj = E.projectGame({ ...ctx.base, ...(ctx.lines ? { lines: ctx.lines, toTip: ctx.lines.toTip } : {}), ...(el === 'rep' ? { avail: ctx.availReport } : {}), game: m.game, plays: m.plays, nsims: opt.nsims, seed: it.g.id, patterns, sitPrior: sitOf(it.season) });
       const pre = proj.state.phase === 'pre';
       for (const p of proj.players) {
         const rid = rows[p.pid] ? +p.pid : (+p.pid < 0 ? byName[`${p.team}:${E.norm(p.name)}`] : undefined);
