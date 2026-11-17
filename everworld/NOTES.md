@@ -1462,6 +1462,12 @@ graded" below; this section is the build.
   3. If points are closer at only one of the two stages, or at neither: nothing is published that day; Akara gets the
      four nights as they are and the decision is taken with him.
   4. The stages during a game (6:00, 12:00, halftime) are reported, not part of the rule: one night of them is noise.
+- The check is one command: `tools/blind20.sh 2026-11-16` (after `tools/nightly.sh 2026-11-16` has fetched the night).
+  It replays the blind night and all nights with the line off and on and prints the rule's verdict
+  (`tools/blind20cmp.js`). Dry run on Nov 15 as if blind reproduced the three-night table below to the last digit.
+- The 9-in-10 number with the line inside (`tools/research/v19-02-sure.js --lines closing --tune ...`, three nights, 22
+  games, off → on): points before lineups 92.6% of 282 → 94.7% of 283, tip-off 91.2% of 330 → 92.1% of 330, 6:00
+  90.6 → 91.7, 12:00 94.0 → 93.5, halftime 91.2 → 91.1; rebounds 96.8 → 97.5 and 95.9 → 96.5. It keeps its promise.
 - Done on the evening of the yes, before the check: two independent reviewers on the diff with the settings on (engine,
   app), and a switched-on copy of the build (scratch, not in the repo) run at Pixel 9a size against the real feeds of
   Nov 16 across two tips (the sheet's "THE BOOKS' LINE INSIDE THE NUMBER", the Edges sentence, the kept lines).
