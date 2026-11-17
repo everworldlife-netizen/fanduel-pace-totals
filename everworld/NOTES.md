@@ -1597,7 +1597,8 @@ graded" below; this section is the build.
   shown now, both with the line as it stood (true as stated; with the line it appears in different games than without:
   11 against 13 of 132 game-stages). The reviewer's small-sample note (where the line's pace sat 3 to 6 points above
   the app's own number the pull made the miss worse from 18:00: n 14 and n 44) is a lead, not a finding.
-  Tests after it: engine 103 checks, app 55, GG 8, 10, 15; broken copies: engine 20 of 20 caught; app: see below.
+  Tests after it: engine 103 checks, app 55, GG 8, 10, 15. Broken copies (`node tools/mut20.js engine|app`): engine 20
+  of 20 caught, app 22 of 22 caught.
 - FIRST VERSION (Nov 16, before the reviews; kept for the record, its numbers are NOT those of the build): the shown
   number was moved toward the line by the share and every night multiplied (rounding carried), `lineLive` 48, the
   share by minutes to the tip at the moment of the projection. Three nights, off → on: before lineups points
