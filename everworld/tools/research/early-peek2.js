@@ -1,0 +1,11 @@
+'use strict';
+const L = require('../lib');
+const R = require('../replay');
+const G = L.readJSON(L.ROOT + '/data/derived/games-2026.json.gz');
+console.log(G.length, 'games;', G.filter((it) => R.boxOk(it)).length, 'complete;', G.filter((it) => it.g.postseason).length, 'postseason');
+const it = G.find((x) => R.boxOk(x));
+console.log(JSON.stringify(it.g).slice(0, 800));
+console.log(Object.keys(it.log));
+const rows = Object.entries(it.log.rows).slice(0, 4);
+for (const [pid, r] of rows) console.log(pid, JSON.stringify(r));
+console.log(JSON.stringify(it.market), JSON.stringify(it.lists[it.g.home_team.abbreviation]).slice(0, 600));

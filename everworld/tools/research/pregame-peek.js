@@ -1,0 +1,20 @@
+'use strict';
+const L = require('../lib');
+const R = require('../replay');
+const path = require('path');
+const rows = L.readJSON(path.join(L.DATA, 'runs', 'research-2026.rows.json.gz'));
+console.log('rows', rows.length);
+const byG = {};
+for (const r of rows) { const k = r.un ? 'un:' + r.el : r.g; byG[k] = (byG[k] || 0) + 1; }
+console.log(byG);
+console.log(JSON.stringify(rows.find((r) => r.g === 'rep' && r.st === 1)));
+console.log(JSON.stringify(rows.find((r) => r.g === 'pre' && r.st === 0 && r.ac)));
+console.log(JSON.stringify(rows.find((r) => r.un)));
+const games = L.readJSON(path.join(L.DATA, 'derived', 'games-2026.json.gz'));
+console.log('games', games.length, 'ok', games.filter((it) => R.boxOk(it)).length);
+const it = games.find((x) => R.boxOk(x));
+console.log(JSON.stringify(it.g));
+console.log(Object.keys(it), Object.keys(it.log));
+const pr = Object.entries(it.log.rows)[0];
+console.log(JSON.stringify(pr));
+console.log(JSON.stringify(it.market), JSON.stringify(Object.values(it.lists)[0].slice(0, 14)));

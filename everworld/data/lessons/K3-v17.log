@@ -1,0 +1,4 @@
+pass 1 (minutes): 1298 games, 123s
+pass 2 (stats): 257s
+pass 3 (calibration): 396s
+lessons from 1298 games → data/lessons/K3-v17.json

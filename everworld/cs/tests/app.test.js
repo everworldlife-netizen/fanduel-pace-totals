@@ -1,0 +1,1419 @@
+/* Courtside app shell test: boots the real index.html + scripts in a simulated phone browser (jsdom) on a real
+ * fixture game, with the data feeds replaced by the fixture. Checks the screens render, the product wording rules
+ * hold on every screen, and the edge record saves and grades.
+ *   node cs/tests/app.test.js        (needs: cd nm && npm install)
+ */
+'use strict';
+const path = require('path');
+const fs = require('fs');
+const zlib = require('zlib');
+const assert = require('assert');
+const { JSDOM } = require(path.join(__dirname, '..', '..', 'nm', 'node_modules', 'jsdom'));
+const BUILD = process.env.CS_BUILD ? path.resolve(process.env.CS_BUILD) : path.join(__dirname, '..', 'build'); // CS_BUILD=<folder> tests another build
+const FX = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', 'games.json.gz'))).toString('utf8'));
+const read = (f) => fs.readFileSync(path.join(BUILD, f), 'utf8');
+// The checks wait fixed times for the app to do its work. Those times were set on a machine that runs one projection of a
+// fixture game (2,000 simulations) in about 280 ms; on a slower one every wait is stretched by the same factor (never
+// shortened; CS_SLOW=<factor> sets it by hand). A slow machine must not fail a check, and must not pass one either.
+const SLOW = (() => {
+  if (+process.env.CS_SLOW > 0) return +process.env.CS_SLOW;
+  try {
+    const E0 = require(path.join(BUILD, 'engine.js')), fx = FX[0];
+    const game = { ...fx.g, status_state: 'scheduled', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+    const once = () => { const t = process.hrtime.bigint(); E0.projectGame({ ...fx.base, game, plays: [], nsims: 2000, seed: 1, patterns: E0.patBeta(null) }); return Number(process.hrtime.bigint() - t) / 1e6; };
+    once(); // (the first run also compiles)
+    const ms = Math.min(once(), once());
+    return Math.min(4, Math.max(1, (1.25 * ms) / 280));
+  } catch { return 1; }
+})();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms * SLOW));
+let pass = 0;
+const test = async (name, fn) => { if (process.env.ONLY && !name.includes(process.env.ONLY)) return; try { await fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
+
+// (windows are never closed during the run: closing one in the middle of the app's own work makes the simulated browser
+// throw from that pending work later; the process exit at the end takes them all down)
+async function boot(phase, hook, pre) {
+  const html = read('index.html').replace(/<script src="[^"]+"><\/script>/g, '').replace(/<link rel="stylesheet"[^>]*>/g, '');
+  const dom = new JSDOM(html, { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only', pretendToBeVisual: true });
+  const w = dom.window;
+  const errors = [];
+  w.addEventListener('error', (e) => errors.push(String(e.error || e.message)));
+  w.console = { ...console, warn: (...a) => errors.push('warn: ' + a.map(String).join(' ')), error: (...a) => errors.push('error: ' + a.map(String).join(' ')), log: () => {} };
+  // the network is off in tests, except the server's clock (the Date header of a same-origin file); a test can set w.__serverNow
+  w.fetch = async (u, o) => { if (o && o.method === 'HEAD') return { ok: true, headers: { get: (k) => (String(k).toLowerCase() === 'date' ? new Date(w.__serverNow ? w.__serverNow() : Date.now()).toUTCString() : null) } }; throw new Error('network is off in tests'); };
+  if (pre) pre(w); // a test can seed saved data before the data module starts
+  w.scrollTo = () => {}; // the simulated browser has no scrolling
+  w.eval(read('engine.js'));
+  w.eval(read('sitprior.js').replace(/^self\./m, 'window.'));
+  w.eval(read('data.js'));
+  const E = w.Engine, date = FX[0].g.date;
+  const state = { phase };
+  // the live moment: halftime, unless a test sets state.cut = { per, clock, label } (say { per: 4, clock: '6:00', label: 'Q4 6:00' })
+  const cut = () => state.cut || { per: 2, clock: '0:00', label: 'Half' };
+  const livePs = (fx) => { const c = cut(), left = E.clockSec(c.clock); return fx.plays.filter((p) => p.period < c.per || (p.period === c.per && E.clockSec(p.clock) >= left)); };
+  const rowOf = (fx) => {
+    if (state.phase === 'final') return fx.g;
+    if (state.phase === 'pre') return { ...fx.g, status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+    const c = cut(), ps = livePs(fx);
+    const bx = E.boxFromPlays(ps, c.per, c.clock), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+    return { ...fx.g, status_state: 'in', display_status: c.label, status: c.label, period: c.per, time: c.label, visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
+  };
+  const fxOf = (id) => FX.find((x) => +x.g.id === +id);
+  // the data feeds, answered from the fixture
+  Object.assign(w.DB, {
+    etDate: (o = 0) => w.DB.addDays(date, o),
+    slate: async (d) => (d === date ? FX.map(rowOf) : []),
+    lastSeasonPriors: async () => Object.assign({}, ...FX.map((x) => x.base.priors.last)),
+    currentSeasonPriors: async () => Object.assign({}, ...FX.map((x) => x.base.priors.cur)),
+    injuries: async () => [], teamStats: async () => FX[0].base.teams, gameLines: async () => [],
+    linesFor: (g) => fxOf(g.id).base.market,
+    teamLogs: async () => { const seen = new Set(), out = []; for (const x of FX) for (const l of x.base.logs) if (!seen.has(l.id)) { seen.add(l.id); out.push(l); } return out; },
+    livePlays: async (g) => { const fx = fxOf(g.id); return state.phase === 'final' ? fx.plays : livePs(fx); },
+    plays: async (id) => fxOf(id).plays,
+    availability: async (g) => fxOf(g.id).base.avail,
+    lineupFor: async (g) => fxOf(g.id).base.avail,
+    playersLogs: async () => ({}), espnInjuries: async () => ({}),
+    // book lines two points under each current projection: these become plus edges
+    props: async (gid) => {
+      const fx = fxOf(gid), out = [];
+      const m = { game: rowOf(fx), plays: state.phase === 'pre' ? [] : livePs(fx) };
+      const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 300, seed: fx.g.id, patterns: E.patBeta(null) });
+      for (const p of P.players.slice(0, 8)) out.push({ player_id: p.pid, prop_type: 'points', line_value: String(Math.max(0.5, Math.floor(p.proj.pts - 3) + 0.5)), vendor: 'testbook', market: { type: 'over_under', over_odds: -110, under_odds: -110 } });
+      return out;
+    },
+  });
+  // the projection worker, run in place
+  const workerSrc = read('worker.js');
+  w.Worker = class {
+    constructor() { const self = { postMessage: (m) => setTimeout(() => this.onmessage && this.onmessage({ data: m }), 0) }; this.self = self; new w.Function('self', 'importScripts', 'Engine', workerSrc)(self, () => {}, E); if (w.SIT_PRIOR_TXT) self.SIT_PRIOR_TXT = w.SIT_PRIOR_TXT; }
+    postMessage(m) { setTimeout(() => this.self.onmessage({ data: m }), 0); }
+  };
+  if (hook) hook(w, state, fxOf); // a test can swap feeds or saved data before the app starts
+  w.eval(read('app.js'));
+  return { w, dom, errors, state, go: async (hash, ms = 250) => { w.location.hash = hash; w.dispatchEvent(new w.HashChangeEvent('hashchange')); await sleep(ms); return w.document.getElementById('view'); } };
+}
+const visibleText = (w) => w.document.body.textContent.replace(/\s+/g, ' ');
+const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
+
+(async () => {
+  console.log('Courtside app shell (simulated phone browser)');
+  if (SLOW > 1.05) console.log(`  (this machine is slower than the one the waits were set on: every wait is stretched ×${SLOW.toFixed(2)})`);
+  let A, callsAtTip = null; // what the app had said when the games tipped (set by the pregame tests)
+  await test('boots before tip-off and projects the fixture games', async () => {
+    A = await boot('pre');
+    await sleep(2500);
+    const v = await A.go('#/games', 400);
+    assert.ok(/[A-Z]{3}/.test(v.textContent), 'no games on the board');
+    const hard = A.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, `page errors: ${hard.slice(0, 3).join(' | ')}`);
+  });
+  await test('every screen renders and never shows the words "over" or "under"', async () => {
+    for (const h of ['#/edges', '#/games', '#/scorers', '#/combos', '#/settings', `#/game/${FX[0].g.id}`]) {
+      const v = await A.go(h, 350);
+      assert.ok(v.textContent.trim().length > 40, `${h} is empty`);
+      const bad = banned(visibleText(A.w));
+      assert.strictEqual(bad.length, 0, `${h} shows "${bad[0]}": ${(visibleText(A.w).match(/.{30}\b(over|under)\b.{30}/i) || [''])[0]}`);
+    }
+  });
+  await test('the Edges screen says what an edge is and is not', async () => {
+    const v = await A.go('#/edges', 300);
+    assert.ok(/An edge is the app's read against the books' line, not a promise/.test(v.textContent), 'the Edges screen has no plain line about what an edge is');
+  });
+  await test('settings shows the accuracy report and the edge record', async () => {
+    const v = await A.go('#/settings', 300);
+    assert.ok(/ACCURACY REPORT/.test(v.textContent), 'no accuracy report');
+    assert.ok(/EDGE RECORD/.test(v.textContent), 'no edge record');
+  });
+  await test('plus edges shown before the game are saved in the edge record', async () => {
+    const rows = JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]');
+    assert.ok(rows.length >= 3, `only ${rows.length} edges saved`);
+    for (const r of rows) { assert.ok(r[6] >= 0.55 && r[7] > 0 && r[7] < 1, 'bad chances in a saved edge'); assert.strictEqual(r[8], 0); assert.strictEqual(r[10], null); }
+  });
+  await test('before the tip every card carries its 9-in-10 numbers, never above the projection, and the player sheet explains them', async () => {
+    let rows = 0, numbers = 0;
+    for (const fx of FX) {
+      const v = await A.go(`#/game/${fx.g.id}`, 500);
+      for (const c of v.querySelectorAll('[data-act="player"]')) {
+        const sure = c.querySelector('.surerow'); if (!sure) continue;
+        rows++;
+        assert.ok(/^9 IN 10 IF HE PLAYS/.test(sure.textContent.trim()), `before the tip the strip reads "${sure.textContent}"`);
+        const proj = {}; for (const st of c.querySelectorAll('.statrow .stat')) proj[st.querySelector('small').textContent] = parseFloat(st.querySelector('.proj').textContent);
+        for (const sp of sure.querySelectorAll('span:not(.lbl)')) {
+          const m = /^(\d+)\+ (PTS|REB|AST|3PM)$/.exec(sp.textContent.trim());
+          assert.ok(m, `odd 9-in-10 text "${sp.textContent}"`);
+          assert.ok(+m[1] >= 1 && +m[1] <= proj[m[2]] + 0.5, `${c.querySelector('.pc-head b').textContent}: ${m[1]}+ ${m[2]} against a projection of ${proj[m[2]]}`);
+          numbers++;
+        }
+      }
+    }
+    assert.ok(rows >= 12 && numbers >= 30, `${rows} cards with ${numbers} 9-in-10 numbers`);
+    const v = await A.go(`#/game/${FX[0].g.id}`, 400);
+    v.querySelector('[data-act="player"] .surerow').closest('[data-act="player"]').click(); await sleep(80);
+    const sheet = A.w.document.getElementById('sheetWrap');
+    assert.ok(sheet && /9 IN 10 NUMBERS/.test(sheet.textContent), 'no 9-in-10 section on the player sheet');
+    assert.ok(/at least nine times in ten from here, if he plays/.test(sheet.textContent) && /games the app's lessons had never seen/.test(sheet.textContent) && /on the other 149 it held/.test(sheet.textContent), 'the section does not say what the number means, that it holds if he plays, or how it was checked');
+    assert.strictEqual(banned(sheet.textContent).length, 0);
+    A.w.document.querySelector('#sheetWrap [data-act="close"]').click(); await sleep(30);
+  });
+  await test('what the app says before the tip is kept on the phone for the report card', async () => {
+    const C = JSON.parse(A.w.localStorage.getItem('calls:v1') || '{}');
+    for (const fx of FX) {
+      const c = C[fx.g.id];
+      assert.ok(c && !c.r && c.d === fx.g.date && c.v === fx.g.visitor_team.abbreviation && c.h === fx.g.home_team.abbreviation, `no call kept for game ${fx.g.id}`);
+      const ps = Object.values(c.p);
+      assert.ok(ps.length >= 14, `only ${ps.length} players kept`);
+      for (const x of ps) {
+        assert.strictEqual(x.length, 19, 'a kept row is not 19 long');
+        assert.ok(typeof x[0] === 'string' && x[2] >= 6, 'a kept row without a name or under six minutes');
+        for (let i = 0; i < 4; i++) { assert.ok(Math.abs(x[3 + i] * 10 - Math.round(x[3 + i] * 10)) < 1e-9, 'a projection not kept to a tenth'); assert.ok(Number.isInteger(x[7 + i]) && x[7 + i] >= 0 && x[7 + i] <= x[3 + i] + 0.5, `${x[0]}: 9-in-10 number ${x[7 + i]} against ${x[3 + i]}`); }
+      }
+    }
+    const v = await A.go('#/settings', 300);
+    assert.ok(/CAME-TRUE RECORD/.test(v.textContent) && /Your record starts with the next game that finishes/.test(v.textContent) && /covers the last 10 days/.test(v.textContent), 'no came-true record on the settings page before any game is graded');
+    callsAtTip = A.w.localStorage.getItem('calls:v1');
+  });
+  await test('live at halftime: new projections, live edges saved once, wording rules hold', async () => {
+    A.state.phase = 'live';
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    for (const h of ['#/edges', `#/game/${FX[0].g.id}`, '#/scorers']) { await A.go(h, 350); const bad = banned(visibleText(A.w)); assert.strictEqual(bad.length, 0, `${h} shows "${bad[0]}"`); }
+    const rows = JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]');
+    assert.ok(rows.some((r) => r[8] === 1), 'no live edge saved');
+    assert.strictEqual(new Set(rows.map((r) => r[0])).size, rows.length, 'an edge was saved twice');
+  });
+  await test('during a game a 9-in-10 number is always above what he already has, and the call kept before the tip is not rewritten', async () => {
+    assert.ok(callsAtTip && callsAtTip.length > 500, 'nothing was kept before the tip');
+    let numbers = 0;
+    for (const fx of FX) {
+      const v = await A.go(`#/game/${fx.g.id}`, 500);
+      for (const c of v.querySelectorAll('[data-act="player"]')) {
+        const now = {}; for (const st of c.querySelectorAll('.statrow .stat')) now[st.querySelector('small').textContent] = parseFloat(st.querySelector('.now b').textContent);
+        if (c.querySelector('.surerow')) assert.ok(!/IF HE PLAYS/.test(c.querySelector('.surerow').textContent), 'a game in progress still says "if he plays"');
+        for (const sp of c.querySelectorAll('.surerow span:not(.lbl)')) { const m = /^(\d+)\+ (PTS|REB|AST|3PM)$/.exec(sp.textContent.trim()); assert.ok(m && +m[1] > now[m[2]], `${c.querySelector('.pc-head b').textContent}: "${sp.textContent}" with ${now[m[2]]} already`); numbers++; }
+      }
+    }
+    // (at halftime most of a player's safe number is already in his box: few marks are left above it)
+    assert.ok(numbers >= 4, `only ${numbers} live 9-in-10 numbers`);
+    assert.strictEqual(A.w.localStorage.getItem('calls:v1'), callsAtTip, 'the call kept before the tip changed during the game');
+  });
+  await test('when the game ends the saved edges are graded from the final box', async () => {
+    A.state.phase = 'final';
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    const rows = JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]');
+    const graded = rows.filter((r) => r[10] != null);
+    assert.ok(graded.length >= 3, `only ${graded.length} of ${rows.length} graded`);
+    for (const r of graded) if (r[10] >= 0) { const [gid, pid] = r[0].split(':'); const a = FX.find((x) => +x.g.id === +gid).rows[pid]; assert.strictEqual(r[11], a.pts); assert.strictEqual(r[10], a.pts > r[5] ? 1 : a.pts < r[5] ? 0 : -1); }
+    const v = await A.go('#/settings', 300);
+    assert.ok(/Edges graded/.test(v.textContent));
+    assert.strictEqual(banned(visibleText(A.w)).length, 0);
+  });
+  await test('when the game ends the report card grades every number the app gave before the tip, next to the box score', async () => {
+    const C = JSON.parse(A.w.localStorage.getItem('calls:v1') || '{}');
+    const K = ['pts', 'reb', 'ast', 'fg3m'];
+    let N = 0, H = 0;
+    const perGame = {};
+    for (const fx of FX) {
+      const c = C[fx.g.id]; assert.ok(c && c.r, `game ${fx.g.id} was not graded`);
+      let n = 0, h = 0;
+      for (const [pid, x] of Object.entries(c.p)) {
+        const a = fx.rows[pid];
+        if (!a || !(a.min > 0)) { assert.strictEqual(c.r[pid], null, `${x[0]} did not play and was graded`); continue; }
+        assert.deepStrictEqual(c.r[pid], [Math.round(a.min), a.pts, a.reb, a.ast, a.fg3m], `${x[0]}: the result kept is not the box score`);
+        K.forEach((k, i) => { if (x[7 + i] > 0) { n++; if (a[k] >= x[7 + i]) h++; } });
+      }
+      perGame[fx.g.id] = [n, h]; N += n; H += h;
+      // nobody who had a number is also listed as having had none
+      for (const e of c.x || []) assert.ok(!Object.values(c.p).some((x) => x[0] === e[0]), `${e[0]} is on the card twice`);
+    }
+    assert.ok(N >= 40, `only ${N} 9-in-10 numbers graded`);
+    for (const fx of FX) {
+      const v = await A.go(`#/game/${fx.g.id}`, 500);
+      assert.ok(/REPORT CARD/.test(v.textContent), 'a finished game shows no report card');
+      const kv = [...v.querySelectorAll('.grid3 .kv b')].map((b) => b.textContent.trim());
+      const [n, h] = perGame[fx.g.id];
+      assert.strictEqual(kv[0], String(n)); assert.strictEqual(kv[1], `${h} · ${Math.round((100 * h) / n)}%`);
+      const cells = [...v.querySelectorAll('.stat.rc')];
+      assert.ok(cells.length >= 20, `only ${cells.length} graded cells for the team on screen`);
+      for (const c of cells) {
+        const got = +c.querySelector('.proj').textContent, verdict = c.querySelector('.verdict').textContent.trim(), m = /^(\d+)\+ ([✓✗])$/.exec(verdict);
+        assert.ok(m || verdict === '–', `odd verdict "${verdict}"`);
+        if (m) { assert.strictEqual(m[2], got >= +m[1] ? '✓' : '✗', `${m[1]}+ with ${got} is marked ${m[2]}`); assert.ok(c.classList.contains(got >= +m[1] ? 'yes' : 'no')); }
+        assert.ok(/^said \d+(\.5)?$/.test(c.querySelector('.now').textContent.trim()), `odd "said" text "${c.querySelector('.now').textContent}"`);
+      }
+      const boxCards = v.querySelectorAll('[data-act="player"]');
+      assert.ok(boxCards.length >= 8 && [...boxCards].every((b) => b.closest('details.more') && !b.closest('details.more').open), 'the final box is not folded away below the report card');
+      assert.strictEqual(v.querySelectorAll('.surerow').length, 0, 'a finished game shows numbers still to reach');
+      assert.strictEqual(banned(visibleText(A.w)).length, 0);
+    }
+    const v = await A.go('#/settings', 300);
+    const card = [...v.querySelectorAll('.section-title')].find((t) => /CAME-TRUE RECORD/.test(t.textContent)).nextElementSibling;
+    const kv = [...card.querySelectorAll('.grid3 .kv b')].map((b) => b.textContent.trim());
+    assert.deepStrictEqual(kv, [String(N), `${Math.round((100 * H) / N)}%`, String(FX.length)]);
+    assert.ok(/The points projection itself, \d+ players the app gave 10\+ minutes who played/.test(card.textContent) && /within 2/.test(card.textContent) && /covers the last 10 days/.test(card.textContent), 'the record does not say how close the projection itself was, for whom, or how far back it goes');
+    assert.strictEqual(banned(visibleText(A.w)).length, 0);
+  });
+  await test('no page errors across the whole run', async () => {
+    const hard = A.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
+  await test('a finished game the phone never saw before its tip says so, and still shows the final box', async () => {
+    const B = await boot('final');
+    await sleep(2500);
+    const v = await B.go(`#/game/${FX[0].g.id}`, 500);
+    assert.ok(/No report card for this game/.test(v.textContent), 'no explanation when nothing was said before the tip');
+    assert.ok(v.querySelectorAll('[data-act="player"]').length >= 8, 'the final box is gone');
+    assert.strictEqual(v.querySelectorAll('.surerow').length, 0, 'a finished game shows numbers still to reach');
+    assert.strictEqual(B.w.localStorage.getItem('calls:v1'), null, 'a call was written for a game that had already ended');
+    assert.strictEqual(banned(visibleText(B.w)).length, 0);
+  });
+  await test('report card: a player who sat is not graded, a late addition is found by name, and FanDuel\'s price turns the safe numbers into units won or lost', async () => {
+    const fx = FX[0], v0 = fx.g.visitor_team.abbreviation;
+    const mine = Object.entries(fx.rows).filter(([, a]) => a.team === v0 && a.min >= 20).sort((a, b) => b[1].pts - a[1].pts);
+    const [pa, a] = mine[0], [pb, b] = mine[1], [, cRow] = mine[2];
+    const call = { d: fx.g.date, at: Date.now() - 3600000, v: v0, h: fx.g.home_team.abbreviation, lu: 0, p: {
+      // reaches his points number exactly (came true); FanDuel's mark at it paid -200
+      [pa]: [a.name, v0, 34, a.pts + 2, 5, 5, 2, a.pts, 0, 0, 0, a.pts, -200, 0, 0, 0, 0, 0, 0],
+      // one point short of his number (missed); FanDuel's mark at it cost the unit, his rebounds mark at +150 came in
+      [pb]: [b.name, v0, 30, b.pts + 3, b.reb, 3, 1, b.pts + 1, b.reb, 0, 0, b.pts + 1, -300, b.reb, 150, 0, 0, 0, 0],
+      // on the posted list with no play-by-play id yet: found in the box by his name
+      [-77]: [cRow.name, v0, 25, 10, 4, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      // had a number and never played
+      999999999: ['Nobody Here', v0, 18, 8, 3, 2, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } };
+    const B = await boot('final', null, (w) => { w.localStorage.setItem('calls:v1', JSON.stringify({ [fx.g.id]: call, junk: 'not a call', 12: { d: '2020-01-01', p: {} } })); });
+    await sleep(2500);
+    const C = JSON.parse(B.w.localStorage.getItem('calls:v1'));
+    assert.deepStrictEqual(Object.keys(C), [String(fx.g.id)], 'a damaged or long-gone saved call was kept');
+    const c = C[fx.g.id];
+    assert.deepStrictEqual(c.r[pa].slice(1), [a.pts, a.reb, a.ast, a.fg3m]);
+    assert.deepStrictEqual(c.r['-77'].slice(1), [cRow.pts, cRow.reb, cRow.ast, cRow.fg3m]);
+    assert.strictEqual(c.r['999999999'], null);
+    assert.ok(c.x.length >= 2 && !c.x.some((e) => [a.name, b.name, cRow.name].includes(e[0])), 'players with a number are listed as having none');
+    const v = await B.go(`#/game/${fx.g.id}`, 500);
+    const kv = [...v.querySelectorAll('.grid3 .kv b')].map((x) => x.textContent.trim());
+    // graded: A points (came true), B points (missed), B rebounds (came true), the late addition's points (1+)
+    const lateHit = cRow.pts >= 1 ? 1 : 0;
+    assert.strictEqual(kv[0], '4'); assert.strictEqual(kv[1], `${2 + lateHit} · ${Math.round((100 * (2 + lateHit)) / 4)}%`);
+    assert.ok(/Did not play, so not graded: Nobody Here\./.test(v.textContent), 'the player who sat is not listed as not graded');
+    assert.ok(/Played 10\+ minutes with no number kept before the tip/.test(v.textContent));
+    // FanDuel: -200 came in (+0.5), -300 missed (-1), +150 came in (+1.5): three plays, two came in, +1.0 units
+    assert.ok(/At FanDuel: .*3 plays, 2 came in, \+1\.0 units/.test(v.textContent.replace(/\s+/g, ' ')), `the FanDuel line reads: ${(v.textContent.replace(/\s+/g, ' ').match(/At FanDuel:.{0,160}/) || [''])[0]}`);
+    const cells = [...v.querySelectorAll('.stat.rc')].filter((x) => /[✓✗]/.test(x.textContent));
+    assert.strictEqual(cells.filter((x) => x.classList.contains('no')).length, 1 + (lateHit ? 0 : 1));
+    assert.strictEqual(banned(visibleText(B.w)).length, 0);
+    const hard = B.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
+  await test('FanDuel\'s price sits next to each mark on the player sheet with the chance it needs, and the mark under each 9-in-10 number is kept with its price', async () => {
+    const MARKS = [[5, -2000], [10, -400], [15, -150], [20, 180], [25, 500]];
+    const B = await boot('pre', (w) => {
+      const orig = w.DB.props;
+      w.DB.props = async (gid) => { const out = []; for (const r of await orig(gid)) { out.push({ ...r, vendor: 'fanduel' }, r); for (const [t, o] of MARKS) out.push({ player_id: r.player_id, prop_type: 'points', line_value: String(t), vendor: 'fanduel', market: { type: 'milestone', odds: o } });
+        // a FanDuel rebounds line far above anyone's projection: the app shows a line only when the projection is ahead of it
+        out.push({ player_id: r.player_id, prop_type: 'rebounds', line_value: '30.5', vendor: 'fanduel', market: { type: 'over_under', over_odds: 400, under_odds: -600 } }); } return out; };
+    });
+    await sleep(3000);
+    const v = await B.go(`#/game/${FX[0].g.id}`, 600);
+    let seen = 0;
+    // (the cards are drawn again when a sheet closes: take each one fresh from the page)
+    const cardCount = v.querySelectorAll('[data-act="player"]').length;
+    for (let i = 0; i < cardCount; i++) {
+      const btn = B.w.document.querySelectorAll('#view [data-act="player"]')[i]; if (!btn) break;
+      btn.click(); await sleep(60);
+      const sheet = B.w.document.getElementById('sheetWrap'), lad = sheet && sheet.querySelector('.ladder.fd');
+      if (lad) {
+        seen++;
+        for (const r of lad.querySelectorAll('.rung')) {
+          const t = parseInt(r.querySelector('span').textContent, 10), mk = MARKS.find((m) => m[0] === t), fd = r.querySelector('.fdp').textContent.replace(/\s+/g, ' ').trim();
+          if (!mk) { assert.strictEqual(fd, '', `a price on ${t}+, which FanDuel does not list`); continue; }
+          const needs = Math.round(100 * (mk[1] < 0 ? -mk[1] / (-mk[1] + 100) : 100 / (mk[1] + 100)));
+          assert.strictEqual(fd, `${mk[1] > 0 ? '+' : '−'}${Math.abs(mk[1])}needs ${needs}%`, `${t}+ reads "${fd}"`);
+        }
+        assert.ok(/FanDuel's price for that mark and the chance the price needs/.test(sheet.textContent) && /This is information, not a tip/.test(sheet.textContent), 'the price column is not explained, or reads like a tip');
+        const main = [...sheet.querySelectorAll('.book')].find((x) => /^FanDuel line/.test(x.textContent));
+        assert.ok(main && /at −110 · that price needs 52% · app says \d+%/.test(main.textContent), `FanDuel's main line reads "${main && main.textContent}"`);
+        assert.ok(![...sheet.querySelectorAll('.book')].some((x) => /30\.5/.test(x.textContent)), 'a FanDuel line the projection is behind is shown');
+        assert.strictEqual(banned(sheet.textContent).length, 0);
+      }
+      const close = B.w.document.querySelector('#sheetWrap [data-act="close"]'); if (close) close.click();
+      await sleep(40);
+    }
+    assert.ok(seen >= 4, `only ${seen} player sheets with FanDuel's prices`);
+    const c = JSON.parse(B.w.localStorage.getItem('calls:v1'))[FX[0].g.id];
+    let kept = 0;
+    for (const x of Object.values(c.p)) {
+      const want = MARKS.filter((m) => m[0] <= x[7]).pop();
+      if (x[11]) { kept++; assert.deepStrictEqual([x[11], x[12]], want, `${x[0]}: mark kept ${x[11]} at ${x[12]}, 9-in-10 number ${x[7]}`); }
+      assert.deepStrictEqual(x.slice(13), [0, 0, 0, 0, 0, 0], 'a FanDuel mark kept for a stat FanDuel had no marks on');
+    }
+    assert.ok(kept >= 3, `only ${kept} FanDuel marks kept`);
+    // a failed read of the lines must not wipe the marks already kept: the lines stop answering, then a deep-bench player is
+    // marked OUT (which projects the game again at once); everyone whose 9-in-10 numbers did not move keeps his mark and price
+    const propsOk = B.w.DB.props; B.w.DB.props = async () => [];
+    const vB = await B.go(`#/game/${FX[0].g.id}`, 500);
+    const benchCards = [...vB.querySelectorAll('[data-act="player"]')];
+    const outPid = benchCards[benchCards.length - 1].getAttribute('data-p');
+    benchCards[benchCards.length - 1].click(); await sleep(80);
+    B.w.document.querySelector('#sheetWrap [data-act="ov"][data-s="out"]').click(); await sleep(2500);
+    const c2 = JSON.parse(B.w.localStorage.getItem('calls:v1'))[FX[0].g.id];
+    assert.ok(c2.at > c.at && c.p[outPid] && !c2.p[outPid], 'the game was not projected again after a player was marked OUT');
+    let same = 0;
+    for (const [pid, x] of Object.entries(c.p)) { const y = c2.p[pid]; if (!y || !x[11] || [7, 8, 9, 10].some((i) => x[i] !== y[i])) continue; same++; assert.deepStrictEqual(y.slice(11), x.slice(11), `${x[0]}: one failed read of the lines wiped the FanDuel mark kept for the report card`); }
+    assert.ok(same >= 2, `only ${same} players with a kept mark and unchanged numbers to check`);
+    B.w.DB.props = propsOk;
+    // during a game, prices with no time on them (or older than three minutes) are left out: live means live
+    B.state.phase = 'live'; B.w.document.getElementById('refreshBtn').click(); await sleep(3000);
+    const vLive = await B.go(`#/game/${FX[0].g.id}`, 500);
+    vLive.querySelector('[data-act="player"]').click(); await sleep(80);
+    assert.ok(B.w.document.getElementById('sheetWrap') && !B.w.document.querySelector('#sheetWrap .ladder.fd') && !/FanDuel line/.test(B.w.document.getElementById('sheetWrap').textContent), 'prices of unknown age are shown beside live chances');
+    B.w.document.querySelector('#sheetWrap [data-act="close"]').click(); await sleep(30);
+    // the game ends: the safe numbers are also scored at FanDuel's prices
+    B.state.phase = 'final'; B.w.document.getElementById('refreshBtn').click(); await sleep(3000);
+    const g = JSON.parse(B.w.localStorage.getItem('calls:v1'))[FX[0].g.id];
+    let n = 0, h = 0, u = 0;
+    for (const [pid, x] of Object.entries(g.p)) { if (!x[11] || !g.r[pid]) continue; n++; if (g.r[pid][1] >= x[11]) { h++; u += x[12] < 0 ? 100 / -x[12] : x[12] / 100; } else u -= 1; }
+    const v2 = await B.go(`#/game/${FX[0].g.id}`, 500);
+    const txt = v2.textContent.replace(/\s+/g, ' ');
+    assert.ok(txt.includes(`${n} plays, ${h} came in, ${u >= 0 ? '+' : '−'}${Math.abs(u).toFixed(1)} units`), `expected ${n} plays, ${h} came in, ${u.toFixed(1)} units; the card reads: ${(txt.match(/At FanDuel:.{0,170}/) || [''])[0]}`);
+    const hard = B.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
+  // ---- version 20: the books' line inside the number
+  // The settings it is published with; until the release the build ships with every share at 0 (LINE_SHIPPED = false).
+  const LINE_REL = { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2 };
+  const LINE_OFF = { lineWPts: 0, lineWReb: 0, lineWAst: 0, lineW3: 0, lineLive: 0 };
+  const LINE_SHIPPED = true;
+  const LTIP = Date.parse(FX[0].g.datetime), LDAY = FX[0].g.date;
+  // In these tests the server's clock stands `lead` minutes before the fixture's tip (everywhere else it is a week later, so no
+  // look is ever kept there), two books post every line, and everything handed to the engine is kept in w.__sent.
+  const lineBoot = (phase, { lead = 30, tune = LINE_REL, hook } = {}) => boot(phase, (w, state, fxOf) => {
+    w.__serverNow = () => LTIP - lead * 60000;
+    if (tune) Object.assign(w.Engine.TUNE, tune);
+    const orig = w.DB.props;
+    w.DB.props = async (gid) => { const two = (await orig(gid)).flatMap((x) => [x, { ...x, vendor: 'book2' }]); return w.__props ? w.__props(two, gid) : two; };
+    const post = w.Worker.prototype.postMessage; w.__sent = [];
+    w.Worker.prototype.postMessage = function (m) { if (m && m.payload) w.__sent.push(m.payload); return post.call(this, m); };
+    // (how often the app sits out the 2.5 s it gives the server's clock)
+    const st0 = w.setTimeout; w.__clockWaits = 0; w.setTimeout = function (fn, ms, ...a) { if (ms === 2500) w.__clockWaits++; return st0.call(this, fn, ms, ...a); };
+    if (hook) hook(w, state, fxOf);
+  });
+  const later = (X, min) => { const orig = X.w.Date.now.bind(X.w.Date); X.w.Date.now = () => orig() + min * 60000; };
+  // (no fixed waits: a busy machine, or the many windows a long run leaves open, must not decide a check)
+  const until = async (cond, ms = 30000, step = 100) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (cond()) return true; await sleep(step); } return cond(); };
+  const settled = async (X, from = 0) => {
+    await until(() => { const ids = new Set(X.w.__sent.slice(from).filter((q) => q.game).map((q) => +q.game.id)); return FX.every((fx) => ids.has(+fx.g.id)); });
+    await until(() => !/spin/.test(X.w.document.getElementById('refreshBtn').className));
+    await sleep(600);
+  };
+  const again = async (X, min = 6) => { later(X, min); const n0 = X.w.__sent.length; X.w.document.getElementById('refreshBtn').click(); await settled(X, n0); };
+  const plOf = (X) => JSON.parse(X.w.localStorage.getItem(`pl:${LDAY}`) || '{}');
+  const cardPts = async (X) => { const out = {}; for (const fx of FX) { const v = await X.go(`#/game/${fx.g.id}`, 500); for (const c of v.querySelectorAll('[data-act="player"]')) out[c.getAttribute('data-p')] = parseFloat(c.querySelector('.statrow .stat .proj').textContent); } return out; };
+  const sheetOf = async (X, gid, pid) => { const v = await X.go(`#/game/${gid}`, 500); const c = [...v.querySelectorAll('[data-act="player"]')].find((x) => x.getAttribute('data-p') === String(pid)); assert.ok(c, `player ${pid} has no card`); c.click(); await sleep(80); const t = X.w.document.getElementById('sheetWrap').textContent.replace(/\s+/g, ' '); X.w.document.querySelector('#sheetWrap [data-act="close"]').click(); await sleep(30); return t; };
+  const games = (X) => X.w.__sent.filter((q) => q.game);
+  const hardOf = (...Xs) => Xs.flatMap((X) => X.errors).filter((x) => !/network is off|learn|game logs/i.test(x));
+  const SECTION = /THE BOOKS' LINE INSIDE THE NUMBER/;
+  let lineOffPts = null; // the cards with every share at 0 (set by the first of these tests)
+  await test('the books\' line inside the number, as shipped: off until the release, then the release settings; off, the lines are kept with their time and nothing on screen changes', async () => {
+    const plain = await boot('pre'); await sleep(2500);
+    const want = LINE_SHIPPED ? LINE_REL : { ...LINE_REL, ...LINE_OFF };
+    for (const [k, v] of Object.entries(want)) assert.strictEqual(plain.w.Engine.TUNE[k], v, `${k} is ${plain.w.Engine.TUNE[k]}, the ${LINE_SHIPPED ? 'release' : 'candidate'} has ${v}`);
+    const off = await lineBoot('pre', { tune: LINE_OFF }); await settled(off);
+    lineOffPts = await cardPts(off);
+    const kept = plOf(off);
+    assert.strictEqual(Object.keys(kept).length, FX.length, 'the books\' lines were not kept for every game');
+    for (const r of Object.values(kept)) { assert.ok(Object.keys(r.m).length >= 8); for (const v of Object.values(r.m)) { assert.ok(v[0] > 0 && v[1] === 2 && v[2] === 2, `kept ${JSON.stringify(v)}`); assert.ok(Math.abs(v[3] - (LTIP - 30 * 60000)) < 120000, `a line seen 30 minutes before the tip is stamped ${new Date(v[3]).toISOString()}`); } }
+    const pid = Object.keys(Object.values(kept)[0].m)[0].split(':')[0], gid = Object.keys(kept)[0];
+    assert.ok(!SECTION.test(await sheetOf(off, gid, pid)), 'with every share at 0 the sheet says the line is inside the number');
+    assert.ok(!/books' own line counts for most/.test((await off.go('#/edges', 400)).textContent));
+    assert.ok(!/books' own points line counts too/.test((await off.go('#/scorers', 400)).textContent), 'with every share at 0 the Scorers screen says the books\' line counts');
+    assert.ok(!/books' lines it had kept/.test((await off.go('#/settings', 400)).textContent), 'with every share at 0 Settings says last night was replayed with kept lines');
+    assert.strictEqual(hardOf(plain, off).length, 0, hardOf(plain, off).slice(0, 3).join(' | '));
+  });
+  await test('the books\' line inside the number, switched on: lined players move three quarters of the way, the sheet, the card, the report card and the Edges screen agree, and an older look counts for less', async () => {
+    if (!lineOffPts) { const off0 = await lineBoot('pre', { tune: LINE_OFF }); await settled(off0); lineOffPts = await cardPts(off0); } // (when this check is run alone)
+    const on = await lineBoot('pre'); await settled(on);
+    const onPts = await cardPts(on), kept = plOf(on);
+    let moved = 0, still = 0;
+    for (const rec of Object.values(kept)) for (const [k, v] of Object.entries(rec.m)) {
+      const [pid, stat] = k.split(':'); if (stat !== 'pts' || lineOffPts[pid] == null) continue;
+      // (cards show halves: three quarters of the way from the app's own number to the line, within the rounding)
+      const want = 0.25 * lineOffPts[pid] + 0.75 * v[0];
+      assert.ok(Math.abs(onPts[pid] - want) <= 0.8, `player ${pid}: ${lineOffPts[pid]} alone, line ${v[0]}, shown ${onPts[pid]} (three quarters of the way is ${want.toFixed(2)})`);
+      if (Math.abs(onPts[pid] - lineOffPts[pid]) >= 1) moved++;
+    }
+    const lined = new Set(Object.values(kept).flatMap((r) => Object.keys(r.m).map((k) => k.split(':')[0])));
+    for (const [pid, x] of Object.entries(lineOffPts)) if (!lined.has(pid)) { assert.strictEqual(onPts[pid], x, `player ${pid} has no line and moved`); still++; }
+    assert.ok(moved >= 6 && still >= 12, `${moved} lined players moved, ${still} others checked`);
+    // every line went to the engine with its own age, and nothing else about the time
+    const last = games(on).filter((q) => +q.game.id === +FX[0].g.id).pop();
+    assert.ok(last.lines && Object.keys(last.lines).length >= 8 && last.toTip === undefined);
+    for (const x of Object.values(last.lines)) assert.ok(Math.abs(x.toTip - 30) < 2 && x.n === 2 && x.books === 2, `handed to the engine: ${JSON.stringify(x)}`);
+    // the sheet: the line, the app's own number, the share, and the number as it is on the card and in the report card
+    const gid = FX[0].g.id, pid = Object.keys(kept[gid].m)[0].split(':')[0];
+    const sheet = await sheetOf(on, gid, pid);
+    const m = sheet.match(/PTS: the books' line is ([\d.]+); the app alone says ([\d.]+)\. The line counts for 75%, so the number shown is ([\d.]+)\./);
+    assert.ok(SECTION.test(sheet) && m, `the sheet does not say what the line did: ${(sheet.match(/THE BOOKS' LINE.{0,220}/) || ['(no section)'])[0]}`);
+    assert.strictEqual(+m[1], kept[gid].m[`${pid}:pts`][0]);
+    assert.ok(Math.abs(+m[3] - (0.25 * +m[2] + 0.75 * +m[1])) <= 0.45, `${m[2]} alone, line ${m[1]}, shown ${m[3]}`);
+    assert.ok(Math.abs(+m[3] - onPts[pid]) <= 0.26, `the sheet says the number shown is ${m[3]}, the card shows ${onPts[pid]}`);
+    assert.ok(/nothing when it was last seen 5 hours or more before the tip, the full share \(points 75%, rebounds 60%, assists and threes 45%\) inside the last hour\. Once the game is on the share shrinks, and it is gone by the end of the third quarter\./.test(sheet) && !/in the morning/.test(sheet), (sheet.match(/How much the books.{0,330}/) || ['(no note)'])[0]);
+    assert.ok(/Shots and usage here are the app's own read/.test(sheet), 'the shot profile does not say its counts are the app\'s own');
+    assert.strictEqual(banned(sheet).length, 0);
+    const call = JSON.parse(on.w.localStorage.getItem('calls:v1'))[gid];
+    assert.ok(call && Math.abs(call.p[pid][3] - +m[3]) <= 0.051, `the report card kept ${call && call.p[pid][3]} points, the screen showed ${m[3]}`);
+    const e = await on.go('#/edges', 400);
+    assert.ok(/the books' own line counts for most of a points number, so few plus edges are left before a game/.test(e.textContent), 'the Edges screen does not say why few edges are left');
+    assert.strictEqual(banned(visibleText(on.w)).length, 0);
+    assert.ok(/the books' own points line counts too/.test((await on.go('#/scorers', 400)).textContent), 'the Scorers screen lists what the number counts and leaves the line out');
+    // a look three hours old counts for half of that; one from more than five hours before the tip for nothing at all
+    const mid = await lineBoot('pre', { lead: 180 }); await settled(mid);
+    assert.ok(/The line counts for 38%, so the number shown is/.test(await sheetOf(mid, gid, pid)), 'a three-hour-old look is not at half the share');
+    assert.ok(!/books' own line counts for most/.test((await mid.go('#/edges', 400)).textContent), 'the Edges screen says the line counts for most of a points number while it counts for 38%');
+    const far = await lineBoot('pre', { lead: 400 }); await settled(far);
+    assert.ok(Object.keys(plOf(far)).length === FX.length, 'an early look was not kept');
+    assert.ok(!SECTION.test(await sheetOf(far, gid, pid)), 'a look from 400 minutes before the tip is inside the number');
+    assert.ok(!/books' own line counts for most/.test((await far.go('#/edges', 400)).textContent), 'the Edges screen says few edges are left while no line is inside any number');
+    assert.deepStrictEqual(await cardPts(far), lineOffPts);
+    assert.strictEqual(hardOf(on, mid, far).length, 0, hardOf(on, mid, far).slice(0, 3).join(' | '));
+  });
+  await test('the books\' line during a game: the look from before the tip stays as it was, the share shrinks, the sheet reads it as a pace, and by the fourth quarter it is gone; a phone that opens after the tip keeps nothing', async () => {
+    const on = await lineBoot('pre'); await settled(on);
+    const keptOn = on.w.localStorage.getItem(`pl:${LDAY}`), gid = FX[0].g.id;
+    const pid = Object.keys(JSON.parse(keptOn)[gid].m)[0].split(':')[0];
+    on.state.phase = 'live'; await again(on, 40);
+    assert.strictEqual(on.w.localStorage.getItem(`pl:${LDAY}`), keptOn, 'the lines kept before the tip were rewritten during the game');
+    const sheet = await sheetOf(on, gid, pid);
+    const m = sheet.match(/PTS: at the pace of the books' line before the tip \(([\d.]+)\) he would finish near ([\d.]+); the app alone says ([\d.]+)\. The line counts for 25% now, so the number shown is ([\d.]+)\./);
+    assert.ok(m, `at halftime the sheet reads: ${(sheet.match(/THE BOOKS' LINE.{0,260}/) || ['(no section)'])[0]}`);
+    assert.ok((+m[4] - +m[3]) * (+m[2] - +m[3]) >= 0 && Math.abs(+m[4] - +m[3]) <= Math.abs(+m[2] - +m[3]) + 0.11, `shown ${m[4]} is not between the app's own ${m[3]} and the line's pace ${m[2]}`);
+    assert.strictEqual(banned(sheet).length, 0);
+    // six minutes into the fourth quarter the line is in no number
+    on.state.cut = { per: 4, clock: '6:00', label: 'Q4 6:00' }; await again(on, 40);
+    assert.ok(!SECTION.test(await sheetOf(on, gid, pid)), 'the line is still inside the number in the fourth quarter');
+    assert.ok(games(on).pop().lines, 'the kept lines were not handed over during the game');
+    // first opened at halftime: no look from before the tip, so nothing is kept, nothing is inside, nothing is said
+    const late = await lineBoot('live', { lead: -70 }); await settled(late);
+    assert.strictEqual(late.w.localStorage.getItem(`pl:${LDAY}`), null, 'lines read during a game were kept as the look before the tip');
+    assert.ok(games(late).length > 0 && games(late).every((q) => !q.lines));
+    assert.ok(!SECTION.test(await sheetOf(late, gid, pid)));
+    assert.strictEqual(hardOf(on, late).length, 0, hardOf(on, late).slice(0, 3).join(' | '));
+  });
+  await test('the kept look: a shorter look keeps the lines it does not carry (with their older time), an empty one keeps everything, and a later look kept by another open copy survives', async () => {
+    const B = await lineBoot('pre', { lead: 90 }); await settled(B);
+    const gid = FX[0].g.id, other = FX[1].g.id, k0 = plOf(B), keys = Object.keys(k0[gid].m), one = +keys[0].split(':')[0];
+    // six minutes later the feed carries one player only for this game
+    B.w.__props = (rows, g) => (+g === +gid ? rows.filter((x) => x.player_id === one) : rows);
+    await again(B);
+    const k1 = plOf(B);
+    assert.deepStrictEqual(Object.keys(k1[gid].m).sort(), keys.slice().sort(), 'a look with fewer lines wiped the others');
+    for (const k of keys) { if (+k.split(':')[0] === one) assert.ok(k1[gid].m[k][3] - k0[gid].m[k][3] > 5 * 60000, 'the line seen again kept its old time'); else assert.deepStrictEqual(k1[gid].m[k], k0[gid].m[k], 'a line not seen again changed'); }
+    const sent = games(B).filter((q) => +q.game.id === +gid).pop().lines;
+    for (const [k, x] of Object.entries(sent)) assert.ok(Math.abs(x.toTip - (+k.split(':')[0] === one ? 84 : 90)) < 2, `${k}: handed to the engine as seen ${x.toTip.toFixed(1)} minutes before the tip`);
+    // then nothing at all for this game: the look stays whole
+    B.w.__props = (rows, g) => (+g === +gid ? [] : rows);
+    await again(B);
+    assert.deepStrictEqual(plOf(B)[gid], k1[gid], 'an empty read changed the kept look');
+    // another open copy of the app keeps a later look at the other game; this copy then keeps a new look at the first one
+    const disk = plOf(B), ok = Object.keys(disk[other].m)[0];
+    disk[other].m[ok] = [42.5, 2, 2, disk[other].m[ok][3] + 60000];
+    B.w.localStorage.setItem(`pl:${LDAY}`, JSON.stringify(disk));
+    B.w.__props = (rows, g) => (+g === +other ? [] : rows);
+    await again(B);
+    assert.strictEqual(plOf(B)[other].m[ok][0], 42.5, 'this copy wrote its older memory over a later look kept by another copy');
+    assert.ok(plOf(B)[gid].m[keys[1]][3] > k1[gid].m[keys[1]][3], 'the first game did not get its new look');
+    assert.strictEqual(hardOf(B).length, 0, hardOf(B).slice(0, 3).join(' | '));
+  });
+  await test('no look is kept once the ball may be up or while the time is not known: a late tip, a board on its saved copy, no server clock, a game with no tip time, junk on the phone', async () => {
+    const gid = FX[0].g.id;
+    const none = async (X, why) => { assert.ok(games(X).length > 0, `${why}: nothing was projected`); assert.ok(games(X).every((q) => !q.lines), `${why}: lines went to the engine`); const v = await X.go(`#/game/${gid}`, 500); assert.ok(v.querySelectorAll('[data-act="player"]').length >= 8, `${why}: no cards`); v.querySelector('[data-act="player"]').click(); await sleep(80); assert.ok(!SECTION.test(X.w.document.getElementById('sheetWrap').textContent), `${why}: the sheet says a line is inside`); X.w.document.querySelector('#sheetWrap [data-act="close"]').click(); };
+    // fifteen minutes past the scheduled time the board still says "not started": the lines on offer may already be in-game lines
+    const lateTip = await lineBoot('pre', { lead: -15 }); await settled(lateTip);
+    assert.strictEqual(lateTip.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept fifteen minutes after the scheduled tip');
+    await none(lateTip, 'late tip');
+    // ...but a look from before the scheduled time is still there and still counts while the board says "not started"
+    const held = await lineBoot('pre', { lead: 20 }); await settled(held);
+    const keptHeld = held.w.localStorage.getItem(`pl:${LDAY}`);
+    await again(held, 45);
+    assert.strictEqual(held.w.localStorage.getItem(`pl:${LDAY}`), keptHeld, 'the look was rewritten 25 minutes after the scheduled tip');
+    assert.ok(games(held).pop().lines, 'the look from before the scheduled time was dropped while the game had not started');
+    // the board is running on its saved copy (both score feeds down): its statuses are frozen
+    const saved = await lineBoot('pre', { hook: (w) => { w.DB.slateSource = () => 'saved'; } }); await settled(saved);
+    assert.strictEqual(saved.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept from a board running on its saved copy');
+    await none(saved, 'saved board');
+    // the server's time cannot be read: the phone's own clock decides nothing, and the cards are not held up
+    // (the phone's own clock says it is 30 minutes before the tip: without the server's word that is not believed)
+    const noClock = await lineBoot('pre', { hook: (w) => { w.fetch = async () => { throw new Error('network is off in tests'); }; const real = w.Date.now.bind(w.Date), off = LTIP - 30 * 60000 - real(); w.Date.now = () => real() + off; } }); await settled(noClock);
+    assert.strictEqual(noClock.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept by the phone\'s own clock');
+    await none(noClock, 'no server clock');
+    // a game row without a tip time: no age, so no share
+    const noTip = await lineBoot('pre', { hook: (w) => { const sl = w.DB.slate; w.DB.slate = async (d) => (await sl(d)).map((g) => ({ ...g, datetime: null })); } }); await settled(noTip);
+    await none(noTip, 'no tip time');
+    // junk where the kept look should be: nothing breaks, nothing is used, and the next good look replaces it
+    for (const junk of ['{', '[]', '7', JSON.stringify({ [gid]: 5 }), JSON.stringify({ [gid]: { m: [1, 2] } }), JSON.stringify({ [gid]: { m: { 'x:pts': [20.5, 2, 2, LTIP], '5:pts': 'no', '6:pts': [1e9, 2, 2, LTIP], '7:pts': [20.5, 2, 2, 'then'], '8:xyz': [20.5, 2, 2, LTIP] } } })]) {
+      const J = await lineBoot('live', { lead: -70, hook: (w) => w.localStorage.setItem(`pl:${LDAY}`, junk) }); await settled(J);
+      await none(J, `junk ${junk.slice(0, 30)}`);
+      assert.strictEqual(hardOf(J).length, 0, `junk ${junk.slice(0, 30)}: ${hardOf(J).slice(0, 2).join(' | ')}`);
+    }
+    assert.strictEqual(hardOf(lateTip, held, saved, noClock, noTip).length, 0, hardOf(lateTip, held, saved, noClock, noTip).slice(0, 3).join(' | '));
+  });
+  await test('the sheet\'s rows about the books\' line: only stats the line really moved, never "0%", never a missing number, and during a game the line is read as a pace', async () => {
+    const vm = require('vm');
+    const src = read('app.js');
+    const pick = (re) => { const m = src.match(re); assert.ok(m, `not found in app.js: ${re}`); return m[0]; };
+    const ctx = vm.createContext({ E: { TUNE: { ...LINE_REL } } });
+    vm.runInContext([pick(/^const CARD_STATS = .*$/m), pick(/^const LINE_LAB = .*$/m), pick(/^function lineNote\(\) \{[\s\S]*?^\}$/m), pick(/^const lineShown = .*$/m), pick(/^function lineInHTML\(p, pre\) \{[\s\S]*?^\}$/m)].join('\n') + '\nthis.lineInHTML = lineInHTML; this.lineNote = lineNote; this.T = E.TUNE;', ctx);
+    const text = (L, pre) => ctx.lineInHTML({ lineIn: L }, pre).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const row = (o) => ({ line: 22.5, books: 3, share: 0.75, from: 20, now: 22.5, to: 21.9, ...o });
+    assert.strictEqual(text(null, true), ''); assert.strictEqual(text({}, true), '');
+    assert.ok(/PTS: the books' line is 22\.5 ; the app alone says 20\.0\. The line counts for 75% , so the number shown is 21\.9 \./.test(text({ pts: row() }, true)), text({ pts: row() }, true));
+    // a stat the line did not move, a share that would print as 0%, and a row with a missing number are left out; with nothing left there is no section
+    assert.strictEqual(text({ pts: row({ to: 20.02 }) }, true), '');
+    assert.strictEqual(text({ pts: row({ share: 0.004 }) }, true), '');
+    for (const bad of [{ to: undefined }, { from: NaN }, { share: undefined }, { to: null, from: null }]) assert.strictEqual(text({ pts: row(bad) }, true), '', JSON.stringify(bad));
+    const two = text({ pts: row({ to: 20.01 }), reb: row({ line: 6.5, share: 0.6, from: 5, now: 6.5, to: 5.9 }), pra: row() }, true);
+    assert.ok(/REB: the books' line is 6\.5/.test(two) && !/PTS:/.test(two) && !/PRA|PTS\+REB/.test(two), two);
+    // during a game: what he has plus the line's pace for the time left, said as where he would finish
+    const live = text({ pts: row({ line: 19.5, share: 0.25, from: 26.7, now: 29.8, to: 27.5 }) }, false);
+    assert.ok(/PTS: at the pace of the books' line before the tip \(19\.5\) he would finish near 29\.8 ; the app alone says 26\.7\. The line counts for 25% now, so the number shown is 27\.5 \./.test(live), live);
+    for (const t of [two, live, text({ pts: row() }, true)]) { assert.ok(!/undefined|NaN|null/.test(t), t); assert.strictEqual(banned(t).length, 0); assert.ok(/gone by the end of the third quarter/.test(t)); }
+    // a small number that moved in a whole step says so instead of leaving an arithmetic nobody can follow
+    const step = text({ fg3m: row({ line: 2.5, share: 0.4, from: 0.3, now: 1.4, to: 1.0 }) }, false);
+    assert.ok(/3PM: .*the number shown is 1\.0 \. \(A number this small moves in steps\.\)/.test(step), step);
+    assert.ok(!/moves in steps/.test(text({ pts: row() }, true)));
+    // a line so far off that the engine held the change: the row does not pretend the plain sum gives the number, and says why
+    const held = text({ pts: row({ line: 34.5, share: 0.75, from: 11.5, now: 34.5, to: 23.1, held: true }) }, true);
+    assert.ok(/PTS: the books' line is 34\.5 ; the app alone says 11\.5\. The line counts for 75% ; the number shown is 23\.1 \. \(A line this far from the app's own number is not followed all the way: what is still to come can at most double or halve\.\)/.test(held) && !/moves in steps|, so the number/.test(held), held);
+    // a big number that does not sit on the plain sum (the number is where his games most often land): no "so", and no excuse that is not true
+    const big = text({ pts: row({ line: 80.5, share: 0.75, from: 60, now: 80.5, to: 74 }) }, true);
+    assert.ok(/The line counts for 75% ; the number shown is 74\.0 \./.test(big) && !/moves in steps|not followed all the way|, so the number/.test(big), big);
+    assert.ok(/The line counts for 75% , so the number shown is 21\.9 \./.test(text({ pts: row() }, true)));
+    // the note under the rows follows the engine's own settings (a share taken away at the release is not printed)
+    const note = () => ctx.lineNote();
+    assert.ok(/the full share \(points 75%, rebounds 60%, assists and threes 45%\) inside the last hour/.test(note()), note());
+    ctx.T.lineW3 = 0; assert.ok(/\(points 75%, rebounds 60%, assists 45%\)/.test(note()) && !/threes 4/.test(note()), note());
+    ctx.T.lineWAst = 0; ctx.T.lineWReb = 0.75; assert.ok(/\(points and rebounds 75%\)/.test(note()), note());
+    ctx.T.lineLive = 0; assert.ok(/Once the game is on it is not used\./.test(note()) && !/third quarter/.test(note()), note());
+    ctx.T.lineLive = 24; ctx.T.lineFar = 240; ctx.T.lineNear = 30; assert.ok(/4 hours or more before the tip/.test(note()) && /inside the last 30 minutes/.test(note()) && /gone by halftime/.test(note()), note());
+  });
+  await test('a phone that refuses to store the kept lines (blocked or full) still has every game\'s look in memory, through later looks and into the game', async () => {
+    const B = await lineBoot('pre', { hook: (w) => { const set = w.Storage.prototype.setItem; w.Storage.prototype.setItem = function (k, v) { if (String(k).startsWith('pl:')) throw new Error('QuotaExceededError'); return set.call(this, k, v); }; } }); await settled(B);
+    assert.strictEqual(B.w.localStorage.getItem(`pl:${LDAY}`), null, 'the write was not refused');
+    const lastOf = (id) => games(B).filter((q) => +q.game.id === +id).pop();
+    const has = (why) => { for (const fx of FX) { const q = lastOf(fx.g.id); assert.ok(q.lines && Object.keys(q.lines).length >= 8, `${why}: game ${fx.g.id} was projected with ${q.lines ? Object.keys(q.lines).length : 'no'} lines`); } };
+    has('first look');
+    // later looks reach the second game only (the first game's lines do not load): the first game's look must not be lost to them
+    B.w.__props = (rows, g) => (+g === +FX[0].g.id ? [] : rows);
+    await again(B); has('a later look at the other game');
+    await again(B); has('two later looks at the other game');
+    B.state.phase = 'live'; await again(B, 40); has('once the games are on');
+    assert.strictEqual(hardOf(B).length, 0, hardOf(B).slice(0, 3).join(' | '));
+  });
+  await test('a server clock that never answers is waited for once, by all the first cards together, and never again', async () => {
+    const B = await lineBoot('pre', { hook: (w) => { const f = w.fetch; w.fetch = (u, o) => (o && o.method === 'HEAD' ? new Promise(() => {}) : f(u, o)); } }); await settled(B);
+    assert.strictEqual(B.w.__clockWaits, 1, `the 2.5 s wait for the clock ran ${B.w.__clockWaits} times on the first pass`);
+    await again(B); await again(B);
+    assert.strictEqual(B.w.__clockWaits, 1, `the 2.5 s wait for the clock ran ${B.w.__clockWaits} times over three passes`);
+    assert.strictEqual(B.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept without the server\'s time');
+    assert.ok(games(B).length >= 3 * FX.length && games(B).every((q) => !q.lines));
+    // a clock that answers late (after the wait): the first cards came without the books' line, and are made again with it on
+    // the next pass, not five minutes later
+    let answer;
+    const held = new Promise((r) => { answer = r; });
+    const D = await lineBoot('pre', { hook: (w) => { const f = w.fetch; w.fetch = (u, o) => (o && o.method === 'HEAD' ? held.then(() => f(u, o)) : f(u, o)); } }); await settled(D);
+    assert.ok(games(D).length >= FX.length && games(D).every((q) => !q.lines), 'cards had the books\' line before the server\'s time was known');
+    answer(); await sleep(800);
+    later(D, 1); D.w.document.getElementById('refreshBtn').click();
+    const lastOfD = (id) => games(D).filter((q) => +q.game.id === +id).pop();
+    const redone = await until(() => FX.every((fx) => { const q = lastOfD(fx.g.id); return q && q.lines && Object.keys(q.lines).length >= 8; }), 20000);
+    assert.ok(redone, 'a minute after a late clock the cards still have no books\' line (they would wait five minutes)');
+    await until(() => D.w.localStorage.getItem(`pl:${LDAY}`) != null, 5000);
+    assert.ok(D.w.localStorage.getItem(`pl:${LDAY}`) != null);
+    assert.strictEqual(hardOf(D).length, 0, hardOf(D).slice(0, 3).join(' | '));
+    // a clock that answers inside the wait (a second and a half): the very first cards already carry the books' line
+    const F = await lineBoot('pre', { hook: (w) => { const f = w.fetch; w.fetch = (u, o) => (o && o.method === 'HEAD' ? new Promise((r) => setTimeout(r, 1500)).then(() => f(u, o)) : f(u, o)); } }); await settled(F);
+    for (const fx of FX) { const q = games(F).find((x) => +x.game.id === +fx.g.id); assert.ok(q && q.lines && Object.keys(q.lines).length >= 8, 'the first cards did not wait for a clock that answered in a second and a half'); }
+    assert.strictEqual(hardOf(F).length, 0, hardOf(F).slice(0, 3).join(' | '));
+    // a clock that answers gets its one wait too, and then the look is kept
+    const C = await lineBoot('pre'); await settled(C);
+    assert.ok(C.w.__clockWaits <= 1 && C.w.localStorage.getItem(`pl:${LDAY}`) != null);
+    assert.strictEqual(hardOf(B, C).length, 0, hardOf(B, C).slice(0, 3).join(' | '));
+  });
+  await test('a game gets its kept lines whatever day is on screen: a projection that finishes after the day arrow was tapped still has them, and saves the numbers that were shown', async () => {
+    let gate = null, waiting = 0;
+    const A = await lineBoot('pre', { hook: (w) => { const av = w.DB.availability; w.DB.availability = async (g) => { if (gate) { waiting++; await gate.p; } return av(g); }; } }); await settled(A);
+    const gid = FX[0].g.id, call0 = JSON.parse(A.w.localStorage.getItem('calls:v1'))[gid], led0 = JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]').map((r) => r[0]).sort();
+    await A.go('#/games', 300);
+    let open; gate = { p: new Promise((r) => { open = r; }) };
+    later(A, 6); A.w.document.getElementById('refreshBtn').click();
+    for (let i = 0; i < 60 && !waiting; i++) await sleep(100);
+    assert.ok(waiting > 0, 'no projection was in flight');
+    const n0 = games(A).length;
+    const arrow = A.w.document.querySelector('[data-act="day"][data-d="1"]');
+    assert.ok(arrow, 'no day arrow on the Games screen');
+    arrow.click(); await sleep(200);
+    open(); gate = null;
+    await until(() => games(A).length > n0); await until(() => !/spin/.test(A.w.document.getElementById('refreshBtn').className)); await sleep(1500);
+    const after = games(A).slice(n0);
+    assert.ok(after.length >= 1, 'the projection in flight never reached the engine');
+    for (const q of after) assert.ok(q.lines && Object.keys(q.lines).length >= 8, 'a projection that finished after the day changed ran without the game\'s kept lines');
+    const call1 = JSON.parse(A.w.localStorage.getItem('calls:v1'))[gid];
+    for (const [pid, x] of Object.entries(call0.p)) if (call1.p[pid]) assert.ok(Math.abs(call1.p[pid][3] - x[3]) <= 0.31, `the report card's points for ${x[0]} went from ${x[3]} to ${call1.p[pid][3]} when the day arrow was tapped`);
+    assert.deepStrictEqual(JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]').map((r) => r[0]).sort(), led0, 'edges that were never on screen were saved');
+    assert.strictEqual(hardOf(A).length, 0, hardOf(A).slice(0, 3).join(' | '));
+  });
+  await test('a saved call waits for a final box that adds up, also for a game with no saved edges', async () => {
+    let short = false;
+    const B = await boot('pre', (w, state, fxOf) => {
+      const cut = (fx) => { let i = fx.plays.length - 1, made = 0; while (i > 0 && made < 2) { if (fx.plays[i].home_score !== fx.plays[i - 1].home_score || fx.plays[i].away_score !== fx.plays[i - 1].away_score) made++; i--; } return fx.plays.slice(0, i + 1); };
+      w.DB.props = async () => []; // no book lines: no edges are saved, only the call
+      w.DB.livePlays = async (g) => { const fx = fxOf(g.id); return state.phase === 'final' ? (short ? cut(fx) : fx.plays) : fx.plays.filter((p) => p.period <= 2); };
+      w.DB.plays = async (id) => (short ? cut(fxOf(id)) : fxOf(id).plays);
+    });
+    await sleep(2500);
+    assert.strictEqual(JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]').length, 0, 'this test needs a game with no saved edges');
+    const open = () => Object.values(JSON.parse(B.w.localStorage.getItem('calls:v1') || '{}'));
+    assert.ok(open().length === FX.length && open().every((c) => !c.r), 'no call kept before the tip');
+    short = true; B.state.phase = 'final';
+    B.w.document.getElementById('refreshBtn').click(); await sleep(3000);
+    assert.ok(open().every((c) => !c.r), 'a call was graded from a box that does not add up to the final score');
+    const v = await B.go(`#/game/${FX[0].g.id}`, 400);
+    assert.ok(/Waiting for the final box score/.test(v.textContent), 'the game screen does not say the card is waiting');
+    short = false;
+    B.w.document.getElementById('refreshBtn').click(); await sleep(3000);
+    assert.ok(open().every((c) => c.r), 'the call was not graded once the full box arrived');
+  });
+  await test('a saved record damaged inside (a row that is not a row, a result that is not a result) never takes a screen down', async () => {
+    const fx = FX[0], good = ['Some Player', fx.g.visitor_team.abbreviation, 30, 20, 5, 5, 2, 12, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const B = await boot('final', null, (w) => { w.localStorage.setItem('calls:v1', JSON.stringify({
+      [fx.g.id]: { d: fx.g.date, at: 1, v: fx.g.visitor_team.abbreviation, h: fx.g.home_team.abbreviation, lu: 0, p: { 5: null }, r: { 5: [30, 10, 2, 3, 1] } },
+      [FX[1].g.id]: { d: fx.g.date, at: 1, v: 'AAA', h: 'BBB', lu: 0, p: { 7: good }, r: { 7: 'thirty' } },
+      1: { d: fx.g.date, p: { 7: ['x', 'AAA', 1, 2] } }, 2: { d: 'yesterday', p: { 7: good } }, 3: { d: fx.g.date, p: [good] }, 4: { d: fx.g.date, p: { 7: good }, x: 'nobody' } })); });
+    await sleep(2500);
+    let v = await B.go('#/settings', 300);
+    assert.ok(/CAME-TRUE RECORD/.test(v.textContent) && /ACCURACY REPORT/.test(v.textContent), 'settings did not render with a damaged saved record');
+    v = await B.go(`#/game/${fx.g.id}`, 500);
+    assert.ok(/No report card for this game/.test(v.textContent) && v.querySelectorAll('[data-act="player"]').length >= 8, 'the game screen did not render with a damaged saved record');
+    assert.deepStrictEqual(Object.keys(JSON.parse(B.w.localStorage.getItem('calls:v1') || '{}')), [], 'damaged entries were kept');
+    const hard = B.errors.filter((e) => !/network is off|learn|game logs/i.test(e));
+    assert.strictEqual(hard.length, 0, hard.slice(0, 3).join(' | '));
+  });
+  await test('a final box that is a few plays short of the final score is not graded; a damaged saved row does not break the edge record', async () => {
+    let short = false;
+    const B = await boot('pre', (w, state, fxOf) => {
+      w.localStorage.setItem('ledger:v1', JSON.stringify([[null], 'junk', ['9:9:pts:0', '2026-01-01', 'Old Row', 'AAA', 'pts', 10.5, 0.7, 0.6, 0, Date.now() - 8 * 86400000, null, null]]));
+      const cut = (fx) => { let i = fx.plays.length - 1, made = 0; while (i > 0 && made < 2) { if (fx.plays[i].home_score !== fx.plays[i - 1].home_score || fx.plays[i].away_score !== fx.plays[i - 1].away_score) made++; i--; } return fx.plays.slice(0, i + 1); };
+      w.DB.livePlays = async (g) => { const fx = fxOf(g.id); return state.phase === 'final' ? (short ? cut(fx) : fx.plays) : fx.plays.filter((p) => p.period <= 2); };
+      w.DB.plays = async (id) => (short ? cut(fxOf(id)) : fxOf(id).plays);
+    });
+    await sleep(2500);
+    let v = await B.go('#/settings', 300);
+    assert.ok(/EDGE RECORD/.test(v.textContent), 'settings did not render with a damaged saved row');
+    let rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
+    assert.ok(rows.length >= 3 && rows.every((r) => Array.isArray(r) && r.length >= 12), 'damaged rows were kept');
+    const old = rows.find((r) => r[0] === '9:9:pts:0');
+    assert.ok(old && old[10] === -1, 'a row waiting for more than 6 days was not closed as no action');
+    short = true; B.state.phase = 'final';
+    B.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
+    const fresh = rows.filter((r) => r[0] !== '9:9:pts:0');
+    assert.ok(fresh.length >= 3 && fresh.every((r) => r[10] == null), `graded ${fresh.filter((r) => r[10] != null).length} edges from a box that does not add up`);
+    short = false;
+    B.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    rows = JSON.parse(B.w.localStorage.getItem('ledger:v1') || '[]');
+    assert.ok(rows.filter((r) => r[0] !== '9:9:pts:0' && r[10] != null).length >= 3, 'edges were not graded once the full box arrived');
+  });
+  await test('when the scores cannot be reached at start, the board says so instead of loading forever', async () => {
+    let down = true;
+    const C = await boot('pre', (w) => { const real = w.DB.slate; w.DB.slate = async (...a) => { if (down) throw new Error('DataBallr 503'); return real(...a); }; });
+    await sleep(1500);
+    let v = await C.go('#/games', 300);
+    assert.ok(/reach the scores/i.test(v.textContent), `board shows: ${v.textContent.trim().slice(0, 80)}`);
+    down = false;
+    C.w.document.getElementById('refreshBtn').click();
+    await sleep(2500);
+    v = await C.go('#/games', 300);
+    assert.ok(/[A-Z]{3}/.test(v.textContent) && !/reach the scores/i.test(v.textContent), 'the board did not recover');
+  });
+  // ---- the phone's own learning and accuracy table: a finished game is replayed with what the app knew BEFORE it
+  const SNAP_F = ['gp', 'mpg', 'pts', 'reb', 'ast', 'fg3m', 'fg3a', 'p3', 'p2', 'ft', 'tsa100', 'tovpg', 'offPoss', 'r3', 'ftr'];
+  const DAY = FX[0].g.date, TIP = Math.min(...FX.map((x) => Date.parse(x.g.datetime)));
+  const CUR = Object.assign({}, ...FX.map((x) => x.base.priors.cur));
+  const copyOf = (at) => JSON.stringify({ at, tAt: at, p: Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, SNAP_F.map((f) => (c[f] == null ? null : +(+c[f]).toPrecision(3)))])), t: { teams: FX[0].base.teams.teams, league: FX[0].base.teams.league } });
+  // the morning after the fixture games: they are final, and today's season table is deliberately wrong (a full season of games
+  // with every scoring, rebounding and assist rate tripled), so a replay that used today's table would show up as a huge miss in the phone's own table
+  const morningAfter = async (seed, offDay, opt = {}) => {
+    const graded = []; // the season lines each learning replay was given
+    const M = await boot('final', (w) => {
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) graded.push(m.payload.priors && m.payload.priors.cur); return post.call(this, m); };
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      w.DB.currentSeasonPriors = async () => Object.fromEntries(Object.entries(CUR).map(([k, c]) => [k, { ...c, gp: 82, pts: c.pts * 3, reb: c.reb * 3, ast: c.ast * 3 }]));
+      // yesterday's games are final; the same two teams play again tonight (the app only does its background work on a day with games)
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      // (opt.late: one of last night's games is still going until the test says otherwise; opt.reads counts how often last night is read)
+      const lastNight = () => FX.map((x, i) => (opt.late && opt.late.on && i === 1 ? { ...x.g, status_state: 'in', period: 4, time: 'Q4 2:00', status: 'Q4 2:00' } : x.g));
+      w.DB.slate = async (d) => { if (d === DAY && opt.reads) opt.reads.n++; return d === DAY ? lastNight() : d === next && !offDay ? FX.map(tonight) : []; };
+      if (opt.retryMs) w.__LEARN_RETRY_MS = opt.retryMs;
+      w.DB.livePlays = async () => [];
+      w.DB.props = async () => [];
+      if (seed) seed(w);
+    });
+    const next = M.w.DB.addDays(DAY, 1);
+    for (let i = 0; i < (opt.wait || 240); i++) { await sleep(500); const rec = JSON.parse(M.w.localStorage.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next) break; }
+    const rec = JSON.parse(M.w.localStorage.getItem('pat:v6:dates') || 'null'), sum = JSON.parse(M.w.localStorage.getItem('pat:v6:sum') || 'null');
+    return { M, rec, sum, graded };
+  };
+  await test('a dated copy of the season stats and the team table is saved on the first load of the day', async () => {
+    const B = await boot('pre');
+    await sleep(2500);
+    const sn = JSON.parse(B.w.localStorage.getItem(`psnap:${DAY}`) || 'null');
+    assert.ok(sn && sn.p && Object.keys(sn.p).length >= 200, 'no copy of the season lines was saved');
+    assert.ok(sn.t && sn.t.teams && Object.keys(sn.t.teams).length >= 20 && sn.at > 0 && sn.tAt > 0, 'the copy has no team table');
+    assert.strictEqual(sn.p[Object.keys(CUR)[0]].length, SNAP_F.length);
+    assert.ok(JSON.stringify(sn).length < 70000, `the copy takes ${JSON.stringify(sn).length} characters of the phone's storage`);
+  });
+  await test('the phone\'s own accuracy table grades the number that was on screen: last night is replayed with the books\' lines the phone had kept; the lessons still learn from the app\'s own number', async () => {
+    // a player of the first game with a line far above the app's own number, seen 30 minutes before the tip; nothing kept for the second game
+    const EV = require(path.join(BUILD, 'engine.js'));
+    const fx = FX[0], base = EV.projectGame({ ...fx.base, game: { ...fx.g, status_state: 'scheduled', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 }, plays: [], nsims: 300, seed: fx.g.id, patterns: EV.patBeta(null) });
+    const star = base.players.filter((q) => q.mean.pts >= 14)[0];
+    const keptFor = { [fx.g.id]: { m: { [`${star.pid}:pts`]: [Math.round(star.proj.pts) + 14.5, 3, 3, TIP - 30 * 60000] } } };
+    const night = async (withLines, tune) => {
+      const sent = [];
+      const R = await morningAfter((w) => {
+        w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+        if (withLines) w.localStorage.setItem(`pl:${DAY}`, JSON.stringify(keptFor));
+        if (tune) Object.assign(w.Engine.TUNE, tune);
+        const post = w.Worker.prototype.postMessage;
+        w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) sent.push(...m.payload.grade); return post.call(this, m); };
+      });
+      return { ...R, sent };
+    };
+    const ON = { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2 };
+    const a = await night(true, ON), b = await night(false, ON);
+    const job = (R, id) => R.sent.find((j) => +j.cps[0].game.id === +id);
+    assert.ok(job(a, fx.g.id) && job(a, FX[1].g.id), 'last night was not replayed');
+    const L = job(a, fx.g.id).lines;
+    assert.ok(L && L[`${star.pid}:pts`] && Math.abs(L[`${star.pid}:pts`].toTip - 30) < 0.01 && L[`${star.pid}:pts`].n === 3, `the replay was handed ${JSON.stringify(L)}`);
+    assert.strictEqual(job(a, FX[1].g.id).lines, null, 'a game with no kept look was replayed with lines');
+    assert.strictEqual(job(b, fx.g.id).lines, null);
+    // the table (how the full app did) moved with the line; what the lessons learned (their sums) did not
+    assert.ok(a.sum && b.sum && a.sum.acc && b.sum.acc && a.sum.acc.pre.n === b.sum.acc.pre.n && a.sum.acc.pre.n >= 20, 'the two nights were not graded alike');
+    assert.ok(Math.abs(a.sum.acc.pre.pts - b.sum.acc.pre.pts) > 1, `a line 14 points above a scorer's number left the phone's points miss where it was (${a.sum.acc.pre.pts.toFixed(2)} and ${b.sum.acc.pre.pts.toFixed(2)})`);
+    const lessons = (R) => JSON.stringify(Object.fromEntries(Object.entries(R.sum).filter(([k]) => k !== 'acc' && k !== 'team')));
+    assert.strictEqual(lessons(a), lessons(b), 'the lessons learned from a number with the books\' line inside');
+  });
+  await test('the morning after, finished games are replayed with the copy saved before tip-off, not with today\'s table', async () => {
+    const { M, rec, sum, graded } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)));
+    // every replay got the lines of the saved copy (3 digits), not today's
+    assert.ok(graded.length >= 2, `only ${graded.length} learning replays ran`);
+    for (const cur of graded) for (const k of Object.keys(CUR).slice(0, 40)) {
+      assert.ok(cur && cur[k], `${k} is missing from the lines a replay was given`);
+      assert.strictEqual(cur[k].gp, CUR[k].gp, `${k}: the replay was given ${cur[k].gp} games played, the copy from before the game says ${CUR[k].gp}`);
+      assert.ok(Math.abs(cur[k].pts - CUR[k].pts) <= 6e-3 * CUR[k].pts + 1e-9, `${k}: the replay was given today's scoring rate`);
+    }
+    assert.ok(rec && rec.done.includes(DAY), `the night was not closed: ${JSON.stringify(rec)} | ${M.errors.slice(0, 4).join(' | ').slice(0, 400)}`);
+    assert.ok(sum && sum.acc && sum.acc.pre && sum.acc.pre.n >= 20, 'the finished games were not learned from');
+    const miss = sum.acc.pre.pts / sum.acc.pre.n;
+    assert.ok(miss < 7.5, `tip-off points miss in the phone's own table is ${miss.toFixed(2)}: the replay used today's (wrong) table`);
+    assert.ok(rec.games >= 2, `only ${rec.games} games counted`);
+    // the screen says how the phone's own table is made
+    const v = await M.go('#/settings', 400);
+    assert.ok(/saved before that game tipped/.test(v.textContent), 'the settings screen does not say how the phone grades itself');
+    assert.deepStrictEqual(banned(visibleText(M.w)), []);
+    assert.deepStrictEqual(M.errors.filter((e) => !/^warn: learn/.test(e)), []);
+  });
+  await test('on a day with no games the app still learns from last night and saves its copy of the tables', async () => {
+    const { M, rec, sum } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)), true);
+    assert.ok(rec && rec.done.includes(DAY), `the night was not closed on an off day: ${JSON.stringify(rec)} | ${M.errors.slice(0, 3).join(' | ').slice(0, 300)}`);
+    assert.ok(sum && sum.acc && sum.acc.pre && sum.acc.pre.n >= 20, 'last night was not learned from on an off day');
+    const next = M.w.DB.addDays(DAY, 1);
+    assert.ok(JSON.parse(M.w.localStorage.getItem(`psnap:${next}`) || 'null'), 'no copy of the tables was saved on the off day');
+    const v = await M.go('#/games', 300);
+    assert.ok(!/Loading player profiles/.test(v.textContent), 'the empty board is stuck on a loading line');
+    assert.deepStrictEqual(M.errors.filter((e) => !/^warn: learn/.test(e)), []);
+  });
+  await test('a night with no copy from before tip-off is left out of the phone\'s lessons and table (the edge record is still graded)', async () => {
+    for (const seed of [null, (w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP + 60000))]) {
+      const { M, rec, sum } = await morningAfter(seed);
+      assert.ok(rec && rec.done.includes(DAY), 'the night was not closed');
+      assert.ok(!sum || !sum.acc || !sum.acc.pre || !(sum.acc.pre.n > 0), `the night was learned from ${seed ? 'with a copy saved after the first tip' : 'with no copy at all'}`);
+      assert.strictEqual(rec.games || 0, 0);
+    }
+  });
+  await test('a copy from the day before is enough, and old copies are only removed after the night has been learned', async () => {
+    const dayBefore = (n) => { const d = new Date(DAY + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const { M, rec, sum } = await morningAfter((w) => { w.localStorage.setItem(`psnap:${dayBefore(1)}`, copyOf(TIP - 30 * 3600000)); w.localStorage.setItem(`psnap:${dayBefore(4)}`, copyOf(TIP - 100 * 3600000)); });
+    assert.ok(rec && rec.done.includes(DAY) && rec.games >= 2 && sum && sum.acc.pre.n >= 20, `the night was not learned from the day-before copy: ${JSON.stringify(rec)}`);
+    const left = Object.keys(M.w.localStorage).filter((k) => k.startsWith('psnap:')).sort();
+    assert.ok(!left.includes(`psnap:${dayBefore(4)}`), 'a copy no night can need any more was kept');
+    assert.ok(left.includes(`psnap:${dayBefore(1)}`), 'the copy from two days ago was removed although a retry could still need it');
+  });
+  await test('while one of last night\'s games is still going the day is not called checked; once it is final the night is learned the same day', async () => {
+    const late = { on: true };
+    const { M, rec: rec1 } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)), false, { late, retryMs: 300, wait: 24 });
+    const next = M.w.DB.addDays(DAY, 1);
+    assert.ok(!rec1 || (rec1.checked !== next && !rec1.done.includes(DAY)), `the day was called checked with a game still going: ${JSON.stringify(rec1)}`);
+    late.on = false;
+    M.w.document.getElementById('refreshBtn').click();
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(M.w.localStorage.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next) break; }
+    assert.ok(rec && rec.checked === next && rec.done.includes(DAY) && rec.games >= 2, `the night was not learned once its last game was final: ${JSON.stringify(rec)}`);
+  });
+  await test('when the phone refuses to store anything the nightly check still runs only once a day', async () => {
+    const reads = { n: 0 };
+    const M = await boot('final', (w) => {
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY; w.__LEARN_RETRY_MS = 200;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => { if (d === DAY) reads.n++; return d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []; };
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+    }, (w) => { w.Storage.prototype.setItem = function () { throw new w.DOMException('The quota has been exceeded.', 'QuotaExceededError'); }; });
+    // wait until the app has settled (the nightly check and the edge-record sweep each look at last night once, a few seconds after the first load)
+    let first = -1;
+    for (let k = 0, same = 0; k < 40 && same < 4; k++) { await sleep(2500); same = reads.n === first ? same + 1 : 0; first = reads.n; }
+    assert.ok(first >= 1, 'last night was never looked at');
+    for (let k = 0; k < 3; k++) { M.w.document.getElementById('refreshBtn').click(); await sleep(6000); }
+    assert.strictEqual(reads.n, first, `last night was read ${reads.n} times (once is enough)`);
+    assert.deepStrictEqual(M.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('if today\'s season table did not load, last night waits instead of being replayed with no season lines', async () => {
+    let jobs = 0;
+    const { rec } = await morningAfter((w) => {
+      w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+      w.DB.currentSeasonPriors = async () => ({});
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) jobs++; return post.call(this, m); };
+    }, false, { wait: 24 });
+    assert.strictEqual(jobs, 0, 'a learning replay ran with an empty season table');
+    assert.ok(!rec || !rec.done.includes(DAY), 'the night was closed although it could not be replayed properly');
+  });
+  await test('a phone whose clock runs slow cannot stamp a copy earlier than it was really taken', async () => {
+    // the server says it is 12 hours after last night's first tip; the phone believes it is three hours before it
+    const B = await boot('pre', (w) => { w.__serverNow = () => TIP + 12 * 3600000; w.Date.now = () => TIP - 3 * 3600000; });
+    await sleep(3500);
+    const sn = JSON.parse(B.w.localStorage.getItem(`psnap:${DAY}`) || 'null');
+    assert.ok(sn && sn.p && sn.t, 'no copy was saved');
+    assert.ok(sn.at >= TIP + 11 * 3600000 && sn.tAt >= TIP + 11 * 3600000, `the copy is stamped ${new Date(sn.at).toISOString()} (the phone's clock), the server's time is ${new Date(TIP + 12 * 3600000).toISOString()}`);
+  });
+  await test('with no server time the app saves no copy at all (a wrong stamp is worse than no copy)', async () => {
+    const B = await boot('pre', (w) => { w.fetch = async () => { throw new Error('network is off in tests'); }; });
+    await sleep(3500);
+    assert.strictEqual(B.w.localStorage.getItem(`psnap:${DAY}`), null);
+    assert.deepStrictEqual(B.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('dated keys that nothing reads any more are cleared at start, fresh ones stay', async () => {
+    const real = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const back = (n) => { const d = new Date(real + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const B = await boot('pre', null, (w) => {
+      const L = w.localStorage;
+      L.setItem(`slate:v6:${back(40)}`, '[]'); L.setItem(`slate:v6:${back(10)}`, '[]'); L.setItem(`slate:v5:${back(4)}`, '[]'); // (v5: saved by the version before)
+      L.setItem(`slate:last:${back(3)}`, '[]'); L.setItem(`slate:last:${back(1)}`, '[]');
+      L.setItem(`tip:${back(5)}`, '{}'); L.setItem(`tip:${back(1)}`, '{}'); L.setItem(`overrides:${back(9)}`, '{}');
+      L.setItem(`pl:${back(7)}`, '{}'); L.setItem(`pl:${back(5)}`, '{}'); L.setItem(`pl:${back(1)}`, '{}');
+      L.setItem('glines:111', JSON.stringify({ at: Date.now() - 9 * 86400000, c: {} })); L.setItem('glines:222', JSON.stringify({ at: Date.now() - 3600000, c: {} }));
+      L.setItem('ledger:v1', '[]'); L.setItem('settings', '{}');
+    });
+    const has = (k) => B.w.localStorage.getItem(k) != null;
+    for (const k of [`slate:v6:${back(40)}`, `slate:v5:${back(4)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, `pl:${back(7)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
+    for (const k of [`slate:v6:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, `pl:${back(1)}`, `pl:${back(5)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
+  });
+  await test('a number of calendar days from today is right in the hour around a daylight-saving change', async () => {
+    const vm = require('vm');
+    const src = read('data.js');
+    const fnSrc = src.slice(src.indexOf('function addDays('), src.indexOf('const lastSlate'));
+    const at = (iso) => { const FIXED = Date.parse(iso); class D extends Date { constructor(...a) { if (a.length) super(...a); else super(FIXED); } static now() { return FIXED; } } const ctx = { Date: D, Intl }; vm.runInNewContext(`${fnSrc}; this.etDate = etDate;`, ctx); return ctx.etDate; };
+    let f = at('2027-03-15T04:30:00Z'); // 12:30 AM Eastern, the night after clocks go forward
+    assert.strictEqual(f(0), '2027-03-15'); assert.strictEqual(f(-1), '2027-03-14'); assert.strictEqual(f(1), '2027-03-16');
+    f = at('2026-11-02T04:30:00Z'); // 11:30 PM Eastern on the day clocks go back
+    assert.strictEqual(f(0), '2026-11-01'); assert.strictEqual(f(-1), '2026-10-31'); assert.strictEqual(f(1), '2026-11-02');
+  });
+  await test('overtime reads as OT on the board, and the player sheet has its points + rebounds + assists section', async () => {
+    const B = await boot('live', (w, state, fxOf) => {
+      const E = w.Engine;
+      const ot = (fx) => { const bx = E.boxFromPlays(fx.plays, 4, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation; return { ...fx.g, status_state: 'in', display_status: 'OT 2:30', status: 'OT 2:30', period: 5, time: 'OT 2:30', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts }; };
+      w.DB.slate = async (d) => (d === DAY ? FX.map(ot) : []);
+      w.DB.livePlays = async (g) => fxOf(g.id).plays.filter((p) => p.period <= 4);
+      w.DB.props = async () => [];
+    });
+    await sleep(6000);
+    let v = await B.go('#/games', 600);
+    assert.ok(/OT 2:30/.test(v.textContent), `the board shows: ${v.textContent.replace(/\s+/g, ' ').slice(0, 160)}`);
+    assert.ok(!/QOT|Q5/.test(v.textContent), 'overtime is written as a fifth quarter');
+    const link = v.querySelector('a[href^="#/game/"]');
+    v = await B.go(link.getAttribute('href'), 1500);
+    const btn = v.querySelector('[data-act="player"]');
+    assert.ok(btn, 'no player rows on the game screen');
+    btn.click(); await sleep(800);
+    const sheet = B.w.document.getElementById('sheetWrap');
+    assert.ok(sheet && /PTS\+REB\+AST/.test(sheet.textContent), 'the player sheet has no points + rebounds + assists section');
+    assert.deepStrictEqual(banned(visibleText(B.w)), []);
+    assert.deepStrictEqual(B.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  // ---- review pass 3 (after publishing version 16): an app that stays open, a full phone, two copies of the app
+  // a movable calendar: the fixture games are final on DAY; the same teams play again on each of the next two days
+  const calendar = (cur, count = {}) => (w) => {
+    w.DB.etDate = (o = 0) => w.DB.addDays(cur.day, o);
+    const later = (fx, n) => ({ ...fx.g, id: fx.g.id + n * 1000000, date: w.DB.addDays(DAY, n), datetime: new Date(Date.parse(fx.g.datetime) + n * 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+    const lastNight = () => FX.map((x, i) => (cur.late && i === 1 ? { ...x.g, status_state: 'in', period: 4, time: 'Q4 2:00', status: 'Q4 2:00', display_status: 'Q4 2:00' } : x.g));
+    w.DB.slate = async (d) => (d === DAY ? lastNight() : d === w.DB.addDays(DAY, 1) ? FX.map((x) => later(x, 1)) : d === w.DB.addDays(DAY, 2) ? FX.map((x) => later(x, 2)) : []);
+    const realCur = w.DB.currentSeasonPriors, realLogs = w.DB.teamLogs;
+    w.DB.currentSeasonPriors = async (...a) => { count.table = (count.table || 0) + 1; return realCur(...a); };
+    w.DB.teamLogs = async (teams, date, ...r) => { (count.logs = count.logs || []).push(date); return realLogs(teams, date, ...r); };
+    w.DB.props = async () => []; w.DB.linesFor = () => null; w.DB.availability = async () => null;
+    w.__PAT_FROM = '2099-01-01'; // (no nightly learning in these tests)
+  };
+  const label = (v) => (v.querySelector('.datebar .label') || {}).textContent;
+  await test('an app left open overnight moves to the new day when it comes back to the front, and reads the season table and the recent games again', async () => {
+    const cur = { day: DAY }, count = {};
+    const A = await boot('final', calendar(cur, count));
+    await sleep(4000);
+    let v = await A.go('#/games', 400);
+    assert.ok(/^Today/.test(label(v)), `the board says ${label(v)}`);
+    assert.strictEqual(count.table, 1);
+    const next = A.w.DB.addDays(DAY, 1);
+    cur.day = next; // midnight has passed; the page was never reloaded
+    A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
+    await sleep(5000);
+    v = await A.go('#/games', 400);
+    const want = new Date(next + 'T12:00:00Z').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    assert.strictEqual(label(v).replace(/\s+/g, ''), ('Today' + want).replace(/\s+/g, ''), 'the board did not move to the new day');
+    assert.ok(/7:00 PM ET/.test(v.textContent), 'tonight\'s games are not on the board');
+    assert.strictEqual(count.table, 2, `the season table was read ${count.table} time(s): tonight's numbers would not know about last night`);
+    assert.ok(count.logs.includes(next), `recent games were not read again for the new day (read for: ${count.logs.join(', ')})`);
+    // one tap on the next-day arrow is tomorrow, one tap back is today again
+    v.querySelector('[data-act="day"][data-d="1"]').click(); await sleep(2500);
+    assert.ok(/^Tomorrow/.test(label(A.w.document.getElementById('view'))), `after one tap forward the board says ${label(A.w.document.getElementById('view'))}`);
+    A.w.document.getElementById('view').querySelector('[data-act="day"][data-d="-1"]').click(); await sleep(2500);
+    assert.ok(/^Today/.test(label(A.w.document.getElementById('view'))));
+    assert.ok(A.w.localStorage.getItem(`psnap:${next}`), 'no dated copy was saved for the new day');
+    assert.deepStrictEqual(banned(visibleText(A.w)), []);
+    assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('an app that stays on screen past midnight moves by itself; while last night\'s games are still going it stays on them, then moves the next time it is opened', async () => {
+    // (a) nothing live: the regular five-second look moves the board without any tap
+    let cur = { day: DAY }, count = {};
+    const A = await boot('final', calendar(cur, count));
+    await sleep(3500);
+    cur.day = A.w.DB.addDays(DAY, 1);
+    await sleep(9000);
+    assert.strictEqual(count.table, 2, 'the open app did not start over on the new day by itself');
+    let v = await A.go('#/games', 400);
+    assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `the open app still shows ${label(v)}`);
+    // (b) one of last night's games is still being played at midnight: the board stays on it and calls the day yesterday
+    cur = { day: DAY, late: true }; count = {};
+    const B = await boot('final', calendar(cur, count));
+    await sleep(3500);
+    cur.day = B.w.DB.addDays(DAY, 1);
+    B.w.document.dispatchEvent(new B.w.Event('visibilitychange'));
+    await sleep(7000);
+    v = await B.go('#/games', 400);
+    assert.ok(/^Yesterday/.test(label(v)), `with a late game still going the board says ${label(v)}`);
+    assert.ok(/Q4 2:00/.test(v.textContent), 'the late game left the board');
+    assert.strictEqual(count.table, 1, 'the season table was swapped in the middle of a game');
+    // the late game ends; the app stays where the user is looking until it is next brought to the front
+    cur.late = false;
+    await sleep(7000);
+    assert.ok(/^Yesterday/.test(label(B.w.document.getElementById('view'))), 'the board jumped away from the game that just ended');
+    B.w.document.dispatchEvent(new B.w.Event('visibilitychange'));
+    await sleep(5000);
+    v = await B.go('#/games', 400);
+    assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `after the late game the board says ${label(v)}`);
+    assert.strictEqual(count.table, 2);
+    assert.deepStrictEqual([...A.errors, ...B.errors].filter((e) => !/^warn:/.test(e)), []);
+  });
+  await test('a look at tomorrow\'s slate never changes tonight\'s tip-off numbers', async () => {
+    const A = await boot('pre', (w, state) => {
+      const d1 = w.DB.addDays(DAY, 1), E = w.Engine;
+      const rowOf = (fx) => {
+        if (state.phase === 'pre') return { ...fx.g, status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+        const bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+        return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
+      };
+      const tomorrow = (fx) => ({ ...fx.g, date: d1, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map(rowOf) : d === d1 ? FX.map(tomorrow) : []);
+      const realAvail = w.DB.availability;
+      // tomorrow the visitors' first listed starter is ruled out, so everybody's number is different
+      w.DB.availability = async (g) => {
+        const av = await realAvail(g);
+        if (g.date !== d1 || !av) return av;
+        const tm = g.visitor_team.abbreviation, star = av.in.find((x) => x.team === tm && x.starter);
+        return { ...av, in: av.in.filter((x) => x !== star), out: [...av.out, { name: star.name, why: 'out (rest)', team: tm }], starters: { ...av.starters, [tm]: av.starters[tm].filter((n) => n !== star.name) } };
+      };
+      w.DB.props = async () => [];
+    });
+    let tip0 = null;
+    for (let k = 0, same = 0; k < 40 && same < 3; k++) { await sleep(1500); const t = A.w.localStorage.getItem(`tip:${DAY}`); same = t && t === tip0 ? same + 1 : 0; tip0 = t; }
+    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 40, `tip-off numbers were kept for only ${tip0 ? Object.keys(JSON.parse(tip0)).length : 0} players before the game`);
+    A.state.phase = 'live';
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(6000);
+    const since = async () => { const v = await A.go('#/scorers', 500); return [...v.querySelectorAll('.card.scorer')].map((c) => `${c.querySelector('.nmrow b').textContent}: ${c.querySelector('.big').textContent}${c.querySelector('.mv') ? ' ' + c.querySelector('.mv').textContent : ''}`); };
+    const before = await since();
+    assert.ok(before.length >= 8 && before.some((x) => /since tip/.test(x)), `the scorers screen shows no moves since tip-off: ${before.slice(0, 3).join(' | ')}`);
+    let v = await A.go('#/games', 300);
+    v.querySelector('[data-act="day"][data-d="1"]').click(); await sleep(4000);
+    A.w.document.getElementById('view').querySelector('[data-act="day"][data-d="-1"]').click(); await sleep(4500);
+    const after = await since();
+    assert.deepStrictEqual(after, before, 'the moves since tip-off changed after a look at tomorrow');
+    assert.strictEqual(A.w.localStorage.getItem(`tip:${DAY}`), tip0, 'tonight\'s saved tip-off numbers were rewritten');
+  });
+  await test('the six rungs on a player sheet sit around his number, for a star too', async () => {
+    const B = await boot('pre', (w) => { w.DB.props = async () => []; });
+    await sleep(3000);
+    const pr = [...FX].map((x) => x.g.id);
+    let best = null;
+    for (const gid of pr) {
+      const v = await B.go(`#/game/${gid}`, 900);
+      for (const btn of v.querySelectorAll('[data-act="player"]')) {
+        btn.click(); await sleep(60);
+        const sheet = B.w.document.getElementById('sheetWrap');
+        if (!sheet) continue;
+        for (const h of sheet.querySelectorAll('h3')) {
+          const m = /^(POINTS|PTS\+REB\+AST)[^→]*→\s*([\d.]+)/.exec(h.textContent.trim());
+          if (!m || !h.nextElementSibling || !h.nextElementSibling.classList.contains('ladder')) continue;
+          const rungs = [...h.nextElementSibling.querySelectorAll('.rung span:first-child')].map((x) => parseInt(x.textContent, 10));
+          const row = { who: btn.textContent.replace(/\s+/g, ' ').slice(0, 30), stat: m[1], proj: +m[2], rungs };
+          if (!best || (row.stat === 'PTS+REB+AST' && row.proj > best.proj)) best = row;
+          assert.ok(rungs.length <= 6, 'more than six rungs');
+          // the rungs reach his number: the highest one shown is above it, unless the ladder itself ends below it
+          const top = row.stat === 'POINTS' ? 45 : 60;
+          assert.ok(Math.max(...rungs) > row.proj || Math.max(...rungs) >= top || rungs.length < 6, `${row.who} ${row.stat}: number ${row.proj}, rungs ${rungs.join(', ')} stop short of it`);
+        }
+        const close = B.w.document.querySelector('#sheetWrap [data-act="close"]'); if (close) close.click();
+        await sleep(20);
+      }
+    }
+    assert.ok(best && best.stat === 'PTS+REB+AST' && best.proj >= 36, `the fixture has no player with a big points + rebounds + assists number to test with (best: ${JSON.stringify(best)})`);
+    assert.ok(best.rungs.some((t) => t <= best.proj) && best.rungs.some((t) => t > best.proj), `the top player's rungs ${best.rungs.join(', ')} do not sit around his number ${best.proj}`);
+  });
+  await test('opened again five days after the games, the night is still learned from the copy saved the day before', async () => {
+    const n = 5, graded = [];
+    const A = await boot('final', (w) => {
+      const today = w.DB.addDays(DAY, n);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(today, o);
+      const tonight = (fx) => ({ ...fx.g, date: today, datetime: new Date(Date.parse(fx.g.datetime) + n * 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === today ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+      w.localStorage.setItem(`psnap:${w.DB.addDays(DAY, -1)}`, copyOf(TIP - 30 * 3600000)); // saved the day before: good for the night
+      w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP + 3600000)); // saved an hour after the first tip: not usable
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) graded.push(1); return post.call(this, m); };
+    });
+    const today = A.w.DB.addDays(DAY, n);
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(A.w.localStorage.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === today) break; }
+    assert.ok(graded.length >= 2 && rec && rec.done.includes(DAY) && rec.games >= 2, `the night was closed with nothing learned: ${JSON.stringify(rec)}, ${graded.length} replays`);
+    assert.deepStrictEqual(Object.keys(A.w.localStorage).filter((k) => k.startsWith('psnap:')).sort(), [`psnap:${today}`], 'old copies were not cleared after the learning');
+  });
+  await test('with two copies of the app open on one phone, last night is added to the phone\'s lessons once', async () => {
+    const hook = (seed) => (w) => {
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+      if (seed) w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+    };
+    const A = await boot('final', hook(true));
+    await sleep(1500);
+    const L = A.w.localStorage;
+    const B = await boot('final', hook(false), (w) => Object.defineProperty(w, 'localStorage', { configurable: true, get: () => L })); // the same storage, as on one phone
+    const next = A.w.DB.addDays(DAY, 1);
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(L.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next && i > 16) break; }
+    await sleep(20000); // the second copy finishes its own replays
+    rec = JSON.parse(L.getItem('pat:v6:dates') || 'null');
+    const sum = JSON.parse(L.getItem('pat:v6:sum') || 'null');
+    assert.ok(rec && rec.games === 2 && sum && sum.acc && sum.acc.pre, `nothing learned: ${JSON.stringify(rec)}`);
+    assert.strictEqual(sum.acc.pre.g, 2, `the phone's table holds ${sum.acc.pre.g} games for a two-game night: the night was added twice`);
+    void B;
+  });
+  await test('on a full phone a night whose lessons cannot be stored stays open and is not counted; saving makes room by dropping the oldest game logs', async () => {
+    // (a) the app: the large write of the night's sums is refused
+    let cap = Infinity; const refused = [];
+    const total = (L) => { let n = 0; for (const k of Object.keys(L)) n += k.length + (L.getItem(k) || '').length; return n; };
+    const hook = (w) => {
+      const next = w.DB.addDays(DAY, 1);
+      w.__PAT_FROM = DAY;
+      w.DB.etDate = (o = 0) => w.DB.addDays(next, o);
+      const tonight = (fx) => ({ ...fx.g, date: next, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map((x) => x.g) : d === next ? FX.map(tonight) : []);
+      w.DB.livePlays = async () => []; w.DB.props = async () => [];
+      w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+    };
+    const A = await boot('final', hook, (w) => {
+      const real = w.Storage.prototype.setItem;
+      w.Storage.prototype.setItem = function (k, v) {
+        const old = this.getItem(k); const after = total(this) - (old == null ? 0 : k.length + old.length) + k.length + String(v).length;
+        if (after > cap) { refused.push(k); throw new w.DOMException('The quota has been exceeded.', 'QuotaExceededError'); }
+        return real.call(this, k, v);
+      };
+    });
+    await sleep(2500);
+    const L = A.w.localStorage, next = A.w.DB.addDays(DAY, 1);
+    cap = total(L) + 150000; // room for the small records, not for the sums (about 330,000 characters)
+    let rec = null;
+    for (let i = 0; i < 240; i++) { await sleep(500); rec = JSON.parse(L.getItem('pat:v6:dates') || 'null'); if (rec && rec.checked === next) break; }
+    assert.ok(refused.includes('pat:v6:sum'), 'the test did not refuse the write of the sums');
+    assert.ok(rec && rec.checked === next, `the day was not checked: ${JSON.stringify(rec)}`);
+    assert.ok(!rec.done.includes(DAY) && rec.games === 0, `the night was marked done and counted although its lessons are not stored: ${JSON.stringify(rec)}`);
+    assert.strictEqual(L.getItem('pat:v6:sum'), null);
+    // (b) the store itself: a value larger than one round of dropped logs frees still lands, and the oldest games go first
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only', storageQuota: 900000 });
+    const w = dom.window;
+    w.fetch = async () => { throw new Error('network is off in tests'); };
+    w.eval(read('data.js'));
+    const today = w.DB.etDate(0), body = 'x'.repeat(8000);
+    for (let i = 0; i < 100; i++) w.localStorage.setItem(`log:v6:${21700000 + i}`, JSON.stringify({ id: 21700000 + i, date: today, pad: body }));
+    assert.ok(total(w.localStorage) > 800000);
+    const ok = w.DB.store.set('pat:v6:sum', { big: 'y'.repeat(600000) });
+    assert.strictEqual(ok, true, 'a large value did not land although dropping game logs would have made room');
+    assert.ok(w.localStorage.getItem('pat:v6:sum').length > 600000);
+    const left = Object.keys(w.localStorage).filter((k) => k.startsWith('log:')).map((k) => +k.split(':')[2]).sort((a, b) => a - b);
+    assert.ok(left.length > 0 && left.length < 100 && left[0] === 21700000 + (100 - left.length), `the newest logs were dropped first (kept ${left.length}, oldest kept ${left[0]})`);
+    assert.strictEqual(w.DB.store.set('too-big', { big: 'z'.repeat(2000000) }), false, 'a value that can never fit was reported as saved');
+  });
+  await test('a season table that fails to load once is asked for again; game logs older than a month are cleared at start; a table older than six hours is read again', async () => {
+    let calls = 0;
+    const A = await boot('pre', (w) => {
+      const real = w.DB.currentSeasonPriors;
+      w.DB.currentSeasonPriors = async (...a) => { calls++; return calls === 1 ? {} : real(...a); };
+      w.DB.props = async () => [];
+      w.__PRIORS_RETRY_MS = 1;
+    });
+    await sleep(3000);
+    assert.strictEqual(A.w.localStorage.getItem(`psnap:${DAY}`), null, 'a copy was saved from an empty season table');
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(3000);
+    assert.ok(calls >= 2, `the season table was asked for ${calls} time(s)`);
+    const sn = JSON.parse(A.w.localStorage.getItem(`psnap:${DAY}`) || 'null');
+    assert.ok(sn && sn.p && Object.keys(sn.p).length >= 200, 'once the table had loaded no dated copy was saved');
+    assert.ok(calls <= 3, `the table kept being asked for after it had loaded (${calls} times)`);
+    // the data module on its own
+    const real = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const back = (n) => { const d = new Date(real + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://everworldlife-courtside-arcade.static.hf.space/', runScripts: 'outside-only' });
+    const w = dom.window;
+    let asked = 0;
+    w.fetch = async (u) => { if (/players\/stats/.test(String(u))) { asked++; return { ok: true, json: async () => [] }; } throw new Error('network is off in tests'); };
+    w.localStorage.setItem('log:v6:1', JSON.stringify({ id: 1, date: back(45) + 'T00:00:00.000Z', rows: {} }));
+    w.localStorage.setItem('log:v6:2', JSON.stringify({ id: 2, date: back(12), rows: {} }));
+    w.eval(read('engine.js'));
+    w.eval(read('data.js'));
+    assert.strictEqual(w.localStorage.getItem('log:v6:1'), null, 'a game log from 45 days ago was kept');
+    assert.ok(w.localStorage.getItem('log:v6:2'), 'a game log from 12 days ago was removed');
+    const season = w.DB.seasons(real).cur, key = `priors:p4:cur:${season}`;
+    w.localStorage.setItem(key, JSON.stringify({ date: real, at: Date.now() - 3600000, data: { a: 1 } }));
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(await w.DB.currentSeasonPriors(season, real))), { a: 1 });
+    assert.strictEqual(asked, 0, 'a table read an hour ago was read again');
+    w.localStorage.setItem(key, JSON.stringify({ date: real, at: Date.now() - 7 * 3600000, data: { a: 1 } }));
+    await w.DB.currentSeasonPriors(season, real);
+    assert.strictEqual(asked, 1, 'a table read seven hours ago was not read again');
+    w.localStorage.setItem(key, JSON.stringify({ date: back(1), at: Date.now() - 600000, data: { a: 1 } }));
+    await w.DB.currentSeasonPriors(season, real);
+    assert.strictEqual(asked, 2, 'yesterday\'s table was re-used from memory for the new day');
+  });
+  await test('during a long first load the scores on the board keep moving, and the time on a game screen is never time zero', async () => {
+    let release = null; const gate = new Promise((r) => { release = r; });
+    const bump = { on: false };
+    const A = await boot('live', (w, state, fxOf) => {
+      const E = w.Engine;
+      const half = (fx) => { const bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation; return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts + (bump.on ? 7 : 0), home_team_score: bx.teams[h].pts }; };
+      w.DB.slate = async (d) => (d === DAY ? FX.map(half) : []);
+      const realLogs = w.DB.teamLogs;
+      w.DB.teamLogs = async (...a) => { await gate; return realLogs(...a); }; // "reading three weeks of games" takes as long as the test says
+      w.DB.props = async () => [];
+    });
+    await sleep(1500);
+    let v = await A.go('#/games', 300);
+    const score0 = v.textContent.replace(/\s+/g, ' ');
+    bump.on = true; // the visitors score seven while the phone is still loading
+    await sleep(22000);
+    v = A.w.document.getElementById('view');
+    const E = A.w.Engine, fx = FX[0], bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), want = bx.teams[fx.g.visitor_team.abbreviation].pts + 7;
+    assert.ok(v.textContent.replace(/\s+/g, '').includes(`${fx.g.visitor_team.abbreviation}${want}`), `the board still shows the old score during the load (wanted ${want}): ${v.textContent.replace(/\s+/g, ' ').slice(0, 200)}`);
+    assert.notStrictEqual(v.textContent.replace(/\s+/g, ' '), score0);
+    release();
+    await sleep(9000);
+    // every "updated" time on the game screens is a real time of day near now, never the stamp of time zero
+    const zero = new Date(0).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+    for (let k = 0; k < 4; k++) {
+      for (const x of FX) { v = await A.go(`#/game/${x.g.id}`, 500); const u = v.querySelector('.updated'); assert.ok(u, 'no update line on the game screen'); assert.ok(!u.textContent.includes(`updated ${zero}`), `the game screen says: ${u.textContent}`); }
+      await sleep(2500);
+    }
+    assert.deepStrictEqual(banned(visibleText(A.w)), []);
+    assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
+  });
+  // ---- review of version 17 (Nov 12): the phone was down when things changed
+  await test('a late game ends while the phone is down: back at the front the board goes to today, even when the first look at the scores does not get through', async () => {
+    for (const firstLookFails of [false, true]) {
+      const cur = { day: DAY, late: true }, count = {}, hid = { on: false }, feed = { stuck: false };
+      const A = await boot('final', (w) => {
+        calendar(cur, count)(w);
+        Object.defineProperty(w.document, 'hidden', { configurable: true, get: () => hid.on });
+        // (when the scores cannot be reached the data module hands back the slate it kept and says so)
+        const realSlate = w.DB.slate, kept = { rows: null };
+        w.DB.slate = async (d) => { if (feed.stuck && d === DAY && kept.rows) return kept.rows; const r = await realSlate(d); if (d === DAY) kept.rows = r; return r; };
+        w.DB.slateSource = () => (feed.stuck ? 'saved' : 'databallr');
+      });
+      await sleep(3500);
+      let v = await A.go('#/games', 300);
+      assert.ok(/^Today/.test(label(v)) && /Q4 2:00/.test(v.textContent), `evening board: ${label(v)}`);
+      hid.on = true; A.w.document.dispatchEvent(new A.w.Event('visibilitychange')); // the phone is put down with the game still going
+      await sleep(22000);
+      cur.day = A.w.DB.addDays(DAY, 1); cur.late = false; // overnight: the game ended, the calendar moved on
+      if (firstLookFails) feed.stuck = true;
+      hid.on = false; A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
+      if (firstLookFails) { await sleep(2500); v = await A.go('#/games', 300); assert.ok(!/7:00 PM ET/.test(v.textContent), 'the board moved on scores that never came from a feed'); feed.stuck = false; }
+      // (waits for the board itself, up to 45 s: the retry after a failed look comes with the next 15-second refresh, and a fixed
+      // pause missed it when the machine was busy)
+      for (const t0 = Date.now(); Date.now() - t0 < 45000;) { await sleep(1000); v = await A.go('#/games', 300); if (/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent)) break; }
+      assert.ok(/^Today/.test(label(v)) && /7:00 PM ET/.test(v.textContent), `${firstLookFails ? 'first look failed: ' : ''}next day the board says ${label(v)} and tonight's games are ${/7:00 PM ET/.test(v.textContent) ? '' : 'not '}shown`);
+      for (const t0 = Date.now(); Date.now() - t0 < 15000 && count.table < 2;) await sleep(500);
+      assert.strictEqual(count.table, 2, 'the season table was not read again for the new day');
+      assert.deepStrictEqual(A.errors.filter((e) => !/^warn:/.test(e)), []);
+    }
+  });
+  await test('book lines card: the projected final, the margin and the win chance are explained in plain words, each sentence only where it is true', async () => {
+    const fx = FX[0], mk = fx.base.market, vAb = fx.g.visitor_team.abbreviation, hAb = fx.g.home_team.abbreviation;
+    const card = async (B, ready) => {
+      let t = '', page = '';
+      for (const t0 = Date.now(); Date.now() - t0 < 40000;) {
+        await sleep(700); const v = await B.go(`#/game/${fx.g.id}`, 300);
+        const c = [...v.querySelectorAll('.card')].find((x) => /Books win %/.test(x.textContent));
+        t = c ? c.textContent.replace(/\s+/g, ' ') : ''; page = v.textContent.replace(/\s+/g, ' '); if (ready.test(t)) break;
+      }
+      assert.ok(ready.test(t), `the book lines card never showed ${ready}: ${t ? t.slice(0, 300) : 'no card; the page reads: ' + page.slice(0, 500)}`);
+      return t;
+    };
+    // before the tip: the total leans on the book's, the margin is the book's spread, the chance comes from that margin
+    const B = await boot('pre');
+    let t = await card(B, /Win chance: we say/);
+    const own = /Projected total (\d+): our own count says (\d+), the books have (\d+(?:\.\d+)?)/.exec(t);
+    assert.ok(own, `total line: ${t.slice(0, 260)}`);
+    // (two rounded numbers on the page: half a point for the total shown, a twentieth for our own count)
+    assert.ok(Math.abs(+own[1] - (0.9 * mk.total + 0.1 * +own[2])) <= 0.56 && +own[3] === mk.total, `projected total ${own[1]} is not nine tenths the book's ${mk.total} and one tenth ours ${own[2]}`);
+    assert.ok(/Before the tip the books' total is the closer of the two/.test(t) && /so the projection leans on theirs\. From nine minutes in, the pace of the game itself decides/.test(t) && !/a little less every minute/.test(t));
+    const fav = mk.spreadHome >= 0 ? vAb : hAb;
+    assert.ok(new RegExp(`The projected final is ${fav} by ${Math.abs(mk.spreadHome)}: the books' spread`).test(t), `margin line: ${t}`);
+    const win = /Win chance: we say ([A-Z]{3}) (\d+)%, from the projected final margin and how far games really swing from this point\. The books say ([A-Z]{3}) (\d+)%\./.exec(t);
+    assert.ok(win && win[1] === fav, `win line: ${t}`);
+    assert.ok(Math.abs(+win[2] - 100 * B.w.Engine.normCdf(Math.abs(mk.spreadHome) / 11.5)) <= 1, `pregame chance ${win[2]}% does not come from the spread ${mk.spreadHome}`);
+    assert.strictEqual(banned(t).length, 0);
+    // at the half: the pace of the game decides the total, the margin is the score plus the book's spread for the time left, with the give-back
+    B.state.phase = 'live';
+    B.w.document.getElementById('refreshBtn').click();
+    t = await card(B, /from the pace of this game so far/);
+    assert.ok(/Projected total \d+, from the pace of this game so far\. The books had [\d.]+ before the tip\./.test(t) && !/leans on theirs/.test(t), `live total line: ${t.slice(0, 260)}`);
+    assert.ok(/The projected final is (a level game|[A-Z]{3} by [\d.]+): the score now, plus the books' spread for the time left, and a lead usually gives a little back by the end \(we keep 85% of it from here\)/.test(t), `live margin line: ${t}`);
+    assert.ok(/Win chance: we say [A-Z]{3} \d+%, from the projected final margin and how far games really swing from this point\. The books said [A-Z]{3} \d+% before the tip\./.test(t), `live win line: ${t}`);
+    assert.strictEqual(banned(t).length, 0);
+    // six minutes left: the simulations of the minutes left decide the score and the chance, and the card says so
+    B.state.cut = { per: 4, clock: '6:00', label: 'Q4 6:00' };
+    B.w.document.getElementById('refreshBtn').click();
+    t = await card(B, /from the simulations of the minutes left/);
+    assert.ok(/The projected final is (a level game|[A-Z]{3} by [\d.]+), from the simulations of the minutes left: this late the score and the clock decide\./.test(t) && !/plus the books' spread for the time left/.test(t), `late margin line: ${t}`);
+    assert.ok(/Win chance: we say [A-Z]{3} \d+%, counted from the simulations of the minutes left\. The books said [A-Z]{3} \d+% before the tip\./.test(t) && !/how far games really swing/.test(t), `late win line: ${t}`);
+    // the projected score in the card and the win chance name the same team
+    const late = /The projected final is ([A-Z]{3}) by/.exec(t), lw = /Win chance: we say ([A-Z]{3}) (\d+)%/.exec(t);
+    if (late && +lw[2] > 50) assert.strictEqual(late[1], lw[1], `the card projects ${late[1]} ahead but gives ${lw[1]} ${lw[2]}%`);
+    assert.strictEqual(banned(t).length, 0);
+    // finished: the page shows the final score, and no book lines card (the engine hands back no market for a finished game)
+    B.state.phase = 'final';
+    B.w.document.getElementById('refreshBtn').click();
+    let fin = '';
+    for (const t0 = Date.now(); Date.now() - t0 < 40000;) { await sleep(700); const v = await B.go(`#/game/${fx.g.id}`, 300); fin = v.textContent.replace(/\s+/g, ' '); if (/FINAL/.test(fin) && /Projected final/.test(fin) && !/Books win %/.test(fin)) break; }
+    assert.ok(new RegExp(`Projected final ?${vAb} ${fx.g.visitor_team_score} – ${fx.g.home_team_score} ${hAb}`).test(fin) && !/Books win %|Win chance: we say/.test(fin), `finished game page: ${fin.slice(0, 300)}`);
+    assert.deepStrictEqual(B.errors.filter((e) => !/^warn:|network is off|learn|game logs/i.test(e)), []);
+  });
+  await test('after the day changes in an open app each player\'s own game logs are read again too', async () => {
+    const cur = { day: DAY }, count = {}, asked = {};
+    const A = await boot('final', (w) => {
+      calendar(cur, count)(w);
+      w.DB.playersLogs = async (want) => { (asked[cur.day] = asked[cur.day] || new Set()); for (const x of want) asked[cur.day].add(x.name); return {}; };
+    });
+    for (let i = 0; i < 300 && !(asked[DAY] && asked[DAY].size >= 10); i++) await sleep(100); // (up to 30 s on a busy machine)
+    await sleep(1500);
+    const first = asked[DAY] ? asked[DAY].size : 0;
+    assert.ok(first >= 10, `only ${first} players had their game logs read on the first day`);
+    const next = A.w.DB.addDays(DAY, 1);
+    cur.day = next;
+    A.w.document.dispatchEvent(new A.w.Event('visibilitychange'));
+    for (let i = 0; i < 300 && !(asked[next] && [...asked[next]].filter((n) => asked[DAY].has(n)).length >= 0.8 * first); i++) await sleep(100);
+    await sleep(1000);
+    const again = asked[next] ? [...asked[next]].filter((n) => asked[DAY].has(n)).length : 0;
+    assert.ok(again >= 0.8 * first, `${again} of ${first} players had their game logs read again after the day changed`);
+  });
+  await test('a quick look at tomorrow and straight back, while tomorrow is still being worked out, leaves tonight\'s tip-off numbers alone', async () => {
+    const gate = { wait: null, release: null }, tap = { armed: false, done: false };
+    const A = await boot('pre', (w, state) => {
+      const d1 = w.DB.addDays(DAY, 1), E = w.Engine, OFF = 1e9; // (tomorrow's games carry their own ids)
+      const rowOf = (fx) => {
+        if (state.phase === 'pre') return { ...fx.g, status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 };
+        const bx = E.boxFromPlays(fx.plays.filter((p) => p.period <= 2), 2, '0:00'), v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+        return { ...fx.g, status_state: 'in', display_status: 'Half', status: 'Half', period: 2, time: 'Half', visitor_team_score: bx.teams[v].pts, home_team_score: bx.teams[h].pts };
+      };
+      const tomorrow = (fx) => ({ ...fx.g, id: fx.g.id + OFF, date: d1, datetime: new Date(Date.parse(fx.g.datetime) + 864e5).toISOString(), status_state: 'scheduled', display_status: '7:00 PM ET', status: '7:00 PM ET', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 });
+      w.DB.slate = async (d) => (d === DAY ? FX.map(rowOf) : d === d1 ? FX.map(tomorrow) : []);
+      const base = (id) => (+id >= OFF ? +id - OFF : +id), fxOf2 = (id) => FX.find((x) => +x.g.id === base(id));
+      const realAvail = w.DB.availability;
+      // tomorrow one starter is ruled out, so everybody's number is different from tonight's
+      w.DB.availability = async (g) => {
+        const av = await realAvail({ ...g, id: base(g.id) });
+        if (String(g.date).slice(0, 10) !== d1 || !av) return av;
+        const tm = g.visitor_team.abbreviation, star = av.in.find((x) => x.team === tm && x.starter);
+        return { ...av, in: av.in.filter((x) => x !== star), out: [...av.out, { name: star.name, why: 'out (rest)', team: tm }], starters: { ...av.starters, [tm]: av.starters[tm].filter((n) => n !== star.name) } };
+      };
+      w.DB.lineupFor = w.DB.availability;
+      w.DB.linesFor = () => null; w.DB.props = async () => [];
+      w.DB.livePlays = async (g) => { const fx = fxOf2(g.id); return state.phase === 'pre' || +g.id >= OFF ? [] : fx.plays.filter((p) => p.period <= 2); };
+      w.DB.plays = async (id) => fxOf2(id).plays;
+      // the players' own game logs for tomorrow's slate take as long as the test says
+      w.DB.playersLogs = async () => { if (gate.wait) await gate.wait; return {}; };
+      // tap back to tonight at the moment tomorrow's first projection is handed to the worker
+      const post = w.Worker.prototype.postMessage;
+      w.Worker.prototype.postMessage = function (m) {
+        if (tap.armed && !tap.done && m && m.payload && m.payload.game && String(m.payload.game.date).slice(0, 10) === d1) { tap.done = true; setTimeout(() => { const b = w.document.querySelector('[data-act="day"][data-d="-1"]'); if (b) b.click(); }, 0); }
+        return post.call(this, m);
+      };
+    });
+    // both games projected before tip-off (wait for the tip-off numbers of every player, however busy the machine is)
+    let tip0 = null;
+    for (let k = 0, same = 0; k < 40 && same < 3; k++) { await sleep(1500); const t = A.w.localStorage.getItem(`tip:${DAY}`); same = t && t === tip0 ? same + 1 : 0; tip0 = t; }
+    assert.ok(tip0 && Object.keys(JSON.parse(tip0)).length >= 40, `tip-off numbers were kept for only ${tip0 ? Object.keys(JSON.parse(tip0)).length : 0} players before the game`);
+    A.state.phase = 'live';
+    A.w.document.getElementById('refreshBtn').click();
+    await sleep(6000);
+    const since = async () => { const v = await A.go('#/scorers', 500); return [...v.querySelectorAll('.card.scorer')].map((c) => `${c.querySelector('.nmrow b').textContent}: ${c.querySelector('.big').textContent}${c.querySelector('.mv') ? ' ' + c.querySelector('.mv').textContent : ''}`); };
+    const before = await since();
+    assert.ok(before.some((x) => /since tip/.test(x)), `no moves since tip-off on the scorers screen: ${before.slice(0, 3).join(' | ')} || ${A.errors.slice(0, 4).join(' | ').slice(0, 500)}`);
+    // (1) back while tomorrow's first projection is in flight
+    let v = await A.go('#/games', 300);
+    tap.armed = true;
+    v.querySelector('[data-act="day"][data-d="1"]').click();
+    await sleep(6000);
+    assert.ok(tap.done, 'the test never tapped back');
+    assert.strictEqual(A.w.localStorage.getItem(`tip:${DAY}`), tip0, 'tonight\'s tip-off numbers were rewritten by a projection of tomorrow\'s game that finished late');
+    // (2) back while tomorrow's game logs are still being read (they re-project tomorrow's games when they arrive)
+    gate.wait = new Promise((r) => { gate.release = r; });
+    v = await A.go('#/games', 300);
+    v.querySelector('[data-act="day"][data-d="1"]').click();
+    await sleep(3500);
+    A.w.document.getElementById('view').querySelector('[data-act="day"][data-d="-1"]').click();
+    await sleep(1500);
+    gate.release(); gate.wait = null;
+    await sleep(5000);
+    assert.strictEqual(A.w.localStorage.getItem(`tip:${DAY}`), tip0, 'tonight\'s tip-off numbers were rewritten when tomorrow\'s game logs arrived after the tap back');
+    assert.deepStrictEqual(await since(), before, 'the moves since tip-off changed');
+  });
+  console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);
+  process.exit(process.exitCode || 0);
+})();

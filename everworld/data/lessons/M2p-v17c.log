@@ -1,0 +1,4 @@
+pass 1 (minutes): 3586 games, 82s
+pass 2 (stats): 170s
+pass 3 (calibration): 262s
+lessons from 3586 games → data/lessons/M2p-v17c.json

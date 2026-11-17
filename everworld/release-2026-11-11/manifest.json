@@ -1,0 +1,74 @@
+{
+ "date": "2026-11-11",
+ "spaces": [
+  {
+   "name": "courtside-arcade",
+   "live": "https://everworldlife-courtside-arcade.static.hf.space/",
+   "upload": "https://huggingface.co/spaces/everworldlife/courtside-arcade/upload/main",
+   "files": [
+    {
+     "path": "app.js",
+     "bytes": 105568,
+     "sha256": "6ff497804baee06a243d34ae517653e49f97ad9778f610a8b1573805f304de79"
+    },
+    {
+     "path": "data.js",
+     "bytes": 21936,
+     "sha256": "882df9f300d338c82061f4deebe6f2670bf78b21d06b19435dd80ce44ef97e76"
+    },
+    {
+     "path": "engine.js",
+     "bytes": 228602,
+     "sha256": "a06854fc5ed09243bed424f504cb56f501da130f214a4225baca7ca6213a64e6"
+    },
+    {
+     "path": "sw.js",
+     "bytes": 1441,
+     "sha256": "8d849b582f0dce9ffdc4fd10dcb5e1f5833dd7e31e09d0d481ed1d4f5710eb32"
+    },
+    {
+     "path": "worker.js",
+     "bytes": 2396,
+     "sha256": "a2479ec49cf5ea60e7bd320d9585c179f9c873bb66483ed2012129b84949edfe"
+    }
+   ]
+  },
+  {
+   "name": "gg-winner",
+   "live": "https://everworldlife-gg-winner.static.hf.space/",
+   "upload": "https://huggingface.co/spaces/everworldlife/gg-winner/upload/main",
+   "files": [
+    {
+     "path": "app.js",
+     "bytes": 122962,
+     "sha256": "8950ffac4b884d88c5cadc29676cb7e96f086286ab236c41770c337165290c3e"
+    },
+    {
+     "path": "index.html",
+     "bytes": 15941,
+     "sha256": "6a5158f2963b9cde48e8e73946dcd8a0184209197809b6b53258b106f2df4f05"
+    },
+    {
+     "path": "league-live.js",
+     "bytes": 29146,
+     "sha256": "7b3c7277f6fc33cd61bfb8116544f1b995bcac60cc229264a74753d2d89a9394"
+    },
+    {
+     "path": "profiles.js",
+     "bytes": 24820,
+     "sha256": "398fb0b8773021cc728e79c1d37e859adfc3af1f243bc25628b86aef3b3efe25"
+    },
+    {
+     "path": "research.js",
+     "bytes": 23348,
+     "sha256": "39283fb6de12037d50538306c718f076e8837ce6142c803c2a5c1a084514ee7d"
+    },
+    {
+     "path": "sw.js",
+     "bytes": 1825,
+     "sha256": "61783b19d64ec93419c0b35da96326e14b8106198ac84f84885d4ddfb89fb361"
+    }
+   ]
+  }
+ ]
+}

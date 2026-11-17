@@ -1,0 +1,4 @@
+pass 1 (minutes): 2387 games, 200s
+pass 2 (stats): 403s
+pass 3 (calibration): 603s
+lessons from 2387 games → data/lessons/A4-final.json

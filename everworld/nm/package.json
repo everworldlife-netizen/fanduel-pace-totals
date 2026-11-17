@@ -1,0 +1,9 @@
+{
+  "name": "everworld-lab-deps",
+  "private": true,
+  "description": "Test-time libraries for the Everworld lab (browser shell tests and the GG server bundle). Run npm install here once.",
+  "dependencies": {
+    "esbuild": "^0.24.0",
+    "jsdom": "^25.0.1"
+  }
+}

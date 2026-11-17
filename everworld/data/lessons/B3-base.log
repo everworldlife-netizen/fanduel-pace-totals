@@ -1,0 +1,4 @@
+pass 1 (minutes): 3586 games, 254s
+pass 2 (stats): 509s
+pass 3 (calibration): 772s
+lessons from 3586 games → data/lessons/B3-base.json

@@ -1,0 +1,4 @@
+pass 1 (minutes): 2387 games, 278s
+pass 2 (stats): 583s
+pass 3 (calibration): 890s
+lessons from 2387 games → data/lessons/A3-v15.json

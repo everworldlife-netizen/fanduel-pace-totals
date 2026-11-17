@@ -1,0 +1,4 @@
+pass 1 (minutes): 1177 games, 107s
+pass 2 (stats): 216s
+pass 3 (calibration): 325s
+lessons from 1177 games → data/lessons/D2-2026.json

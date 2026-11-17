@@ -1,0 +1,29 @@
+{
+  "name": "GG Winner — FanDuel Live Totals",
+  "short_name": "GG Winner",
+  "description": "Live FanDuel eBasketball (H2H GG League) projections: game, 1st half, quarter and team totals vs the live line, in plain English.",
+  "id": "/",
+  "start_url": "/?source=pwa#board",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone"],
+  "orientation": "portrait",
+  "background_color": "#061019",
+  "theme_color": "#061019",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Live board", "short_name": "Board", "url": "/?view=board&source=shortcut", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Matchup Lab", "short_name": "Lab", "url": "/?view=lab&source=shortcut", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Results", "short_name": "Results", "url": "/?view=results&source=shortcut", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "screenshots": [
+    { "src": "/screens/board.png", "sizes": "824x1678", "type": "image/png", "form_factor": "narrow", "label": "Live board — best spots vs FanDuel" },
+    { "src": "/screens/game.png", "sizes": "824x1678", "type": "image/png", "form_factor": "narrow", "label": "Game view — projection, gap and the call" },
+    { "src": "/screens/lab.png", "sizes": "824x1678", "type": "image/png", "form_factor": "narrow", "label": "Matchup Lab — 60-second pre-game check" }
+  ]
+}

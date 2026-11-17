@@ -1,0 +1,1022 @@
+/* Courtside engine tests: run on two real games (fixtures/games.json.gz, built by tools/mkfixture.js).
+ *   node cs/tests/engine.test.js
+ */
+'use strict';
+const path = require('path');
+const zlib = require('zlib');
+const fs = require('fs');
+const assert = require('assert');
+const E = require(process.env.CS_BUILD ? path.resolve(process.env.CS_BUILD, 'engine.js') : path.join(__dirname, '..', 'build', 'engine.js')); // CS_BUILD=<folder> tests another build
+const FX = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', 'games.json.gz'))).toString('utf8'));
+
+let pass = 0;
+const test = (name, fn) => { try { fn(); pass++; console.log(`  ok  ${name}`); } catch (e) { console.log(`FAIL  ${name}\n      ${e.message}`); process.exitCode = 1; } };
+const ord = (k) => (k === 1 ? '1st' : k === 2 ? '2nd' : '3rd');
+function momentAt(g, plays, el) {
+  if (!el) return { game: { ...g, status_state: 'scheduled', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 }, plays: [] };
+  const v = g.visitor_team.abbreviation, h = g.home_team.abbreviation;
+  let per, clock, time, ps;
+  if (el % 12 === 0) { per = el / 12; clock = '0:00'; time = per === 2 ? 'Half' : `End of ${ord(per)}`; ps = plays.filter((p) => p.period <= per); }
+  else { per = Math.floor(el / 12) + 1; const left = (per * 12 - el) * 60; clock = `${Math.floor(left / 60)}:${String(Math.round(left % 60)).padStart(2, '0')}`; time = `Q${per} ${clock}`; ps = plays.filter((p) => p.period < per || (p.period === per && E.clockSec(p.clock) >= left)); }
+  const bx = E.boxFromPlays(ps, per, clock);
+  return { game: { ...g, status_state: 'in', period: per, time, visitor_team_score: (bx.teams[v] || {}).pts || 0, home_team_score: (bx.teams[h] || {}).pts || 0 }, plays: ps };
+}
+const run = (fx, el, extra = {}) => { const m = momentAt(fx.g, fx.plays, el); return E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, ...extra }); };
+const STATS = ['pts', 'reb', 'ast', 'fg3m'];
+
+console.log(`Courtside engine: ${FX.length} fixture games, ${E.PAT_F.length} learned inputs`);
+for (const fx of FX) {
+  const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, tag = `${v}@${h}`;
+  for (const el of [0, 6, 9, 12, 24, 33, 42, 45]) {
+    const P = run(fx, el);
+    test(`${tag} at ${el} min: numbers are finite and never below what he already has`, () => {
+      assert.ok(P.players.length >= 14, `only ${P.players.length} players`);
+      for (const p of P.players) for (const s of [...STATS, 'min']) {
+        assert.ok(Number.isFinite(p.proj[s]) && Number.isFinite(p.mean[s]), `${p.name} ${s} not finite`);
+        assert.ok(p.proj[s] >= p.now[s] - 1e-6, `${p.name} ${s}: projected ${p.proj[s]} below current ${p.now[s]}`);
+      }
+      assert.ok(Number.isFinite(P.projScore[v]) && Number.isFinite(P.projScore[h]));
+    });
+    test(`${tag} at ${el} min: a team never plays more than five players' worth of the time left`, () => {
+      for (const tm of [v, h]) {
+        const mine = P.players.filter((p) => p.team === tm);
+        const rem = mine.reduce((a, p) => a + (p.mean.min - p.now.min), 0);
+        // regulation minutes left, plus room for the overtime share of the simulations. Before tip-off (v15) each player's
+        // minutes are an "if he plays" number, so a full active list may add up to more than a team can play: the TEAM
+        // total is what gets scaled to five players' worth there (checked in the team totals test below). From v16 a
+        // player still waiting to check in keeps that kind of number during the game too, so the strict cap is for the
+        // players who have checked in and the looser one for everyone listed
+        const strict = 5 * P.state.left + 5 * 5 * 0.6 + 0.5;
+        const ifPlays = E.TUNE.condMin > 0 && (el === 0 || E.TUNE.condLive > 0);
+        assert.ok(rem <= (ifPlays ? 5 * P.state.left * 1.4 : strict), `${tm} has ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
+        if (el > 0) { const inRem = mine.filter((p) => !p.dnpYet).reduce((a, p) => a + (p.mean.min - p.now.min), 0); assert.ok(inRem <= strict, `${tm}: players who have checked in have ${inRem.toFixed(1)} minutes to come with ${P.state.left} left`); }
+        // (in a lopsided game some of the time left goes to deep-bench players the engine does not track by name)
+        assert.ok(rem >= 5 * P.state.left * 0.55 - 0.5, `${tm} has only ${rem.toFixed(1)} minutes to come with ${P.state.left} left`);
+      }
+    });
+    test(`${tag} at ${el} min: stated chances are between 0 and 1 and fall as the rung rises`, () => {
+      for (const p of P.players) for (const s of STATS) {
+        let prev = 1.0001;
+        for (const r of p.ladders[s]) { assert.ok(r.p >= 0 && r.p <= 1, `${p.name} ${s} ${r.t}+ chance ${r.p}`); assert.ok(r.p <= prev + 0.02, `${p.name} ${s} ladder not falling`); prev = r.p; }
+      }
+    });
+  }
+  test(`${tag}: same inputs give the same numbers (repeatable)`, () => {
+    const a = run(fx, 24), b = run(fx, 24);
+    assert.deepStrictEqual(a.players.map((p) => [p.pid, p.proj.pts, p.mean.min]), b.players.map((p) => [p.pid, p.proj.pts, p.mean.min]));
+  });
+  test(`${tag}: a finished game returns the final box untouched`, () => {
+    const P = E.projectGame({ ...fx.base, game: fx.g, plays: fx.plays, nsims: 100, seed: 1, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    assert.strictEqual(P.state.phase, 'final');
+    for (const p of P.players) { const a = fx.rows[p.pid]; if (a) assert.strictEqual(p.proj.pts, a.pts, `${p.name} final points`); }
+  });
+  test(`${tag}: plus edges only (every pick is projected ahead of its line)`, () => {
+    for (const el of [0, 24, 36]) {
+      const P = run(fx, el);
+      // book lines placed just below, at and above each projection
+      const props = [];
+      for (const p of P.players.slice(0, 12)) for (const [stat, type] of [['pts', 'points'], ['reb', 'rebounds'], ['ast', 'assists'], ['fg3m', 'threes']]) for (const d of [-2.5, -0.5, 0.5, 2.5]) {
+        const line = Math.max(0.5, Math.floor(p.proj[stat] + d) + 0.5);
+        props.push({ player_id: p.pid, prop_type: type, line_value: String(line), vendor: 'testbook', market: { type: 'over_under', over_odds: -110, under_odds: -110 } });
+      }
+      const lines = E.consensusLines(props);
+      const picks = E.picksForGame(P, lines, { minP: 0.55 });
+      for (const k of picks) {
+        assert.ok(k.proj > k.line, `${k.name} ${k.label}: projection ${k.proj} is not ahead of line ${k.line}`);
+        if (k.kind === 'line') assert.ok(k.prob >= 0.55 && k.edge >= 0.03, `${k.name} ${k.label}: weak edge shown`);
+      }
+    }
+  });
+  test(`${tag}: lineup inputs (v15) reach the learned layer`, () => {
+    const P = run(fx, 0);
+    const ix = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
+    for (const k of ['startUp', 'startDown', 'fresh', 'deep', 'vacPos', 'lastMin', 'rest3', 'missShare']) assert.ok(ix[k] > 0, `missing input ${k}`);
+    const starters = new Set(fx.base.avail.in.filter((x) => x.starter).map((x) => E.norm(x.name)));
+    let up = 0, down = 0;
+    for (const p of P.players) {
+      const x = p.pat.x.min;
+      if (x[ix.startUp] > 0) { up++; assert.ok(starters.has(E.norm(p.name)), `${p.name} flagged as a new starter but is not starting`); }
+      if (x[ix.startDown] > 0) { down++; assert.ok(!starters.has(E.norm(p.name)), `${p.name} flagged as not starting but is starting`); }
+    }
+    assert.ok(up + down > 0, 'no player has a role change flag in either game moment');
+  });
+  test(`${tag}: tonight's team load and the expected margin reach the learned layer, by role`, () => {
+    const P = run(fx, 0);
+    const ix = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
+    for (const k of ['loadS', 'loadB', 'loadBd', 'loadBq', 'favS', 'dogS', 'dogB']) assert.ok(ix[k] > 0, `missing input ${k}`);
+    const m = fx.base.market, home = fx.g.home_team.abbreviation;
+    for (const tm of [fx.g.visitor_team.abbreviation, home]) {
+      const ps = P.players.filter((p) => p.team === tm);
+      // one load per team: every starter carries it as loadS, everyone else as loadB
+      const loads = new Set(ps.map((p) => (p.starter ? p.pat.x.min[ix.loadS] : p.pat.x.min[ix.loadB]).toFixed(4)));
+      assert.strictEqual(loads.size, 1, `${tm}: players of one team carry different loads (${[...loads].join(', ')})`);
+      for (const p of ps) {
+        const x = p.pat.x.min;
+        if (p.starter) { assert.strictEqual(x[ix.loadB], 0); assert.strictEqual(x[ix.loadBd], 0); assert.strictEqual(x[ix.dogB], 0); }
+        else { assert.strictEqual(x[ix.loadS], 0); assert.strictEqual(x[ix.favS], 0); assert.strictEqual(x[ix.dogS], 0); }
+        assert.ok(!(x[ix.favS] > 0 && x[ix.dogS] > 0), `${p.name} is flagged on both sides of the spread`);
+      }
+      // with a spread past 4 points the favored side's starters carry favS and the other side's carry dogS
+      if (m && m.spreadHome != null && Math.abs(m.spreadHome) >= 6) {
+        const favored = (tm === home) === (m.spreadHome < 0);
+        const st = ps.filter((p) => p.starter);
+        assert.ok(st.every((p) => (favored ? p.pat.x.min[ix.favS] > 0 : p.pat.x.min[ix.dogS] > 0)), `${tm}: starters do not carry the ${favored ? 'favored' : 'trailing'} side of a ${m.spreadHome} spread`);
+      }
+    }
+  });
+  test(`${tag}: before lineups are posted nobody carries a starter flag, and that moment is its own learning stage when switched on`, () => {
+    const P = run(fx, 0, { avail: fx.availReport });
+    const ix = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
+    for (const p of P.players) { assert.strictEqual(p.pat.x.min[ix.startUp], 0); assert.strictEqual(p.pat.x.min[ix.startDown], 0); }
+    assert.strictEqual(P.patG, E.TUNE.repGroup > 0 ? 'rep' : 'pre');
+    assert.strictEqual(run(fx, 0).patG, 'pre');
+  });
+  test(`${tag}: a rotation player with no recent games is still projected once he is on the posted list`, () => {
+    // take the busiest non-starter-by-flag player out of the recent logs, as if he were back from a long layoff
+    const P0 = run(fx, 0);
+    const cand = P0.players.filter((p) => p.pid > 0 && p.mean.min >= 22 && (fx.base.priors.last[E.norm(p.name)] || fx.base.priors.cur[E.norm(p.name)]))[0];
+    assert.ok(cand, 'no candidate player');
+    const logs = fx.base.logs.map((l) => ({ ...l, rows: Object.fromEntries(Object.entries(l.rows).filter(([pid]) => +pid !== +cand.pid)) }));
+    const P = run(fx, 0, { logs });
+    const back = P.players.find((p) => E.norm(p.name) === E.norm(cand.name));
+    if (E.TUNE.actNew > 0) { assert.ok(back, `${cand.name} missing although he is on tonight's list`); assert.ok(back.pid < 0 && back.mean.min > 5, `${cand.name} projected ${back && back.mean.min} minutes`); }
+    else assert.ok(!back, 'layoff players are switched off but one appeared');
+  });
+  test(`${tag}: before lineups are posted nobody is handed a whole game (short-handed teams)`, () => {
+    const P = run(fx, 0, { avail: fx.availReport });
+    for (const p of P.players) {
+      assert.ok(p.mean.min <= 44.5, `${p.name} is projected ${p.mean.min.toFixed(1)} minutes before lineups post`);
+      // (a deep-bench player's number means "if he plays": measured, those who get in play about 10 to 13 minutes, so 14 is allowed for anyone)
+      assert.ok(p.mean.min <= Math.max(1.3 * p.mpg, p.mpg + 8, 14), `${p.name}: ${p.mean.min.toFixed(1)} minutes against a usual ${(+p.mpg).toFixed(1)}`);
+    }
+  });
+  test(`${tag}: at the opening tip a posted starter the play-by-play has not named yet is on the floor, not "not checked in"`, () => {
+    const P0 = run(fx, 0), P = run(fx, 0.25);
+    const starters = new Set(fx.base.avail.in.filter((x) => x.starter).map((x) => E.norm(x.name)));
+    let n = 0;
+    for (const p of P.players) {
+      if (!starters.has(E.norm(p.name))) continue;
+      const q = P0.players.find((x) => E.norm(x.name) === E.norm(p.name));
+      if (!q) continue;
+      n++;
+      assert.ok(!p.dnpYet, `${p.name} starts but counts as not checked in 15 seconds into the game`);
+      assert.ok(p.mean.min >= 0.75 * q.mean.min, `${p.name} dropped from ${q.mean.min.toFixed(1)} to ${p.mean.min.toFixed(1)} minutes at the opening tip`);
+    }
+    assert.ok(n >= 8, 'too few posted starters found');
+  });
+  test(`${tag}: with no posted lineup, a real starter is never labelled as not starting while the play-by-play is still finding the starters`, () => {
+    const starters = new Set(fx.base.avail.in.filter((x) => x.starter).map((x) => E.norm(x.name)));
+    for (const el of [3, 4, 6]) {
+      const P = run(fx, el, { avail: null });
+      for (const p of P.players) if (starters.has(E.norm(p.name))) assert.notStrictEqual(p.startsTonight, 0, `${p.name} started but is flagged not starting ${el} minutes in`);
+    }
+  });
+  test(`${tag}: lessons between two stages blend smoothly (no jump at the stage border)`, () => {
+    if (!(E.TUNE.patInterp > 0)) return;
+    // the old border between the 6- and 12-minute lessons. The game itself moves in those 12 seconds (the pace
+    // estimate drifts, the simulation re-rolls), so the lessons' share of the change is what is checked: the change
+    // with lessons minus the change without them. With a hard switch at the border that share was about 2 minutes.
+    // (the refill rule hands minutes to teammates above a fixed cut-off, a jump of its own: switched off here so only the blend is measured)
+    const refill0 = E.TUNE.refill; E.TUNE.refill = 0;
+    let a, b, a0, b0;
+    try { a = run(fx, 8.9); b = run(fx, 9.1); a0 = run(fx, 8.9, { patterns: null }); b0 = run(fx, 9.1, { patterns: null }); } finally { E.TUNE.refill = refill0; }
+    const big = a.players.filter((p) => p.mean.min >= 20);
+    let n = 0;
+    for (const p of big) {
+      const q = b.players.find((x) => x.pid === p.pid), p0 = a0.players.find((x) => x.pid === p.pid), q0 = b0.players.find((x) => x.pid === p.pid);
+      // only players for whom nothing happened in those 12 seconds (same box line, same on/off the floor)
+      if (!q || !p0 || !q0 || q.on !== p.on || q.now.pts !== p.now.pts || q.now.fga !== p.now.fga || q.now.pf !== p.now.pf) continue;
+      n++;
+      const dMin = (q.mean.min - p.mean.min) - (q0.mean.min - p0.mean.min), dPts = (q.mean.pts - p.mean.pts) - (q0.mean.pts - p0.mean.pts);
+      assert.ok(Math.abs(dMin) < 0.6, `${p.name}: the lessons move his minutes by ${dMin.toFixed(2)} across the border`);
+      assert.ok(Math.abs(dPts) < 2.5, `${p.name}: the lessons move his points by ${dPts.toFixed(2)} across the border`);
+    }
+    assert.ok(n >= 4, 'too few unchanged players to compare');
+  });
+}
+test('team totals: "if he plays" minutes never inflate the game score, and the learned team check is applied', () => {
+  for (const fx of FX) {
+    const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation;
+    for (const el of [0, 6, 24]) {
+      const P = run(fx, el);
+      for (const [tm, nowPts] of [[v, P.state.vs], [h, P.state.hs]]) {
+        assert.ok(P.teamRaw && Number.isFinite(P.teamRaw[tm]), 'no raw team number');
+        // (our own team number, before the final-score step that leans on the book's line: see the next test)
+        const own = (P.scoreRule.ownTotal + (tm === v ? 1 : -1) * P.scoreRule.ownMargin) / 2;
+        assert.ok(Math.abs(own - (nowPts + P.teamRaw[tm] * P.teamFactor)) < 0.05, 'our own team score is not points so far + the checked sum of players');
+        assert.ok(P.teamFactor >= 0.85 && P.teamFactor <= 1.15, `team check ${P.teamFactor} outside its cap`);
+      }
+      if (el === 0) {
+        // the books' line splits into two team totals: ours must be in the same range, however many players are on the active list
+        const mk = fx.base.market, tv = (mk.total + mk.spreadHome) / 2, th = (mk.total - mk.spreadHome) / 2;
+        assert.ok(Math.abs(P.projScore[v] - tv) < 0.16 * tv && Math.abs(P.projScore[h] - th) < 0.16 * th, `tip-off team totals ${P.projScore[v].toFixed(1)}/${P.projScore[h].toFixed(1)} far from the line's ${tv}/${th}`);
+      }
+    }
+  }
+});
+// a game state with a forced score (and, for overtime, a forced period and clock): for the close late states no real game gives us
+function forced(fx, el, vs, hs, ot) {
+  const g = fx.g; let per = Math.min(4, Math.floor(el / 12) + 1);
+  const leftS = Math.max(per * 12 - el, 0) * 60; let clock = `${Math.floor(leftS / 60)}:${String(Math.round(leftS % 60)).padStart(2, '0')}`;
+  const ps = fx.plays.filter((p) => p.period < per || (p.period === per && E.clockSec(p.clock) >= leftS));
+  if (ot) { per = 5; clock = ot; }
+  return { game: { ...g, status_state: 'in', period: per, time: `Q${per} ${clock}`, visitor_team_score: vs, home_team_score: hs }, plays: ps };
+}
+const runAt = (fx, m, extra = {}) => E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 300, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, ...extra });
+const ruleAt = (el) => (el <= 0 ? 1 : Math.max(0, Math.min(1, (45 - el) / 9)));
+const keepAt = (el) => (el <= 0 ? 1 : 1 - ruleAt(el) * (1 - Math.min(1, E.TUNE.mktKeep + (1 - E.TUNE.mktKeep) * (el / 48) ** 2)));
+const withTune = (set, fn) => { const old = {}; for (const k of Object.keys(set)) { old[k] = E.TUNE[k]; E.TUNE[k] = set[k]; } try { return fn(); } finally { Object.assign(E.TUNE, old); } };
+test('final score: the book\'s total before the tip, its spread for the rest of the game, a lead that gives a little back, and the simulations late', () => {
+  for (const fx of FX) {
+    const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, mk = fx.base.market;
+    for (const el of [0, 6, 24, 39, 42, 46]) {
+      const P = run(fx, el), R = P.scoreRule, lead = P.state.vs - P.state.hs, rw = ruleAt(el);
+      const wT = E.TUNE.mktTotW * (el === 0 ? 1 : Math.max(0, Math.min(1, (9 - el) / 6)));
+      assert.ok(Math.abs(R.total - wT) < 1e-9 && Math.abs(R.margin - E.TUNE.mktMarU * rw) < 1e-9 && Math.abs(R.keep - keepAt(el)) < 1e-9 && Math.abs(R.rule - rw) < 1e-9, `rule at ${el}: ${JSON.stringify(R)}`);
+      const total = P.projScore[v] + P.projScore[h], margin = P.projScore[v] - P.projScore[h];
+      assert.ok(Math.abs(total - ((1 - wT) * R.ownTotal + wT * mk.total)) < 0.05, `total ${total} at ${el} min is not ${(1 - wT).toFixed(2)} ours + ${wT.toFixed(2)} the book's`);
+      // the kept lead, then the book's spread for the time left; from 36:00 the simulations' own margin comes back in, alone from 45:00
+      const want = keepAt(el) * lead + rw * mk.spreadHome * (48 - el) / 48 + (1 - rw) * (R.ownMargin - lead);
+      assert.ok(Math.abs(margin - want) < 0.05, `margin ${margin} at ${el} min, expected ${want}`);
+      if (el >= 45) assert.ok(Math.abs(total - R.ownTotal) < 1e-9 && Math.abs(margin - R.ownMargin) < 1e-9, 'from 45:00 the score is the simulations\' own');
+      assert.ok(Math.abs(P.market.projTotal - total) < 1e-9 && Math.abs(P.market.projMargin - margin) < 1e-9);
+      assert.ok(P.projScore[v] >= P.state.vs - 1e-9 && P.projScore[h] >= P.state.hs - 1e-9, 'a projected score below the score now');
+      // with the step off: the players' numbers are the same, the score is our own, and the count of simulations is the same count
+      const Q = withTune({ mktAnchor: 0 }, () => run(fx, el));
+      assert.deepStrictEqual(P.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.min]), Q.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.min]));
+      assert.ok(Q.scoreRule === null && Math.abs(Q.projScore[v] + Q.projScore[h] - R.ownTotal) < 1e-6 && Math.abs(Q.projScore[v] - Q.projScore[h] - R.ownMargin) < 1e-6, 'with the step off the score is our own');
+      assert.strictEqual(P.winSim, Q.winSim, 'the count of simulations must be taken before the final-score step');
+    }
+    // no book line for this game: our own total and margin, and the lead still gives a little back
+    for (const el of [0, 18]) {
+      const P = run(fx, el, { market: null }), R = P.scoreRule, lead = P.state.vs - P.state.hs;
+      assert.ok(R && R.total === 0 && R.margin === 0 && P.market === null);
+      assert.ok(Math.abs(P.projScore[v] + P.projScore[h] - R.ownTotal) < 0.05 && Math.abs(P.projScore[v] - P.projScore[h] - (R.ownMargin - (1 - keepAt(el)) * lead)) < 0.05, 'no line: own numbers with the give-back');
+    }
+    // a pick'em (spread 0) is a spread, not a missing one: before the tip the projected game is level and the chance is 50%
+    const K = run(fx, 0, { market: { ...mk, spreadHome: 0 } });
+    assert.ok(K.scoreRule.margin === E.TUNE.mktMarU && Math.abs(K.projScore[v] - K.projScore[h]) < 0.01 && Math.abs(K.winProb[v] - 0.5) < 0.001, `pick'em: margin ${K.projScore[v] - K.projScore[h]}, chance ${K.winProb[v]}`);
+    // a total with no spread, and a spread with no total: each part works alone
+    const T = run(fx, 0, { market: { ...mk, spreadHome: null } }), S2 = run(fx, 0, { market: { ...mk, total: null } });
+    assert.ok(T.scoreRule.margin === 0 && Math.abs(T.projScore[v] + T.projScore[h] - (0.1 * T.scoreRule.ownTotal + 0.9 * mk.total)) < 0.05 && Math.abs(T.projScore[v] - T.projScore[h] - T.scoreRule.ownMargin) < 0.05);
+    assert.ok(S2.scoreRule.total === 0 && Math.abs(S2.projScore[v] - S2.projScore[h] - mk.spreadHome) < 0.05 && Math.abs(S2.projScore[v] + S2.projScore[h] - S2.scoreRule.ownTotal) < 0.05);
+    // overtime: the clock is the overtime clock, nothing of the rule is left, the score is the simulations' own
+    const O = runAt(fx, forced(fx, 48, 101, 101, '3:00')), RO = O.scoreRule;
+    assert.ok(O.state.elapsed >= 48 && O.state.left > 0 && O.state.left <= 5, `overtime state: elapsed ${O.state.elapsed}, left ${O.state.left}`);
+    assert.ok(RO.rule === 0 && RO.margin === 0 && RO.keep === 1 && RO.total === 0 && Math.abs(O.projScore[v] + O.projScore[h] - RO.ownTotal) < 1e-9 && Math.abs(O.projScore[v] - O.projScore[h] - RO.ownMargin) < 1e-9);
+    assert.ok(O.projScore[v] + O.projScore[h] - 202 < 30, 'overtime projected as if a long stretch were left');
+    // a finished game is its final score
+    const F = E.projectGame({ ...fx.base, game: fx.g, plays: fx.plays, nsims: 200, seed: 5, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    assert.ok(F.scoreRule === null && F.projScore[v] === fx.g.visitor_team_score && F.projScore[h] === fx.g.home_team_score);
+    assert.strictEqual(F.winProb[v], fx.g.visitor_team_score > fx.g.home_team_score ? 1 : 0);
+  }
+});
+test('win chance: from the projected margin and the swing real games have, handing back to the count of simulations from 36:00 to 45:00', () => {
+  assert.ok(Math.abs(E.normCdf(0) - 0.5) < 1e-7 && Math.abs(E.normCdf(1) - 0.8413447) < 1e-6 && Math.abs(E.normCdf(-1.96) - 0.0249979) < 1e-6 && Math.abs(E.normCdf(3) + E.normCdf(-3) - 1) < 1e-9);
+  const expected = (P, el, v, h) => {
+    const margin = P.projScore[v] - P.projScore[h], wC = ruleAt(el);
+    const curve = E.normCdf(margin / (E.TUNE.winSd0 * Math.sqrt(Math.max(48 - el, 0) / 48) + E.TUNE.winSd1));
+    const p = wC * curve + (1 - wC) * P.winSim;
+    return (p - 0.5) * margin < 0 ? 0.5 : p; // the two reads on opposite sides of level: a coin flip
+  };
+  for (const fx of FX) {
+    const v = fx.g.visitor_team.abbreviation, h = fx.g.home_team.abbreviation, mk = fx.base.market;
+    for (const el of [0, 12, 24, 36, 39, 42, 44, 45, 46]) {
+      const P = run(fx, el), margin = P.projScore[v] - P.projScore[h];
+      assert.ok(P.winSim >= 0 && P.winSim <= 1 && Math.abs(P.winProb[v] + P.winProb[h] - 1) < 1e-12);
+      assert.ok(Math.abs(P.winProb[v] - expected(P, el, v, h)) < 1e-9, `win chance at ${el} min: ${P.winProb[v]}, expected ${expected(P, el, v, h)} (count ${P.winSim})`);
+      if (el >= 45 && (P.winSim - 0.5) * margin >= 0) assert.strictEqual(P.winProb[v], P.winSim, 'from 45:00 the chance is the count alone');
+      assert.ok((P.winProb[v] - 0.5) * margin >= 0, 'the side projected ahead is not the side more likely to win');
+      // the count itself is the count of version 17: both switches off give the same number
+      const Q = withTune({ mktAnchor: 0, winCal: 0 }, () => run(fx, el));
+      assert.ok(Q.winProb[v] === Q.winSim && Q.winSim === P.winSim, `count at ${el} min changed: ${P.winSim} against ${Q.winSim}`);
+    }
+    // before the tip the chance is the book's spread read through the swing of real games (11.5 points): close to the book's own
+    const P0 = run(fx, 0), fav = mk.spreadHome >= 0 ? v : h;
+    assert.ok(Math.abs(P0.winProb[fav] - E.normCdf(Math.abs(mk.spreadHome) / (E.TUNE.winSd0 + E.TUNE.winSd1))) < 0.005);
+    assert.ok(Math.abs(P0.winProb[v] - mk.pAway) < 0.06, `pregame ${P0.winProb[v].toFixed(3)} far from the book's ${mk.pAway.toFixed(3)}`);
+    // close games late, level games, overtime, a heavy favourite on either side: the projected score and the win chance never
+    // name different teams, and from 45:00 and in overtime the chance is the count (or a coin flip when the two disagree)
+    let n = 0;
+    for (const sp of [mk.spreadHome, 12.5, -12.5]) for (const [el, ot] of [[38, null], [43, null], [46, null], [47.5, null], [48, '3:00']]) for (const d of [-1, 0, 2]) {
+      const P = runAt(fx, forced(fx, el, 100 + Math.max(d, 0), 100 + Math.max(-d, 0), ot), { market: { ...mk, spreadHome: sp } });
+      const margin = P.projScore[v] - P.projScore[h];
+      assert.ok((P.winProb[v] - 0.5) * margin >= 0, `spread ${sp}, ${el} min${ot ? ' (overtime)' : ''}, ${P.state.vs}-${P.state.hs}: projected margin ${margin.toFixed(2)} but ${v} ${Math.round(100 * P.winProb[v])}% to win`);
+      assert.ok(Math.abs(P.winProb[v] - expected(P, P.state.elapsed, v, h)) < 1e-9);
+      if (P.state.elapsed >= 45) assert.ok(P.winProb[v] === P.winSim || P.winProb[v] === 0.5);
+      assert.ok(Number.isFinite(margin) && P.projScore[v] >= P.state.vs - 1e-9 && P.projScore[h] >= P.state.hs - 1e-9);
+      n++;
+    }
+    assert.strictEqual(n, 45);
+  }
+});
+test('shown number at the opening tip: no step when no lineup was confirmed (the table used before the tip carries into the game)', () => {
+  for (const fx of FX) {
+    const g = fx.g, tip = { ...g, status_state: 'in', period: 1, time: 'Q1 12:00', visitor_team_score: 0, home_team_score: 0 };
+    const at = (avail) => E.projectGame({ ...fx.base, avail, game: tip, plays: [], nsims: 300, seed: g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    // lineup posted: the pre-game table (a quarter of the middle in the points); nothing posted: the lineup-not-posted table (plain average)
+    const A = at(fx.base.avail), B = at(null);
+    assert.ok(A.lineup.confirmed && !B.lineup.confirmed);
+    let nA = 0, nB = 0;
+    for (const p of A.players) { if (p.mean.pts < 4) continue; assert.ok(Math.abs(p.proj.pts - (0.75 * p.mean.pts + 0.25 * p.mid.pts)) < 1e-9, `${p.name}: lineup posted, shown ${p.proj.pts}`); nA++; }
+    for (const p of B.players) { if (p.mean.pts < 4) continue; assert.ok(Math.abs(p.proj.pts - p.mean.pts) < 1e-9, `${p.name}: no lineup, shown ${p.proj.pts} is not the plain average ${p.mean.pts}`); nB++; }
+    assert.ok(nA >= 10 && nB >= 10);
+  }
+});
+test('shown number: the version 18 weights of the middle (points before the tip and at the half, rebounds from 12:00 to the half)', () => {
+  const fx = FX[0];
+  const want = { 0: { pts: 0.25, reb: 0, ast: 0 }, 12: { pts: 0.25, reb: 0.25, ast: 0.25 }, 18: { pts: 0.25, reb: 0.25, ast: 0.5 }, 24: { pts: 0.5, reb: 0.25, ast: 1 }, 9: { pts: 0.25, reb: 0.125, ast: 0.125 } };
+  for (const [el, W] of Object.entries(want)) {
+    const P = run(fx, +el); let n = 0;
+    for (const p of P.players) for (const k of ['pts', 'reb', 'ast']) {
+      const exp = Math.max(p.now[k], (1 - W[k]) * p.mean[k] + W[k] * p.mid[k]);
+      assert.ok(Math.abs(p.proj[k] - (W[k] > 0 ? exp : p.mean[k])) < 1e-9, `${p.name} ${k} at ${el} min: shown ${p.proj[k]}, expected ${exp} (average ${p.mean[k]}, middle ${p.mid[k]})`); n++;
+    }
+    assert.ok(n > 40);
+  }
+});
+test('learning sums add up and solve (ridge), and the shipped lessons have one number per input', () => {
+  const fx = FX[0];
+  const acc = E.patEmpty();
+  for (const el of [0, 12, 24]) { const m = momentAt(fx.g, fx.plays, el); const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 200, seed: 3, patterns: null, sitPrior: fx.sitPrior }); E.patGrade(P, fx.rows, acc); E.patScore(P, fx.rows, acc); }
+  assert.ok(acc.pre.min.n > 10 && acc.s12.pts.n > 10 && acc.acc.pre.n > 10);
+  assert.ok(acc.team.pre[0] === 2 && acc.team.pre[1] > 100 && acc.team.pre[2] > 100, 'team check sums missing');
+  assert.strictEqual(E.patUnpack(E.patPack(acc)).team.pre[0], 2);
+  const packed = E.patUnpack(E.patPack(acc));
+  assert.strictEqual(packed.pre.min.n, acc.pre.min.n);
+  const beta = E.patBeta(null);
+  for (const g of E.PAT_GROUPS) for (const s of E.PAT_LEARN) if (beta[g] && beta[g][s]) assert.strictEqual(beta[g][s].length, E.PAT_F.length, `${g}/${s}`);
+});
+const IX = Object.fromEntries(E.PAT_F.map((k, i) => [k, i]));
+const NEWIN = ['aAll', 'aS', 'aB', 'aOn', 'aPace', 'aLop', 'aOwn', 'aLong', 'lopTier', 'flagOff', 'flagOn', 'deepLop', 'stintLong'];
+const noLessons = () => Object.fromEntries(E.PAT_GROUPS.map((g) => [g, Object.fromEntries(E.PAT_LEARN.map((k) => [k, new Array(E.PAT_F.length).fill(0)]))]));
+test('anchor and floor-picture inputs speak only to minutes, and only where they apply', () => {
+  for (const k of NEWIN) assert.ok(k in IX, `input ${k} is missing`);
+  for (const fx of FX) for (const el of [0, 12, 36]) {
+    const P = run(fx, el);
+    let anchored = 0;
+    for (const p of P.players) {
+      for (const s of STATS) for (const k of NEWIN) assert.strictEqual(p.pat.x[s][IX[k]], 0, `${k} leaks into ${s} for ${p.name}`);
+      const x = p.pat.x.min;
+      for (const k of NEWIN) assert.ok(Number.isFinite(x[IX[k]]) && Math.abs(x[IX[k]]) <= 6, `${k} = ${x[IX[k]]} for ${p.name} at ${el} min`);
+      if (x[IX.aAll] > 0) anchored++;
+      // the white-flag picture only exists from the middle of the third quarter on
+      if (el < 30) for (const k of ['flagOff', 'flagOn', 'deepLop', 'stintLong']) assert.strictEqual(x[IX[k]], 0, `${k} is set at ${el} min`);
+      // before the game there is no floor to read; during it the pregame anchors step aside
+      for (const k of el === 0 ? ['aOn', 'aPace', 'aLop', 'lopTier'] : ['aOwn', 'aLong']) assert.strictEqual(x[IX[k]], 0, `${k} is set at ${el} min`);
+    }
+    assert.ok(anchored >= 10, `only ${anchored} players have an anchor at ${el} min`);
+  }
+});
+test('a learned anchor pulls minutes toward the middle: long numbers come down, short ones go up', () => {
+  const fx = FX[0];
+  // remaining minutes become 0.7 x remaining + 0.3 x 24
+  const b = noLessons(); b.pre.min[IX.base] = -0.3; b.pre.min[IX.aAll] = 0.3;
+  const P0 = run(fx, 0, { patterns: noLessons() }), P1 = run(fx, 0, { patterns: b });
+  let hi = 0, lo = 0;
+  for (const p of P0.players) {
+    const q = P1.players.find((x) => x.pid === p.pid);
+    if (!q) continue;
+    if (p.mean.min >= 31) { hi++; assert.ok(q.mean.min < p.mean.min - 0.5, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} should come down`); }
+    if (p.mean.min >= 8 && p.mean.min <= 16) { lo++; assert.ok(q.mean.min > p.mean.min + 0.5, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} should go up`); }
+  }
+  assert.ok(hi >= 2 && lo >= 2, `too few players to compare (${hi} long, ${lo} short)`);
+});
+test('during a game, a player who never got in teaches nothing (the live number means "if he plays")', () => {
+  const fx = FX[0];
+  const m = momentAt(fx.g, fx.plays, 12);
+  const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 200, seed: 3, patterns: null, sitPrior: fx.sitPrior });
+  const grade = (v) => { const keep = E.TUNE.condLive; E.TUNE.condLive = v; try { const acc = E.patEmpty(); E.patGrade(P, fx.rows, acc); return acc.s12.min.n; } finally { E.TUNE.condLive = keep; } };
+  const played = new Set(Object.entries(fx.rows).filter(([, r]) => r.min > 0).map(([id]) => +id));
+  const listed = P.players.length, got = P.players.filter((p) => played.has(+p.pid)).length;
+  assert.ok(grade(1) <= got, `${grade(1)} rows learned from, but only ${got} of the ${listed} listed players played`);
+  if (listed > got) assert.ok(grade(0) > grade(1), 'with the switch off, players who never got in are counted again');
+});
+test('nothing jumps at the end of the first quarter or at the start of the next one', () => {
+  for (const fx of FX) {
+    // six seconds before the horn against the horn itself: the minutes-pace input comes in with its lesson, not all at once
+    const a = run(fx, 11.9), b = run(fx, 12);
+    let n = 0, sum = 0;
+    for (const p of a.players) {
+      const q = b.players.find((x) => x.pid === p.pid);
+      if (!q || !(p.now.min > 0) || q.on !== p.on || q.now.pts !== p.now.pts || q.now.pf !== p.now.pf) continue;
+      n++; sum += Math.abs(q.mean.min - p.mean.min);
+      assert.ok(Math.abs(q.mean.min - p.mean.min) < 1.5, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} minutes across the horn with nothing happening`);
+    }
+    assert.ok(n >= 8 && sum / n < 0.6, `players move ${(sum / n).toFixed(2)} minutes on average across the Q1 horn (${n} players)`);
+    // the scoreboard says Q2 12:00 but no Q2 play has arrived: the five who closed Q1 are still on the floor
+    const m = momentAt(fx.g, fx.plays, 12);
+    const c = E.projectGame({ ...fx.base, game: { ...m.game, period: 2, time: 'Q2 12:00' }, plays: m.plays, nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    const onB = b.players.filter((p) => p.on).map((p) => p.pid).sort(), onC = c.players.filter((p) => p.on).map((p) => p.pid).sort();
+    assert.ok(onB.length >= 8, 'too few players on the floor at the Q1 horn');
+    assert.deepStrictEqual(onC, onB, 'the on-floor picture changes when the scoreboard moves to Q2 before any Q2 play');
+    for (const p of b.players) { const q = c.players.find((x) => x.pid === p.pid); if (q) assert.ok(Math.abs(q.mean.min - p.mean.min) < 0.8, `${p.name}: ${p.mean.min.toFixed(1)} -> ${q.mean.min.toFixed(1)} minutes at the start of Q2 with nothing happening`); }
+  }
+});
+test('tied when the fourth quarter ends: the numbers already hold the overtime that is certain', () => {
+  const fx = FX[0];
+  const m = momentAt(fx.g, fx.plays, 48);
+  const tied = { ...m.game, period: 4, time: 'End of 4th', visitor_team_score: 110, home_team_score: 110 };
+  const st = E.gameState(tied);
+  assert.strictEqual(st.period, 5); assert.ok(Math.abs(st.left - 5) < 1e-9, `left ${st.left}`);
+  // not tied: the game is simply about to go final
+  assert.strictEqual(E.gameState({ ...tied, home_team_score: 112 }).left, 0);
+  const P = E.projectGame({ ...fx.base, game: tied, plays: m.plays, nsims: 400, seed: 5, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+  const on = P.players.filter((p) => p.on);
+  assert.ok(on.length >= 8, `only ${on.length} players on the floor at the horn`);
+  const more = on.reduce((a, p) => a + (p.mean.min - p.now.min), 0) / on.length;
+  assert.ok(more > 2 && more <= 5.01, `players on the floor at the horn are shown ${more.toFixed(2)} more minutes`);
+  for (const tm of [P.state.v, P.state.h]) assert.ok(P.projScore[tm] > 110 + 4, `${tm} is shown ${P.projScore[tm].toFixed(1)} with five minutes to play from 110`);
+});
+test('a player who has not checked in: no alert says he is getting the minutes, and no note speaks of him coming back', () => {
+  for (const fx of FX) for (const el of [3, 6, 9]) {
+    const P = run(fx, el);
+    const waiting = new Set(P.players.filter((p) => p.dnpYet).map((p) => p.pid));
+    for (const a of P.alerts || []) if (a.type === 'shift' && a.up) assert.ok(!waiting.has(a.up.pid), `${a.up.name} has not checked in but an alert says he is getting the extra minutes (${el} min)`);
+    for (const p of P.players) {
+      if (!p.dnpYet) continue;
+      const texts = (p.why || []).map((w) => `${w.text} ${w.so || ''}`).join(' | ');
+      assert.ok(!/No guesswork on whether he plays|checks back in|comes back on his normal schedule/.test(texts), `${p.name} (not checked in, ${el} min): ${texts.slice(0, 200)}`);
+      assert.ok(/if he gets in tonight/.test(texts), `${p.name} (not checked in) has no "if he gets in" line`);
+    }
+  }
+});
+test("the phone's own accuracy sums count everyone who played 10+ minutes: a player with no number is a full miss", () => {
+  const fx = FX[0];
+  const P = run(fx, 0);
+  const a = E.patEmpty(), b = E.patEmpty();
+  E.patScore(P, fx.rows, a);
+  // the same night with one more player in the final box whom the app never had a number for
+  const extra = { name: 'Nobody Projected', team: P.state.v, min: 22, pts: 14, reb: 6, ast: 3, fg3m: 2 };
+  E.patScore(P, { ...fx.rows, 987654321: extra }, b);
+  assert.strictEqual(b.acc.pre.n, a.acc.pre.n + 1);
+  assert.ok(Math.abs(b.acc.pre.pts - a.acc.pre.pts - 14) < 1e-9 && Math.abs(b.acc.pre.reb - a.acc.pre.reb - 6) < 1e-9 && Math.abs(b.acc.pre.ast - a.acc.pre.ast - 3) < 1e-9, 'his whole line should count as the miss');
+  // a short stint does not count, and neither does a player of another game
+  const c = E.patEmpty();
+  E.patScore(P, { ...fx.rows, 987654321: { ...extra, min: 4 }, 987654322: { ...extra, team: 'ZZZ' } }, c);
+  assert.strictEqual(c.acc.pre.n, a.acc.pre.n);
+});
+test('the first minutes of a game: the tip-off number is carried in, nothing jumps at the tip, 6:00 is untouched', () => {
+  for (const fx of FX) {
+    const pre = run(fx, 0), live = run(fx, 0.25);
+    const keep = E.TUNE.tipBlend; let raw, six1, six0;
+    six1 = run(fx, 6);
+    E.TUNE.tipBlend = 0; try { raw = run(fx, 0.25); six0 = run(fx, 6); } finally { E.TUNE.tipBlend = keep; }
+    let n = 0, moved = 0, movedRaw = 0;
+    for (const p of pre.players) {
+      const a = live.players.find((x) => E.norm(x.name) === E.norm(p.name)), b = raw.players.find((x) => E.norm(x.name) === E.norm(p.name));
+      if (!a || !b) continue;
+      n++; moved += Math.abs(a.mean.min - p.mean.min); movedRaw += Math.abs(b.mean.min - p.mean.min);
+    }
+    assert.ok(n >= 14, `only ${n} players matched across the tip`);
+    assert.ok(moved / n < 0.45, `minutes move ${(moved / n).toFixed(2)} on average in the first 15 seconds`);
+    assert.ok(moved < movedRaw, `the blend should move minutes less than no blend (${(moved / n).toFixed(2)} vs ${(movedRaw / n).toFixed(2)})`);
+    assert.deepStrictEqual(six1.players.map((p) => [p.pid, p.mean.min, p.proj.pts]), six0.players.map((p) => [p.pid, p.mean.min, p.proj.pts]), 'six minutes in must not depend on the tip-off blend');
+  }
+});
+test('early-game readings: no pace reading before 3:00, and the scoring-so-far input has no switch-on step', () => {
+  const fx = FX[0];
+  const a = run(fx, 1.5), b = run(fx, 3), c = run(fx, 6);
+  assert.strictEqual(a.pace.live, a.pace.season, `pace reads ${a.pace.live} after 90 seconds (season norm ${a.pace.season})`);
+  // the scoring-so-far input grows smoothly from the tip (no switch at 3:00): small after 90 seconds, no step across 3:00
+  const b0 = run(fx, 2.95);
+  for (const p of a.players) assert.ok(Math.abs(p.pat.x.pts[IX.tdLive]) < 0.45, `${p.name}: the scoring-so-far input reads ${p.pat.x.pts[IX.tdLive]} after 90 seconds`);
+  for (const p of b.players) { const q = b0.players.find((x) => x.pid === p.pid); if (q) assert.ok(Math.abs(p.pat.x.pts[IX.tdLive] - q.pat.x.pts[IX.tdLive]) < 0.25, `${p.name}: the scoring-so-far input steps from ${q.pat.x.pts[IX.tdLive]} to ${p.pat.x.pts[IX.tdLive]} across 3:00`); }
+  assert.ok(c.players.some((p) => p.pat.x.pts[IX.tdLive] !== 0), 'the scoring-so-far input never comes on');
+});
+test('a tied game with seconds left is close to a coin flip, and the two chances add up to 1', () => {
+  const fx = FX[0];
+  const m = momentAt(fx.g, fx.plays, 47.9);
+  const P = E.projectGame({ ...fx.base, game: { ...m.game, visitor_team_score: 110, home_team_score: 110 }, plays: m.plays, nsims: 1000, seed: 9, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+  const [v, h] = [P.state.v, P.state.h];
+  assert.ok(Math.abs(P.winProb[v] + P.winProb[h] - 1) < 1e-9);
+  assert.ok(P.winProb[v] > 0.3 && P.winProb[v] < 0.7, `${v} is shown ${(100 * P.winProb[v]).toFixed(0)}% in a tied game with six seconds left`);
+});
+test('late in a game the minutes a note quotes are the minutes shown on the card', () => {
+  let seen = 0;
+  for (const fx of FX) for (const el of [42, 45, 47.5]) {
+    const P = run(fx, el);
+    for (const p of P.players) for (const w of p.why || []) {
+      const m = /Projected: ([\d.]+) more minutes/.exec(`${w.text || ''} ${w.so || ''}`);
+      if (!m) continue;
+      seen++;
+      assert.ok(Math.abs(+m[1] - Math.max(p.proj.min - p.now.min, 0)) < 0.06, `${p.name} at ${el} min: note says ${m[1]} more minutes, the card shows ${(p.proj.min - p.now.min).toFixed(1)}`);
+    }
+  }
+  assert.ok(seen >= 5, `only ${seen} notes with a minutes figure were found`);
+});
+test('the combined stat (points + rebounds + assists) is graded and calibrated like the others', () => {
+  const fx = FX[0];
+  const acc = E.patEmpty();
+  for (const el of [0, 24]) { const m = momentAt(fx.g, fx.plays, el); const P = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 200, seed: 3, patterns: null, sitPrior: fx.sitPrior }); E.patGrade(P, fx.rows, acc); }
+  const count = (g) => acc.cal[g].pra.reduce((a, lvl) => a + lvl.reduce((x, b) => x + b[0], 0), 0);
+  assert.ok(count('pre') > 50 && count('s24') > 50, `combined-stat rungs graded: ${count('pre')} before the game, ${count('s24')} at halftime`);
+  // with a table that says "half the time" for everything, the shown chances of rungs still ahead follow the table
+  const pats = E.patBeta(null);
+  const flat = [[0, 1], [0.5, 0.5]];
+  const P = run(fx, 24, { patterns: { ...pats, cal: { ...pats.cal, s24: { ...pats.cal.s24, pra: [flat, flat] } } } });
+  const p = P.players.find((x) => x.now.min > 10);
+  const now = p.now.pts + p.now.reb + p.now.ast;
+  const ahead = p.ladders.pra.filter((r) => r.t > now && p.laddersRaw.pra.find((q) => q.t === r.t).p > 0 && p.laddersRaw.pra.find((q) => q.t === r.t).p < 1);
+  assert.ok(ahead.length >= 1 && ahead.every((r) => Math.abs(r.p - 0.5) < 1e-9), `calibrated chances not applied: ${JSON.stringify(ahead.slice(0, 3))}`);
+  for (const r of p.ladders.pra.filter((x) => x.t <= now)) assert.ok(r.p === 1 || r.p === p.laddersRaw.pra.find((q) => q.t === r.t).p, 'a rung already reached keeps its simulated chance');
+});
+test('no user-facing wording uses the words "over" or "under"', () => {
+  // every note the engine can attach to a player, across the fixture moments
+  const texts = [];
+  for (const fx of FX) for (const el of [0, 12, 24, 36, 42]) { const P = run(fx, el); for (const p of P.players) { for (const w of p.why || []) texts.push(w.text, w.so, w.chip); for (const c of p.chips || []) texts.push(c.t); if (p.fade) texts.push(p.fade.text, p.fade.so); } for (const a of P.alerts || []) texts.push(a.text, a.so); }
+  const bad = texts.filter((t) => t && /\b(over|under)\b/i.test(String(t)));
+  assert.strictEqual(bad.length, 0, `found: ${[...new Set(bad)].slice(0, 3).join(' | ')}`);
+});
+// ---- version 17
+// the same plays and score, the game clock a moment later: what moves with nothing happening?
+const sameMoment = (fx, elA, elB, extra = {}) => {
+  const m = momentAt(fx.g, fx.plays, elA);
+  const per = Math.floor(elB / 12) + 1, left = (per * 12 - elB) * 60, clock = `${Math.floor(left / 60)}:${String(Math.round(left % 60)).padStart(2, '0')}`;
+  const o = { ...fx.base, plays: m.plays, nsims: 600, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, ...extra };
+  return [E.projectGame({ ...o, game: m.game }), E.projectGame({ ...o, game: { ...m.game, period: per, time: `Q${per} ${clock}` } })];
+};
+test('every made three counts, whatever its wording; long misses count as attempts; a missed heave is not charged to the shooter', () => {
+  const sh = (clock, type, text, sv) => ({ period: 1, clock, type, text, participants: [1, 2], team: { abbreviation: 'BOS' }, shooting_play: true, score_value: sv });
+  const plays = [
+    sh('11:00', 'Running Jump Shot', 'A B makes 25-foot running jump shot (C D assists)', 3),
+    sh('10:40', 'Running Pullup Jump Shot', 'A B makes 26-foot running pullup jump shot', 3),
+    sh('10:20', 'Jump Shot', 'A B makes 24-foot three point jumper', 3),
+    sh('10:00', 'Running Jump Shot', 'A B misses 26-foot running jump shot', null),
+    sh('9:40', 'Running Pullup Jump Shot', 'A B misses running pullup jump shot', null),
+    sh('9:20', 'Pullup Jump Shot', 'A B makes 22-foot pullup jump shot', 2),
+    sh('9:00', 'Pullup Jump Shot', 'A B misses 21-foot pullup jump shot', null),
+    sh('8:40', 'Driving Layup Shot', 'A B misses driving layup', null),
+    sh('8:20', 'Heave Jump Shot', 'A B misses heave', null),
+    { ...sh('0:01', 'Heave Jump Shot', 'A B misses heave', null), period: 4 }, // (the official box leaves a missed heave off the shooter in every period)
+    sh('8:00', 'Free Throw - 1 of 1', 'A B makes free throw 1 of 1', 1),
+  ];
+  const b = E.boxFromPlays(plays, 4, '0:00'), r = b.players[1];
+  assert.deepStrictEqual({ pts: r.pts, fgm: r.fgm, fga: r.fga, fg3m: r.fg3m, fg3a: r.fg3a, ftm: r.ftm }, { pts: 12, fgm: 4, fga: 8, fg3m: 3, fg3a: 5, ftm: 1 });
+  assert.strictEqual(b.teams.BOS.fg3m, 3); assert.strictEqual(b.teams.BOS.fga, 10); // (the two heaves are the team's attempts)
+  // on the real fixture games: a made shot worth three is always a three, and points are untouched
+  for (const fx of FX) {
+    const le = E.logEntry(fx.g, fx.plays);
+    const made = {};
+    for (const p of fx.plays) if (p.shooting_play && p.score_value === 3 && / makes /.test(` ${p.text} `) && !/free throw/.test(p.text)) made[p.participants[0]] = (made[p.participants[0]] || 0) + 1;
+    for (const [pid, n] of Object.entries(made)) assert.strictEqual(le.rows[pid].fg3m, n, `${le.rows[pid].name}: ${n} made threes in the plays, ${le.rows[pid].fg3m} in the box`);
+    const keep = E.TUNE.threeFix; let old;
+    E.TUNE.threeFix = 0; try { old = E.logEntry(fx.g, fx.plays); } finally { E.TUNE.threeFix = keep; }
+    for (const [pid, r2] of Object.entries(le.rows)) { assert.strictEqual(r2.pts, old.rows[pid].pts); assert.ok(r2.fg3m >= old.rows[pid].fg3m); }
+  }
+});
+test('a player marked OUT during a game keeps what he has, and his minutes go to his teammates', () => {
+  const fx = FX[0];
+  const base = run(fx, 15);
+  const star = base.players.filter((p) => p.now.pts > 0 && p.on).sort((a, b) => b.proj.min - a.proj.min)[0];
+  assert.ok(star && star.proj.min - star.now.min > 8, 'the fixture has no player with minutes to come');
+  const out = run(fx, 15, { overrides: { in: [], out: [star.pid] } });
+  const o = out.players.find((p) => p.pid === star.pid);
+  assert.ok(o, 'a player with stats in the box vanished when marked out');
+  assert.ok(o.proj.min - o.now.min < 0.05, `marked OUT with ${o.now.min.toFixed(1)} minutes played, still shown ${o.proj.min.toFixed(1)}`);
+  for (const k of STATS) assert.ok(Math.abs(o.proj[k] - o.now[k]) < 0.051, `marked OUT with ${o.now[k]} ${k}, still shown ${o.proj[k]}`);
+  // nothing on his card speaks of minutes or points still to come: one plain line, no chips, no tags about later
+  assert.strictEqual(o.why.length, 1, `a player marked OUT has ${o.why.length} notes: ${o.why.map((w) => w.text).join(' | ').slice(0, 200)}`);
+  assert.ok(/marked him out/.test(o.why[0].text) && !/Helps his picks|returns|Confirmed/.test(o.why[0].text + o.why[0].so));
+  assert.strictEqual(o.chips.length, 0); assert.ok(!o.flags.includes('blowproof') && !o.flags.includes('sitrisk') && !o.flags.includes('fade') && o.fade == null);
+  // a fouled-out player reads the same way
+  const fouled = run(fx, 15); // (the same moment, six fouls written into the plays for one player)
+  { const m = momentAt(fx.g, fx.plays, 15); const pf = (i) => ({ period: 1, clock: `${2 + i}:00`, type: 'Personal Foul', text: `${star.name} personal foul`, participants: [star.pid], team: { abbreviation: star.team }, shooting_play: false, score_value: null });
+    const need = Math.max(0, 6 - star.now.pf); const P6 = E.projectGame({ ...fx.base, game: m.game, plays: [...m.plays, ...Array.from({ length: need }, (_, i) => pf(i))], nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+    const f = P6.players.find((p) => p.pid === star.pid);
+    if (f && f.now.pf >= 6) { assert.strictEqual(f.why.length, 1, `a fouled-out player has ${f.why.length} notes`); assert.ok(/Fouled out/.test(f.why[0].text)); assert.strictEqual(f.chips.length, 0); } }
+  void fouled;
+  const mates = (P) => P.players.filter((p) => p.team === star.team && p.pid !== star.pid).reduce((a, p) => a + (p.mean.min - p.now.min), 0);
+  assert.ok(mates(out) > mates(base) + 0.5 * (star.mean.min - star.now.min), `teammates' minutes to come ${mates(base).toFixed(1)} -> ${mates(out).toFixed(1)} after a ${(star.mean.min - star.now.min).toFixed(1)}-minute player was marked out`);
+});
+test('no edge is listed on a book line the player has already passed', () => {
+  const fx = FX[0], P = run(fx, 24);
+  const p = P.players.filter((x) => x.now.pts >= 6).sort((a, b) => b.now.pts - a.now.pts)[0];
+  const lines = { [`${p.pid}:pts`]: { line: p.now.pts - 1.5, fairOver: 0.5 }, [`${p.pid}:reb`]: { line: Math.max(0.5, Math.floor(p.proj.reb) - 1.5) + (p.now.reb > Math.floor(p.proj.reb) - 1 ? 3 : 0), fairOver: 0.3 } };
+  const picks = E.picksForGame(P, lines, { minP: 0.5 });
+  assert.ok(!picks.some((k) => k.pid === p.pid && k.stat === 'pts' && k.kind === 'line'), `${p.name} has ${p.now.pts} points and is listed as an edge on ${p.now.pts - 1.5}`);
+  // the same line while it is still ahead of what he has is listed
+  const P0 = run(fx, 0), q = P0.players.find((x) => x.pid === p.pid) || P0.players[0];
+  const pk = E.picksForGame(P0, { [`${q.pid}:pts`]: { line: Math.max(0.5, Math.floor(q.proj.pts) - 4.5), fairOver: 0.5 } }, { minP: 0.5 });
+  assert.ok(pk.some((k) => k.pid === q.pid && k.stat === 'pts' && k.kind === 'line'), 'a line still ahead of him lost its edge card');
+});
+test('nothing steps at 27:00: the minutes lessons cross-fade after halftime', () => {
+  let n = 0, sum = 0, big = 0, sumOld = 0;
+  for (const fx of FX) {
+    const [a, b] = sameMoment(fx, 26.98, 27.0);
+    const keep = [E.TUNE.minXa, E.TUNE.minXb]; let a0, b0;
+    E.TUNE.minXa = E.TUNE.minXb = 27; try { [a0, b0] = sameMoment(fx, 26.98, 27.0); } finally { [E.TUNE.minXa, E.TUNE.minXb] = keep; }
+    for (const p of a.players) {
+      const q = b.players.find((x) => x.pid === p.pid), p0 = a0.players.find((x) => x.pid === p.pid), q0 = b0.players.find((x) => x.pid === p.pid);
+      if (!q || !p0 || !q0 || !(p.now.min > 0)) continue;
+      n++; const d = Math.abs(q.mean.min - p.mean.min); sum += d; sumOld += Math.abs(q0.mean.min - p0.mean.min); if (d >= 1) big++;
+    }
+  }
+  assert.ok(n >= 16, `only ${n} players`);
+  assert.ok(sum / n < 0.25 && big === 0, `minutes move ${(sum / n).toFixed(2)} on average in one second at 27:00 (${big} players by a minute or more)`);
+  assert.ok(sumOld / n > 2 * (sum / n), `the switch at 27:00 moved ${(sumOld / n).toFixed(2)}, the cross-fade ${(sum / n).toFixed(2)}`);
+  // at the fitted stages nothing changes
+  const fx = FX[0], keep = [E.TUNE.minXa, E.TUNE.minXb];
+  const x24 = run(fx, 24), x30 = run(fx, 30); let y24, y30;
+  E.TUNE.minXa = E.TUNE.minXb = 27; try { y24 = run(fx, 24); y30 = run(fx, 30); } finally { [E.TUNE.minXa, E.TUNE.minXb] = keep; }
+  assert.deepStrictEqual(x24.players.map((p) => [p.pid, p.mean.min]), y24.players.map((p) => [p.pid, p.mean.min]));
+  assert.deepStrictEqual(x30.players.map((p) => [p.pid, p.mean.min]), y30.players.map((p) => [p.pid, p.mean.min]));
+});
+test('the pace reading comes in gradually from 3:00, and the shown number has no step where the stage changes', () => {
+  const fx = FX[0];
+  const [a, b] = sameMoment(fx, 2.98, 3.0);
+  assert.ok(Math.abs(b.pace.live - a.pace.live) < 1, `the pace reading goes from ${a.pace.live} to ${b.pace.live} in one second at 3:00`);
+  const six = run(fx, 6), keepP = E.TUNE.paceFade; let six0;
+  E.TUNE.paceFade = 0; try { six0 = run(fx, 6); } finally { E.TUNE.paceFade = keepP; }
+  assert.strictEqual(six.pace.live, six0.pace.live, 'the reading at 6:00 changed');
+  // shown points across 15:00 and 21:00 with nothing happening (the weights used to switch there)
+  for (const [x, y] of [[14.98, 15.0], [20.98, 21.0]]) {
+    const [p0, p1] = sameMoment(fx, x, y);
+    let n = 0, signed = 0;
+    for (const p of p0.players) { const q = p1.players.find((z) => z.pid === p.pid); if (!q || !(p.now.min > 0)) continue; n++; signed += q.proj.pts - p.proj.pts - (q.mean.pts - p.mean.pts); }
+    assert.ok(n >= 8 && Math.abs(signed / n) < 0.08, `shown points step ${(signed / n).toFixed(2)} on average across ${y}:00 beyond what the simulation itself moved`);
+  }
+  // at a fitted stage the shown number is the table's, as before
+  const keepL = E.TUNE.landInterp; const t12 = run(fx, 12); let t12o;
+  E.TUNE.landInterp = 0; try { t12o = run(fx, 12); } finally { E.TUNE.landInterp = keepL; }
+  assert.deepStrictEqual(t12.players.map((p) => [p.pid, p.proj.pts, p.proj.ast]), t12o.players.map((p) => [p.pid, p.proj.pts, p.proj.ast]));
+});
+test('books\' player lines as a who-plays signal (a candidate, off by default): no line at any book with the team\'s lines up means fewer minutes', () => {
+  const fx = FX[0], v = fx.g.visitor_team.abbreviation;
+  const row = (pid) => ({ player_id: +pid, prop_type: 'points', line_value: '10.5', vendor: 't', market: { type: 'over_under', over_odds: -110, under_odds: -110 } });
+  const key = (P) => P.players.map((p) => [p.pid, p.proj.min, p.proj.pts]);
+  const minOf = (P, pid) => P.players.find((p) => p.pid === pid).mean.min;
+  const base = run(fx, 0, { avail: null });
+  const mine = base.players.filter((p) => p.team === v).sort((a, b) => b.mean.min - a.mean.min);
+  const bench = mine.find((p) => p.mean.min >= 12 && p.mean.min <= 26);
+  assert.ok(bench, 'no rotation bench player in the fixture');
+  const mates = mine.filter((p) => p.pid !== bench.pid);
+  const all = base.players.filter((p) => p.pid !== bench.pid).map((p) => row(p.pid));
+  // off (as shipped): the lines are read by nobody
+  assert.strictEqual(E.TUNE.lineNoK, 1); assert.strictEqual(E.TUNE.lineYesK, 1);
+  assert.deepStrictEqual(key(run(fx, 0, { avail: null, lines: all })), key(base));
+  withTune({ lineNoK: 0.5 }, () => {
+    // on: he gets half the minutes (before the tip a number means "if he plays": nobody else's minutes move)
+    const P = run(fx, 0, { avail: null, lines: all });
+    assert.ok(Math.abs(minOf(P, bench.pid) / bench.mean.min - 0.5) < 0.03, `${bench.name}: ${bench.mean.min.toFixed(1)} minutes before, ${minOf(P, bench.pid).toFixed(1)} with no line`);
+    assert.ok(P.players.find((p) => p.pid === bench.pid).mean.pts < 0.75 * bench.mean.pts, 'his points did not come down with his minutes');
+    for (const p of base.players.filter((x) => x.pid !== bench.pid)) assert.ok(Math.abs(minOf(P, p.pid) - p.mean.min) < (p.team === v ? 0.1 : 1e-9), `${p.name} moved ${(minOf(P, p.pid) - p.mean.min).toFixed(2)} minutes`);
+    // a team whose lines are not up yet (fewer than lineTeamMin players with one): nothing is read into a missing line
+    const few = [...mates.slice(0, E.TUNE.lineTeamMin - 1).map((p) => row(p.pid)), ...base.players.filter((x) => x.team !== v).map((p) => row(p.pid))];
+    assert.deepStrictEqual(key(run(fx, 0, { avail: null, lines: few })), key(base));
+    // the same lines as the ready-made table the app builds (pid:stat -> line) read the same as the raw rows
+    assert.deepStrictEqual(key(run(fx, 0, { avail: null, lines: E.consensusLines(all) })), key(P));
+    // a player the user marked IN keeps his minutes
+    const In = run(fx, 0, { avail: null, lines: all, overrides: { in: [bench.pid], out: [] } }), In0 = run(fx, 0, { avail: null, overrides: { in: [bench.pid], out: [] } });
+    assert.ok(Math.abs(minOf(In, bench.pid) - minOf(In0, bench.pid)) < 1e-9, 'a player marked IN was cut');
+    // a starter named in the posted lineup keeps his minutes, line or no line
+    const posted = run(fx, 0);
+    const st = posted.players.find((p) => p.team === v && p.startsTonight === 1);
+    assert.ok(st, 'no posted starter in the fixture');
+    const others = posted.players.filter((p) => p.pid !== st.pid).map((p) => row(p.pid));
+    assert.deepStrictEqual(key(run(fx, 0, { lines: others })), key(run(fx, 0, { lines: [...others, row(st.pid)] })));
+    // once the game is on, the play-by-play says who plays: the lines are not read
+    const live = run(fx, 12);
+    const sub = live.players.find((p) => p.team === v && p.startsTonight !== 1 && p.mean.min - p.now.min >= 5);
+    assert.ok(sub, 'no bench player with minutes to come at 12:00 in the fixture');
+    assert.deepStrictEqual(key(run(fx, 12, { lines: live.players.filter((p) => p.pid !== sub.pid).map((p) => row(p.pid)) })), key(live));
+  });
+  // the other half of the switch: players the books do have a line for
+  withTune({ lineYesK: 1.05 }, () => {
+    const P = run(fx, 0, { avail: null, lines: all });
+    const star = mates.find((p) => p.mean.min >= 20 && p.mean.min <= 34);
+    assert.ok(Math.abs(minOf(P, star.pid) / star.mean.min - 1.05) < 0.01, `${star.name}: ${star.mean.min.toFixed(1)} to ${minOf(P, star.pid).toFixed(1)}`);
+    assert.ok(Math.abs(minOf(P, bench.pid) - bench.mean.min) < 0.1, 'the player with no line moved though lineNoK is 1');
+  });
+});
+test('the 9-in-10 number: the highest mark he still reaches with the stated chance, never below what he has, and it moves with the setting', () => {
+  const chanceAt = (p, k, t) => E.calProb(p, k, E.probAtLeast(p._sims[k], t));
+  const nowOf = (p, k) => (k === 'pra' ? p.now.pts + p.now.reb + p.now.ast : p.now[k]);
+  for (const fx of FX) for (const el of [0, 12, 24, 36]) {
+    const P = run(fx, el);
+    let made = 0;
+    for (const p of P.players) for (const k of [...STATS, 'pra']) {
+      const t = p.sure[k], now = nowOf(p, k);
+      assert.ok(Number.isInteger(t) && t >= now, `${p.name} ${k} at ${el}: 9-in-10 number ${t}, he has ${now}`);
+      assert.ok(t <= p.range[k][0], `${p.name} ${k}: 9-in-10 number ${t} above the low end of his likely range ${p.range[k][0]}`);
+      if (t > now) { made++; assert.ok(chanceAt(p, k, t) >= E.TUNE.sureQ, `${p.name} ${k}: ${t}+ has a chance of ${chanceAt(p, k, t).toFixed(3)}`); }
+      assert.ok(!(chanceAt(p, k, t + 1) >= E.TUNE.sureQ), `${p.name} ${k}: ${t + 1}+ is that safe too, the number should be higher`);
+      if (el === 0 && k === 'pts' && p.mean.pts >= 10) assert.ok(t < p.proj.pts, `${p.name}: 9-in-10 number ${t} is not below his projection ${p.proj.pts}`);
+    }
+    // (late in a game little is left to reach: most players' number is what they already have)
+    assert.ok(made >= { 0: 30, 12: 25, 24: 10, 36: 1 }[el], `only ${made} 9-in-10 numbers at ${el} min`);
+  }
+  // a stricter setting can only lower a number, a looser one can only raise it, and both really move some
+  const fx = FX[0], base = run(fx, 0);
+  const sums = (P) => P.players.reduce((a, p) => a + p.sure.pts + p.sure.reb + p.sure.ast, 0);
+  const strict = withTune({ sureQ: 0.99 }, () => run(fx, 0)), loose = withTune({ sureQ: 0.6 }, () => run(fx, 0));
+  for (const p of base.players) { const a = strict.players.find((x) => x.pid === p.pid), b = loose.players.find((x) => x.pid === p.pid); for (const k of STATS) assert.ok(a.sure[k] <= p.sure[k] && p.sure[k] <= b.sure[k], `${p.name} ${k}: ${a.sure[k]} / ${p.sure[k]} / ${b.sure[k]}`); }
+  assert.ok(sums(strict) < sums(base) && sums(base) < sums(loose), 'the setting does not move the numbers');
+  assert.ok(E.TUNE.sureQ >= 0.9 && E.TUNE.sureQ <= 0.95, 'the shipped setting is not the tested one');
+  // the projection itself is untouched by the setting
+  assert.deepStrictEqual(base.players.map((p) => [p.pid, p.proj.pts, p.proj.min]), strict.players.map((p) => [p.pid, p.proj.pts, p.proj.min]));
+  // a finished game: nothing left to reach
+  const fin = E.projectGame({ ...fx.base, game: fx.g, plays: fx.plays, nsims: 100, seed: 1, patterns: E.patBeta(null), sitPrior: fx.sitPrior });
+  for (const p of fin.players) for (const k of STATS) assert.strictEqual(p.sure[k], p.now[k], `${p.name} ${k}: a final game still has a number to reach`);
+});
+test('FanDuel\'s own menu: its main line and "N+" marks with the chance each price needs, and the engine\'s chance on each', () => {
+  assert.ok(Math.abs(E.priceNeeds(-340) - 340 / 440) < 1e-12 && Math.abs(E.priceNeeds(138) - 100 / 238) < 1e-12 && Math.abs(E.priceNeeds(100) - 0.5) < 1e-12);
+  assert.ok(Math.abs(E.pricePays(-340) - 100 / 340) < 1e-12 && Math.abs(E.pricePays(138) - 1.38) < 1e-12);
+  const fx = FX[0], P = run(fx, 0), a = P.players[0], b = P.players[1];
+  const row = (pid, vendor, prop, line, market) => ({ player_id: pid, vendor, prop_type: prop, line_value: String(line), market });
+  const rows = [
+    row(a.pid, 'fanduel', 'points', 15, { type: 'milestone', odds: 138 }), row(a.pid, 'fanduel', 'points', 5, { type: 'milestone', odds: -5000 }), row(a.pid, 'fanduel', 'points', 10, { type: 'milestone', odds: -340 }),
+    row(a.pid, 'fanduel', 'points', 10, { type: 'milestone', odds: -300 }), // the same mark listed twice: the better price stays
+    row(a.pid, 'fanduel', 'points', 13.5, { type: 'over_under', over_odds: 100, under_odds: -132 }),
+    row(a.pid, 'fanduel', 'rebounds', 4, { type: 'milestone', odds: -320 }),
+    row(a.pid, 'draftkings', 'points', 20, { type: 'milestone', odds: 400 }), // another book: not on FanDuel's menu
+    row(a.pid, 'fanduel', 'points', 20, { type: 'milestone', odds: 0 }), row(a.pid, 'fanduel', 'points', 25, { type: 'milestone', odds: 'x' }), row(a.pid, 'fanduel', 'points', 12.5, { type: 'milestone', odds: 150 }), // no price, a bad price, a half-point mark
+    row(a.pid, 'fanduel', 'points_1q', 5, { type: 'milestone', odds: 120 }), // a first-quarter market is not a full-game one
+    row(b.pid, 'fanduel', 'assists', 2, { type: 'milestone', odds: -260 }),
+    null, { vendor: 'fanduel' },
+  ];
+  const M = E.bookMenu(rows);
+  assert.deepStrictEqual(M[a.pid].pts.marks.map((m) => [m.t, m.odds]), [[5, -5000], [10, -300], [15, 138]]);
+  assert.deepStrictEqual(M[a.pid].pts.main, { line: 13.5, odds: 100, needs: 0.5 });
+  assert.strictEqual(M[a.pid].pts.marks[1].needs, 300 / 400);
+  assert.deepStrictEqual(Object.keys(M[a.pid]).sort(), ['pts', 'reb']);
+  assert.deepStrictEqual(M[b.pid].ast.marks.map((m) => m.t), [2]);
+  assert.deepStrictEqual(Object.keys(E.bookMenu(rows, 'draftkings')[a.pid].pts.marks[0]).sort(), ['needs', 'odds', 't']);
+  assert.deepStrictEqual(E.bookMenu([]), {}); assert.deepStrictEqual(E.bookMenu(null), {});
+  // an alternate line listed like a main line does not take its place: the main line is the one priced nearest even money
+  const alt = E.bookMenu([row(a.pid, 'fanduel', 'points', 29.5, { type: 'over_under', over_odds: 320, under_odds: -450 }), { ...row(a.pid, 'fanduel', 'points', 20.5, { type: 'over_under', over_odds: -110, under_odds: -110 }), updated_at: '2026-11-14T23:40:00Z' }, { ...row(a.pid, 'fanduel', 'points', 10, { type: 'milestone', odds: -400 }), updated_at: '2026-11-14T23:10:00Z' }, row(undefined, 'fanduel', 'points', 10, { type: 'milestone', odds: -400 })]);
+  assert.strictEqual(alt[a.pid].pts.main.line, 20.5);
+  assert.strictEqual(alt[a.pid].pts.at, Date.parse('2026-11-14T23:40:00Z'), 'the time of the newest price is not kept');
+  assert.deepStrictEqual(Object.keys(alt), [String(a.pid)], 'a row with no player made an entry');
+  assert.strictEqual(E.menuFor(a, alt).pts.at, Date.parse('2026-11-14T23:40:00Z')); assert.strictEqual(M[a.pid].pts.at, null);
+  // the engine's chance on each line is the same calibrated chance the ladders show
+  const F = E.menuFor(a, M);
+  for (const m of F.pts.marks) assert.strictEqual(m.p, E.calProb(a, 'pts', E.probAtLeast(a._sims.pts, m.t)));
+  assert.strictEqual(F.pts.main.p, E.calProb(a, 'pts', E.probOver(a._sims.pts, 13.5)));
+  assert.ok(F.pts.marks[0].p >= F.pts.marks[1].p && F.pts.marks[1].p >= F.pts.marks[2].p, 'a higher mark with a higher chance');
+  const rung = a.ladders.pts.find((x) => x.t === 10); if (rung && 10 > a.now.pts) assert.ok(Math.abs(rung.p - F.pts.marks[1].p) < 1e-12, 'the ladder and the menu disagree on the same mark');
+  assert.strictEqual(E.menuFor(P.players[5], M), null);
+  assert.strictEqual(E.menuFor({ pid: a.pid }, M), null); // simulations already dropped: no chances to give
+});
+// ---- version 20: the books' line inside the number
+// The settings it is published with. Until the release the build ships with every share at 0 (LINE_SHIPPED = false).
+const LINE_REL = { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2 };
+const LINE_OFF = { lineWPts: 0, lineWReb: 0, lineWAst: 0, lineW3: 0, lineLive: 0 };
+const LINE_SHIPPED = true;
+const ou = (pid, prop, line, vendor = 'a', odds = [-110, -110]) => ({ player_id: +pid, prop_type: prop, line_value: String(line), vendor, market: { type: 'over_under', over_odds: odds[0], under_odds: odds[1] } });
+const ou2 = (pid, prop, line) => [ou(pid, prop, line, 'a'), ou(pid, prop, line, 'b')];
+const getP = (P, p) => P.players.find((x) => x.pid === p.pid);
+const simsEq = (x, y) => ['pts', 'reb', 'ast', 'fg3m', 'pra', 'fga', 'fg3a', 'fta'].every((k) => x._sims[k].length === y._sims[k].length && x._sims[k].every((v, i) => v === y._sims[k][i]));
+const lineKey = (P) => P.players.map((p) => [p.pid, p.proj.pts, p.proj.reb, p.proj.ast, p.proj.fg3m, p.mean.pts, p.mean.reb, p.sure.pts, JSON.stringify(p.ladders), JSON.stringify(p.range), JSON.stringify(p.lineIn)]);
+const meanRem = (q, k) => q.mean[k] - q.now[k];
+test('the books\' line inside the number, as shipped: off until the release, then exactly the release settings', () => {
+  const want = LINE_SHIPPED ? LINE_REL : { ...LINE_REL, ...LINE_OFF };
+  for (const [k, v] of Object.entries(want)) assert.strictEqual(E.TUNE[k], v, `${k} is ${E.TUNE[k]}, the ${LINE_SHIPPED ? 'release' : 'candidate'} has ${v}`);
+  // with every share at 0 the lines and their age are read by nobody
+  const fx = FX[0], base = run(fx, 0);
+  const lines = base.players.filter((p) => p.mean.pts >= 8).flatMap((p) => ou2(p.pid, 'points', Math.round(p.proj.pts) + 4.5));
+  withTune(LINE_OFF, () => {
+    for (const el of [0, 12, 30]) { const a = run(fx, el), b = run(fx, el, { lines, toTip: 5 }); assert.deepStrictEqual(lineKey(b), lineKey(a)); for (const p of a.players) assert.ok(simsEq(p, getP(b, p)), `${p.name}: a simulated night moved with every share at 0`); }
+  });
+});
+test('the books\' line inside the number: the average moves by the share of the gap between the line and the number, the shown number, the chances, the range and the 9-in-10 number go with it', () => {
+  const fx = FX[0];
+  const base = run(fx, 0);
+  const stars = base.players.filter((p) => p.mean.pts >= 14).slice(0, 4);
+  assert.ok(stars.length >= 3, 'the fixture has too few scorers');
+  const [hi, lo, same] = stars; // one line well above his number, one well below, one right on it
+  const lines = [...ou2(hi.pid, 'points', Math.round(hi.proj.pts) + 6.5), ...ou2(lo.pid, 'points', Math.max(4.5, Math.round(lo.proj.pts) - 6.5)), ...ou2(same.pid, 'points', Math.round(same.proj.pts * 2) / 2), ...ou2(hi.pid, 'rebounds', Math.round(hi.proj.reb) + 3.5), ...ou2(lo.pid, 'assists', Math.round(lo.proj.ast) + 2.5), ...ou2(lo.pid, 'threes', Math.round(lo.proj.fg3m) + 1.5)];
+  const lineOf = (p, prop) => +lines.find((x) => x.player_id === p.pid && x.prop_type === prop).line_value;
+  const N = 400;
+  withTune({ ...LINE_REL, lineWAst: 0, lineW3: 0 }, () => {
+    const P = run(fx, 0, { lines, toTip: 5 });
+    for (const [p, dir] of [[hi, 1], [lo, -1]]) {
+      const q = getP(P, p), L = lineOf(p, 'points');
+      // the average of the simulations moves by exactly the share of the gap (to the nearest point over all nights)
+      assert.ok(Math.abs(q.mean.pts - p.mean.pts - 0.75 * (L - p.proj.pts)) <= 0.5 / N + 0.011, `${p.name}: average ${p.mean.pts.toFixed(3)} to ${q.mean.pts.toFixed(3)}, the share of the gap is ${(0.75 * (L - p.proj.pts)).toFixed(3)}`);
+      // the shown number lands close to three quarters of the way
+      const want = 0.25 * p.proj.pts + 0.75 * L;
+      assert.ok(Math.abs(q.proj.pts - want) < 0.45, `${p.name}: number ${p.proj.pts.toFixed(2)}, line ${L}, moved to ${q.proj.pts.toFixed(2)} (three quarters of the way is ${want.toFixed(2)})`);
+      // what the sheet prints: the line, the share, the app's own number, and the number AS IT BECAME (not a target)
+      assert.deepStrictEqual(q.lineIn.pts, { line: L, books: 2, share: 0.75, from: +p.proj.pts.toFixed(2), now: L, to: +q.proj.pts.toFixed(2) });
+      // the chance on the books' own line comes back toward even (the number now sits close to that line)
+      const chance = (X) => E.calProb(X, 'pts', E.probOver(X._sims.pts, L));
+      assert.ok(Math.abs(chance(q) - 0.5) < Math.abs(chance(p) - 0.5) - 0.1, `${p.name}: chance on the line ${chance(p).toFixed(2)} before, ${chance(q).toFixed(2)} after`);
+      // the 9-in-10 number, the range and the ladder moved the same way
+      assert.ok(dir * (q.sure.pts - p.sure.pts) >= 1, `${p.name}: 9-in-10 number ${p.sure.pts} to ${q.sure.pts}`);
+      assert.ok(dir * (q.range.pts[0] + q.range.pts[1] - p.range.pts[0] - p.range.pts[1]) >= 2, `${p.name}: the likely range did not move with the number`);
+      // points + rebounds + assists is still the sum of the three in every simulated night, and no night is below nothing
+      for (let i = 0; i < N; i++) { assert.strictEqual(q._sims.pra[i], q._sims.pts[i] + q._sims.reb[i] + q._sims.ast[i]); assert.ok(q._sims.pts[i] >= 0); }
+      // the spread of his nights stays a real spread (a pull to a third of the way does not flatten him to one number)
+      assert.ok(q.sd.pts > 0.6 * p.sd.pts && q.sd.pts < 1.6 * p.sd.pts, `${p.name}: spread ${p.sd.pts} became ${q.sd.pts}`);
+    }
+    assert.ok(Math.abs(getP(P, same).proj.pts - same.proj.pts) < 0.3, 'a line that agrees with the number moved it');
+    { const q = getP(P, hi), L = lineOf(hi, 'rebounds'); assert.ok(Math.abs(q.mean.reb - hi.mean.reb - 0.6 * (L - hi.proj.reb)) <= 0.5 / N + 0.011, 'rebounds did not take 60% of the gap'); assert.strictEqual(q.lineIn.reb.share, 0.6); }
+    // stats whose share is 0 are untouched, and so is every player with no line: every field, every simulated night
+    assert.strictEqual(getP(P, lo).proj.ast, lo.proj.ast); assert.strictEqual(getP(P, lo).proj.fg3m, lo.proj.fg3m);
+    assert.ok(!getP(P, lo).lineIn.ast && !getP(P, lo).lineIn.fg3m);
+    const strip = (p) => JSON.stringify({ ...p, _sims: null, race: null });
+    for (const p of base.players) if (![hi.pid, lo.pid, same.pid].includes(p.pid)) { const q = getP(P, p); assert.strictEqual(strip(q), strip(p), `${p.name} has no line and changed`); assert.ok(simsEq(p, q), `${p.name} has no line and a simulated night changed`); assert.strictEqual(q.lineIn, null); }
+    // the team totals, the projected score, the win chance and the minutes are not touched by it
+    assert.deepStrictEqual([P.projScore, P.winProb], [base.projScore, base.winProb]);
+    assert.strictEqual(getP(P, hi).proj.min, hi.proj.min);
+    // the same lines handed over as the ready-made table the app keeps read the same; and the same inputs give the same numbers
+    assert.deepStrictEqual(lineKey(run(fx, 0, { lines: E.consensusLines(lines), toTip: 5 })), lineKey(P));
+    assert.deepStrictEqual(lineKey(run(fx, 0, { lines, toTip: 5 })), lineKey(P));
+    // HOW OLD THE LOOK IS decides the share: none from five hours before the tip, half of it three hours out, all of it inside the last hour
+    const at = (toTip) => getP(run(fx, 0, { lines, toTip }), hi).mean.pts;
+    const gap = 0.75 * (lineOf(hi, 'points') - hi.proj.pts);
+    assert.strictEqual(at(300), hi.mean.pts); assert.strictEqual(at(600), hi.mean.pts); assert.strictEqual(at(1e9), hi.mean.pts);
+    assert.ok(Math.abs(at(180) - hi.mean.pts - 0.5 * gap) < 0.02, `three hours out the average moved ${(at(180) - hi.mean.pts).toFixed(2)}, half the share is ${(0.5 * gap).toFixed(2)}`);
+    assert.ok(at(60) === at(5) && at(0) === at(5) && at(-30) === at(5), 'the share is not full inside the last hour (or after the scheduled time, before the ball goes up)');
+    assert.ok(at(240) > hi.mean.pts && at(240) < at(180) && at(180) < at(60), 'the share does not grow as the look gets fresher');
+    // a look whose age nobody knows counts for nothing
+    for (const bad of [undefined, null, '', NaN, 'soon', true, {}]) assert.strictEqual(getP(run(fx, 0, { lines, toTip: bad }), hi).lineIn, null, `toTip ${String(bad)} was read as a fresh look`);
+    assert.strictEqual(at('5'), at(5));
+    // each kept line can carry its own age: an old one beside a fresh one
+    const table = E.consensusLines(lines); table[hi.pid + ':pts'].toTip = 400; table[lo.pid + ':pts'].toTip = 5;
+    const mixed = run(fx, 0, { lines: table, toTip: 5 });
+    assert.strictEqual(getP(mixed, hi).lineIn && getP(mixed, hi).lineIn.pts, undefined, 'a line read 400 minutes before the tip was used because another was fresh');
+    assert.strictEqual(getP(mixed, lo).lineIn.pts.share, 0.75);
+    // a kept line whose own age is not a number counts for nothing, whatever the look's age says
+    for (const bad of ['', ' ', [], true, false, {}, 'soon', NaN]) { const t = E.consensusLines(lines); t[hi.pid + ':pts'].toTip = bad; const X = getP(run(fx, 0, { lines: t, toTip: 5 }), hi); assert.ok(!X.lineIn || !X.lineIn.pts, `a kept line with age ${JSON.stringify(bad)} went in`); }
+    { const t = E.consensusLines(lines); t[hi.pid + ':pts'].toTip = '5'; assert.strictEqual(getP(run(fx, 0, { lines: t, toTip: 400 }), hi).lineIn.pts.share, 0.75); }
+    // the 59-minute-old look and the share that would print as nothing
+    assert.strictEqual(getP(run(fx, 0, { lines, toTip: 299.9 }), hi).lineIn, null, 'a share of a tenth of a percent was used (and would print as 0%)');
+    // once the game is on with lineLive at 0, nothing: the play-by-play has taken over
+    withTune({ lineLive: 0 }, () => assert.deepStrictEqual(lineKey(run(fx, 12, { lines, toTip: 5 })), lineKey(run(fx, 12))));
+  });
+});
+test('the books\' line during a game: what he has plus the line\'s share of the time left, fading to nothing by the end of the third quarter; an old look counts for nothing; no number explodes', () => {
+  const fx = FX[0], N = 400;
+  withTune(LINE_REL, () => {
+    const live0 = run(fx, 12);
+    const hi = live0.players.filter((p) => p.mean.pts - p.now.pts >= 8)[0];
+    assert.ok(hi, 'no scorer with points to come at 12:00');
+    const L = Math.round((hi.proj.pts - hi.now.pts) * (48 / 36)) + 6.5; // a pre-game line that asks for about 5 more from here than the app has
+    const lines = ou2(hi.pid, 'points', L);
+    const q = getP(run(fx, 12, { lines, toTip: 5 }), hi);
+    const w = 0.75 * (1 - 12 / 36), lineNow = hi.now.pts + L * (36 / 48);
+    assert.deepStrictEqual([q.lineIn.pts.share, q.lineIn.pts.now, q.lineIn.pts.from, q.lineIn.pts.to], [+w.toFixed(3), +lineNow.toFixed(2), +hi.proj.pts.toFixed(2), +q.proj.pts.toFixed(2)]);
+    assert.ok(Math.abs(q.mean.pts - hi.mean.pts - w * (lineNow - hi.proj.pts)) <= 0.5 / N + 0.011, `at 12:00 the average moved ${(q.mean.pts - hi.mean.pts).toFixed(3)}, the share of the gap is ${(w * (lineNow - hi.proj.pts)).toFixed(3)}`);
+    // a look from the morning is not fresher because the game has started
+    assert.strictEqual(getP(run(fx, 12, { lines, toTip: 400 }), hi).lineIn, null, 'a line read 400 minutes before the tip went into a live number');
+    assert.strictEqual(getP(run(fx, 12, { lines }), hi).lineIn, null, 'a line of unknown age went into a live number');
+    const half = getP(run(fx, 12, { lines, toTip: 180 }), hi);
+    assert.ok(Math.abs(half.lineIn.pts.share - w / 2) < 0.002, `a three-hour-old look has share ${half.lineIn.pts.share} at 12:00`);
+    // an absurd line cannot more than double, or less than halve, what is still to come; nothing ends below what he has
+    const big = getP(run(fx, 12, { lines: ou2(hi.pid, 'points', 95.5), toTip: 5 }), hi), low = getP(run(fx, 12, { lines: ou2(hi.pid, 'points', 0.5), toTip: 5 }), hi);
+    assert.ok(meanRem(big, 'pts') <= 2 * meanRem(hi, 'pts') + 0.01 && meanRem(big, 'pts') > 1.5 * meanRem(hi, 'pts'), `a 95.5 line took ${meanRem(hi, 'pts').toFixed(1)} to come to ${meanRem(big, 'pts').toFixed(1)}`);
+    assert.ok(meanRem(low, 'pts') >= 0.5 * meanRem(hi, 'pts') - 0.01 && meanRem(low, 'pts') < meanRem(hi, 'pts'), `a 0.5 line took ${meanRem(hi, 'pts').toFixed(1)} to come to ${meanRem(low, 'pts').toFixed(1)}`);
+    for (const X of [q, big, low]) { assert.ok(X.proj.pts >= X.now.pts && X.sure.pts >= X.now.pts); for (let i = 0; i < N; i++) assert.ok(X._sims.pts[i] >= X.now.pts, 'a simulated night ends below what he already has'); }
+    assert.strictEqual(big.lineIn.pts.to, +big.proj.pts.toFixed(2), 'the sheet would print a target the number never reached');
+    // before the tip, where the share is at its largest, the hold really binds: a 99.5 line doubles what is to come and no more, a 0.5 line halves it and no less
+    { const pre0 = run(fx, 0), s0 = pre0.players.filter((p) => p.mean.pts >= 14)[0];
+      const up = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', 99.5), toTip: 5 }), s0), dn = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', 0.5), toTip: 5 }), s0);
+      assert.ok(Math.abs(up.mean.pts - 2 * s0.mean.pts) <= 0.02, `a 99.5 line took ${s0.mean.pts.toFixed(2)} to ${up.mean.pts.toFixed(2)}`);
+      assert.ok(Math.abs(dn.mean.pts - 0.5 * s0.mean.pts) <= 0.02, `a 0.5 line took ${s0.mean.pts.toFixed(2)} to ${dn.mean.pts.toFixed(2)}`);
+      assert.strictEqual(up.lineIn.pts.to, +up.proj.pts.toFixed(2));
+      // the sheet is told when the change was held, and only then
+      assert.ok(up.lineIn.pts.held === true && dn.lineIn.pts.held === true, 'a held change is not marked');
+      const near = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', Math.round(s0.proj.pts) + 6.5), toTip: 5 }), s0); assert.ok(!('held' in near.lineIn.pts), 'an ordinary line is marked as held'); }
+    // every stat with a line, at every stage: the average moves by the share of the gap or less (never more), and the sheet's "to" is the number
+    const all = live0.players.filter((p) => p.mean.min > 6).flatMap((p) => [...ou2(p.pid, 'points', Math.max(1.5, Math.round(p.proj.pts) + 3.5)), ...ou2(p.pid, 'rebounds', Math.max(0.5, Math.round(p.proj.reb) + 1.5)), ...ou2(p.pid, 'assists', Math.max(0.5, Math.round(p.proj.ast) + 1.5)), ...ou2(p.pid, 'threes', Math.max(0.5, Math.round(p.proj.fg3m) + 0.5))]);
+    let seen = 0;
+    for (const el of [0.5, 3, 6, 12, 18, 24, 30, 33, 35.5]) {
+      const A = run(fx, el), B = run(fx, el, { lines: all, toTip: 5 });
+      for (const p of A.players) {
+        const b = getP(B, p);
+        for (const k of ['pts', 'reb', 'ast', 'fg3m']) {
+          const x = b.lineIn && b.lineIn[k];
+          if (!x) { assert.strictEqual(b.mean[k], p.mean[k], `${p.name} ${k} at ${el}: moved with no line inside`); continue; }
+          seen++;
+          const move = b.mean[k] - p.mean[k], share = x.share * (x.now - x.from);
+          assert.ok(Math.abs(move) <= Math.abs(share) + 0.5 / N + 0.011 && move * share >= -1e-9, `${p.name} ${k} at ${el}:00: the average moved ${move.toFixed(3)}, the share of the gap is ${share.toFixed(3)}`);
+          assert.strictEqual(x.to, +b.proj[k].toFixed(2));
+          assert.ok(x.share >= 0.02 && x.share <= 0.75);
+          for (let i = 0; i < N; i += 7) assert.ok(b._sims[k][i] >= b.now[k]);
+        }
+      }
+    }
+    assert.ok(seen > 150, `only ${seen} lined stats were checked`);
+    // from the end of the third quarter on, in overtime and at the final, the line is not in the number at all
+    for (const el of [36, 40, 47.9]) assert.deepStrictEqual(lineKey(run(fx, el, { lines: all, toTip: 5 })), lineKey(run(fx, el)), `the line is still inside at ${el}:00`);
+  });
+});
+test('the books\' line and small counts: a pull upward raises the chance of "at least one more" and never gives two neighbouring marks the same chance by construction', () => {
+  const fx = FX[0];
+  const base = run(fx, 0);
+  const shooters = base.players.filter((p) => p.mean.fg3m >= 0.9 && p.mean.fg3m <= 2.2).slice(0, 3);
+  assert.ok(shooters.length >= 2, 'the fixture has too few shooters');
+  withTune(LINE_REL, () => {
+    const lines = shooters.flatMap((p) => ou2(p.pid, 'threes', Math.round(p.proj.fg3m) + 2.5));
+    const P = run(fx, 0, { lines, toTip: 5 });
+    for (const p of shooters) {
+      const q = getP(P, p), at = (X, t) => E.probAtLeast(X._sims.fg3m, t);
+      assert.ok(q.mean.fg3m > p.mean.fg3m + 0.3, `${p.name}: threes ${p.mean.fg3m.toFixed(2)} to ${q.mean.fg3m.toFixed(2)}`);
+      assert.ok(at(q, 1) > at(p, 1) + 0.02, `${p.name}: the chance of one made three stayed at ${at(p, 1).toFixed(2)} (${at(q, 1).toFixed(2)}) while his number went up`);
+      assert.ok(at(q, 1) > at(q, 2) + 0.05 && at(q, 2) > at(q, 3) + 0.03, `${p.name}: marks 1+, 2+, 3+ at ${[1, 2, 3].map((t) => at(q, t).toFixed(2)).join(', ')}`);
+    }
+    // and downward: a low line takes made threes away one by one, it does not round whole nights to nothing
+    const down = shooters.flatMap((p) => ou2(p.pid, 'threes', 0.5));
+    const D = run(fx, 0, { lines: down, toTip: 5 });
+    for (const p of shooters) { const q = getP(D, p); assert.ok(q.mean.fg3m < p.mean.fg3m && E.probAtLeast(q._sims.fg3m, 1) < E.probAtLeast(p._sims.fg3m, 1) && E.probAtLeast(q._sims.fg3m, 1) > 0.2); }
+  });
+  // next to nothing still to come: a line does not make a night. Under a quarter of a made three to come the line is not used
+  // at all; from a quarter to three quarters its share comes in smoothly (so nothing switches on or off between two moments)
+  withTune(LINE_REL, () => {
+    const tiny = base.players.filter((p) => p.mean.fg3m < 0.22 && p.mean.min > 4), part = base.players.filter((p) => p.mean.fg3m > 0.32 && p.mean.fg3m < 0.72);
+    assert.ok(tiny.length >= 1 && part.length >= 1, `the fixture has ${tiny.length} players with next to no threes and ${part.length} with a few`);
+    const P = run(fx, 0, { lines: [...tiny, ...part].flatMap((p) => ou2(p.pid, 'threes', 1.5)), toTip: 5 });
+    for (const p of tiny) { const q = getP(P, p); assert.ok(!q.lineIn || !q.lineIn.fg3m, `${p.name}: ${p.mean.fg3m.toFixed(2)} threes to come and the line went in`); assert.strictEqual(q.mean.fg3m, p.mean.fg3m); }
+    for (const p of part) { const q = getP(P, p), want = 0.45 * (p.mean.fg3m - 0.25) / 0.5; assert.ok(q.lineIn && q.lineIn.fg3m && Math.abs(q.lineIn.fg3m.share - want) < 0.002, `${p.name}: ${p.mean.fg3m.toFixed(2)} threes to come, share ${q.lineIn && q.lineIn.fg3m ? q.lineIn.fg3m.share : 'none'}, expected ${want.toFixed(3)}`); }
+  });
+  // the rate change itself: the total lands exactly, nothing falls below the floor, the same stream gives the same nights
+  const mk = () => { const u = E.mulberry32(5), a = new Int16Array(2000); for (let i = 0; i < a.length; i++) { let k = 0, p = 1; const l = Math.exp(-1.3 * (0.4 + 1.2 * u())); do { k++; p *= u(); } while (p > l); a[i] = 4 + k - 1; } return a; };
+  const tot = (a) => a.reduce((s, v) => s + v - 4, 0);
+  for (const kf of [0.5, 0.8, 1, 1.25, 2]) {
+    const a = mk(), b = mk(); E.rescaleRate(b, 4, kf, E.mulberry32(9));
+    assert.strictEqual(tot(b), Math.round(kf * tot(a)), `factor ${kf}: total ${tot(a)} became ${tot(b)}`);
+    assert.ok(b.every((v) => v >= 4));
+    const c = mk(); E.rescaleRate(c, 4, kf, E.mulberry32(9)); assert.ok(b.every((v, i) => v === c[i]), 'the same stream gave different nights');
+    if (kf > 1) assert.ok(b.filter((v) => v >= 5).length > a.filter((v) => v >= 5).length, 'a higher rate left "at least one more" where it was');
+    { const sdOf = (x) => { const m = x.reduce((q, v) => q + v, 0) / x.length; return Math.sqrt(x.reduce((q, v) => q + (v - m) * (v - m), 0) / x.length); }; const r = sdOf(b) / sdOf(a);
+      // the spread of nights goes with the rate: between the square root of the factor (pure chance) and the factor itself (nights that truly differ)
+      if (kf !== 1) assert.ok(r > Math.min(Math.sqrt(kf), kf) - 0.06 && r < Math.max(Math.sqrt(kf), kf) + 0.06, `factor ${kf}: the spread of nights went ×${r.toFixed(2)}`); }
+    if (kf < 1) assert.ok(b.filter((v) => v >= 5).length < a.filter((v) => v >= 5).length);
+  }
+  { const z = new Int16Array(50).fill(3); E.rescaleRate(z, 3, 2, E.mulberry32(1)); assert.ok(z.every((v) => v === 3), 'nothing to come became something'); E.rescaleRate(z, 3, 0, E.mulberry32(1)); E.rescaleRate(z, 3, NaN, E.mulberry32(1)); assert.ok(z.every((v) => v === 3)); }
+});
+test('the books\' line: explanations, alerts and reasons speak of the app\'s own number; a player who is done, a lone book and junk lines change nothing', () => {
+  const fx = FX[0];
+  withTune(LINE_REL, () => {
+    // the same reasons, the same amounts, the same words as the app alone, except that for a player with the line inside they
+    // say "the app's own number" where they said "his projection" / "his number" (the amounts are the app's own, exactly)
+    const plain = (so) => String(so || '').replace(/pts on the app's own number\. Any edge|pts on the app's own number\.$/g, (m) => m).replace(/Already taken off his minutes:/g, 'Already taken off his number:').replace(/Already taken off the app's own number:/g, 'Already taken off his number:').replace(/ast in the app's own number\./g, 'ast for him.').replace(/on the app's own number\./g, 'on his projection.');
+    const chipPlain = (c) => c.map((x) => ({ ...x, t: x.t.replace(/^LEARNED .* PTS$/, 'LEARNED') }));
+    const movedBy = (q) => !!q.lineIn && Object.values(q.lineIn).some((x) => Math.abs(x.to - x.from) >= 0.05);
+    let shifts = 0, ownSaid = 0, lined = 0;
+    for (const f of FX) for (const el of [0, 6, 12, 21, 24]) {
+      const A = run(f, el);
+      const lines = A.players.filter((p) => p.mean.pts - p.now.pts >= 4).slice(0, 8).flatMap((p, i) => ou2(p.pid, 'points', Math.round(p.proj.pts * (i % 2 ? 0.6 : 1.5)) + 0.5));
+      const B = run(f, el, { lines, toTip: 5 });
+      assert.ok(B.players.some((p) => p.lineIn), `no line went in at ${el}:00`);
+      // (the alert card also prints each player's number as shown, which does carry the line; the fade warning measures from the shown number by design)
+      const shiftsOf = (P) => P.alerts.filter((a) => a.type === 'shift').map((a) => ({ ...a, up: { ...a.up, proj: null }, down: a.down ? { ...a.down, proj: null } : null }));
+      assert.deepStrictEqual(shiftsOf(B), shiftsOf(A), `a usage-shift alert appeared or changed with the line at ${el}:00`);
+      shifts += shiftsOf(A).length;
+      for (const a of B.alerts.filter((x) => x.type === 'shift')) assert.strictEqual(a.up.proj, +getP(B, { pid: a.up.pid }).proj.pts.toFixed(1), 'an alert prints a number that is not the one on the card');
+      for (const p of A.players) {
+        const q = getP(B, p), w0 = p.why.filter((x) => x.key !== 'fade'), w1 = q.why.filter((x) => x.key !== 'fade');
+        assert.deepStrictEqual(q.shift, p.shift, `${p.name}: the usage-shift numbers moved with the line`);
+        if (movedBy(q)) { assert.deepStrictEqual(q.chips, chipPlain(p.chips), `${p.name}: a chip changed with the line`); assert.ok(!q.chips.some((x) => /^LEARNED .* PTS$/.test(x.t)), `${p.name}: the LEARNED chip states the app's own points beside a number with the line inside`); } else assert.deepStrictEqual(q.chips, p.chips, `${p.name}: a chip changed with no line moving his number`);
+        const norm2 = (x) => ({ ...x, chip: x.chip ? x.chip.replace(/^LEARNED .* PTS$/, 'LEARNED') : x.chip, so: plain(x.so).replace(/pts on his number\./g, 'pts on his projection.') });
+        assert.deepStrictEqual(w1.map(norm2), w0.map(norm2), `${p.name} at ${el}:00: a reason or an amount changed with the line`);
+        const own = w1.filter((x) => /the app's own number/.test(x.so || '')).length, his = w1.filter((x) => /on his projection\.|taken off his number:|pts on his number\./.test(x.so || '')).length;
+        if (movedBy(q)) { lined++; ownSaid += own; assert.strictEqual(his, 0, `${p.name}: a reason says "his projection" while the books' line is inside it`); for (const x of w1) assert.ok(!/min on the app's own number|ast for him\./.test(x.so || ''), `${p.name}: ${x.so}`); } else assert.strictEqual(own, 0, `${p.name}: a reason says "the app's own number" with no line moving his number`);
+      }
+    }
+    assert.ok(shifts >= 1, 'no usage-shift alert in any fixture moment: the alert check checked nothing');
+    assert.ok(lined >= 20 && ownSaid >= 10, `${lined} lined players, ${ownSaid} reasons in the app's own words`);
+    const base = run(fx, 0), star = base.players.filter((p) => p.mean.pts >= 14)[0], L = Math.round(star.proj.pts) + 6.5;
+    const moved = (lines, extra = {}) => getP(run(fx, 0, { lines, toTip: 5, ...extra }), star).lineIn;
+    assert.ok(moved(ou2(star.pid, 'points', L)));
+    // one book alone is not a consensus
+    assert.strictEqual(moved([ou(star.pid, 'points', L)]), null, 'a line posted by one book went into the number');
+    assert.strictEqual(moved({ [star.pid + ':pts']: { pid: star.pid, stat: 'pts', line: L, books: 1 } }), null);
+    assert.ok(moved({ [star.pid + ':pts']: { pid: star.pid, stat: 'pts', line: L, books: 1, n: 3 } }), 'three books on three different lines were read as one book');
+    // junk in the kept table: nothing moves, nothing throws
+    for (const junk of [0, -4, NaN, 1e9, 100, 'abc', null, undefined]) assert.strictEqual(moved({ [star.pid + ':pts']: { pid: star.pid, stat: 'pts', line: junk, books: 3 } }), null, `a line of ${String(junk)} was used`);
+    for (const junk of [null, 7, 'x', [], [1, 2]]) assert.strictEqual(moved({ [star.pid + ':pts']: junk }), null);
+    assert.strictEqual(moved([]), null); assert.strictEqual(moved({}), null);
+    assert.ok(moved({ [star.pid + ':pts']: { pid: String(star.pid), stat: 'pts', line: String(L), books: '3' } }), 'a line kept as text was not read');
+    // a player who is done for the night (fouled out here) keeps what he has, line or no line
+    const live = run(fx, 30), who = live.players.filter((p) => p.mean.pts - p.now.pts >= 3)[0];
+    const fouled = { ...fx, plays: fx.plays };
+    const m = momentAt(fx.g, fx.plays, 30);
+    const lines = ou2(who.pid, 'points', 60.5);
+    const out = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, overrides: { in: [], out: [who.pid] }, lines, toTip: 5 });
+    const outNo = E.projectGame({ ...fx.base, game: m.game, plays: m.plays, nsims: 400, seed: fx.g.id, patterns: E.patBeta(null), sitPrior: fx.sitPrior, overrides: { in: [], out: [who.pid] } });
+    assert.strictEqual(getP(out, who).lineIn, null, 'a player marked out for the night took a line');
+    assert.strictEqual(getP(out, who).proj.pts, getP(outNo, who).proj.pts);
+    void fouled;
+  });
+});
+test('the middle line of all books: a first-quarter line filed under "points" is left out, and the number of books is counted', () => {
+  const rows = [ou(1, 'points', 7.5, 'ballybet', [-104, -130]), ou(1, 'points', 7.5, 'betparx', [-104, -130]), ou(1, 'points', 24.5, 'betparx'), ou(1, 'points', 24.5, 'fanduel'), ou(1, 'points', 25.5, 'draftkings'), ou(1, 'points_1q', 7.5, 'fanduel')];
+  const C = E.consensusLines(rows);
+  assert.deepStrictEqual([C['1:pts'].line, C['1:pts'].books, C['1:pts'].n], [24.5, 2, 3]);
+  // with only one real book beside the two off-market rows the middle used to be 7.5
+  assert.strictEqual(E.consensusLines(rows.slice(0, 3))['1:pts'].line, 24.5);
+  // the first-quarter line names the off-market row even when no real line is posted beside a higher one from a third book
+  const C2 = E.consensusLines([ou(2, 'points', 6.5, 'ballybet'), ou(2, 'points', 9.5, 'x'), ou(2, 'points_1q', 6.5, 'fanduel')]);
+  assert.deepStrictEqual([C2['2:pts'].line, C2['2:pts'].n], [9.5, 1]);
+  // an honest spread between books is kept whole; small-count stats are never filtered (0.5 beside 1.5 is two real lines)
+  assert.strictEqual(E.consensusLines([ou(3, 'points', 18.5, 'a'), ou(3, 'points', 19.5, 'b'), ou(3, 'points', 20.5, 'c')])['3:pts'].n, 3);
+  const T = E.consensusLines([ou(4, 'threes', 0.5, 'a', [-233, 174]), ou(4, 'threes', 1.5, 'b', [160, -210]), ou(4, 'threes', 1.5, 'c', [150, -200])]);
+  assert.deepStrictEqual([T['4:fg3m'].line, T['4:fg3m'].n], [1.5, 3]);
+  // rows the feed can send that are not lines at all
+  assert.doesNotThrow(() => E.consensusLines([null, undefined, {}, { prop_type: 'points' }, ou(5, 'points', 'x'), ou(5, 'points', 11.5)]));
+  assert.strictEqual(E.consensusLines([null, ou(5, 'points', 'x'), ou(5, 'points', 11.5)])['5:pts'].line, 11.5);
+});
+console.log(`${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);

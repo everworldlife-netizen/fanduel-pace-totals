@@ -1,0 +1,8 @@
+pass 1 (minutes): 1403 games, 170s
+pass 2 (stats): 367s
+pass 3 (calibration): 547s
+lessons from 1403 games → data/lessons/base-s26s27.json
+
+real	9m7.409s
+user	24m14.937s
+sys	0m18.242s

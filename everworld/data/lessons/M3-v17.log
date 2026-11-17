@@ -1,0 +1,4 @@
+pass 1 (minutes): 3709 games, 368s
+pass 2 (stats): 778s
+pass 3 (calibration): 1184s
+lessons from 3709 games → data/lessons/M3-v17.json

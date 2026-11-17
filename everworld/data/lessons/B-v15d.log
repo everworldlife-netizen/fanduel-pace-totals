@@ -1,0 +1,4 @@
+pass 1 (minutes): 3586 games, 532s
+pass 2 (stats): 996s
+pass 3 (calibration): 1444s
+lessons from 3586 games → data/lessons/B-v15d.json
