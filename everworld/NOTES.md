@@ -43,13 +43,14 @@ about that is measured in "Version 19 (Nov 14)": read it before changing how pic
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 15:10 UTC, Nov 16)
+### Where the build stands at this commit (updated 01:00 UTC, Nov 17)
 
 **PUBLISHED on Nov 14, 2026 at 23:26 UTC: Courtside 19 (`ca-shell-v19`, Space commit `3c3aaa8`). Full story: "Version 19
 (Nov 14)" below.**
 
 **Nov 16: a version 20 candidate (the books' line inside the points and rebounds numbers) is built in `cs/build`, switched
-OFF and NOT published: it waits for Akara's yes. See "Version 20 candidate (Nov 16)". With the switch off `cs/build`
+OFF and NOT published. AKARA SAID YES on Nov 17 at 00:55 UTC: it is published after the blind check on the Nov 16 games
+passes (rule written down before the games ended) and the review's findings are fixed. See "Version 20 candidate (Nov 16)". With the switch off `cs/build`
 gives the numbers of the published 19; the files differ from `baseline/cs` (engine.js, app.js, data.js).** What it adds: the 9-in-10 number on every card, a report
 card that grades what the app said before each tip, FanDuel's own prices on the player sheet. GG Winner is unchanged
 (3.11.1). The nightly recording of the books' lines goes on (see "The books' player lines"): snapshots through the day,
@@ -1446,8 +1447,24 @@ with a reason behind it; 347 plays cannot carry it yet.
 
 ### Version 20 candidate (Nov 16): the books' line inside the number. BUILT, SWITCHED OFF, NOT PUBLISHED
 
-**Needs Akara's yes before it is published: it changes how picks are shown (few plus edges are left before a game).**
-Asked on Nov 16 in the morning report. The evidence is in "Night 3 graded" below; this section is the build.
+**AKARA SAID YES (Nov 17, 00:55 UTC; his whole message: "Yes").** It answers the question of the Nov 16 report: "say yes
+and I'll publish it as version 20 after tomorrow's blind check and a full review. Say no and Courtside stays as it is."
+So the yes covers publishing AFTER a passed blind check and a full review, not before. The evidence is in "Night 3
+graded" below; this section is the build.
+
+- THE BLIND CHECK'S PASS RULE (written Nov 17 at 01:00 UTC, while the Nov 16 games were being played and before any of
+  them was fetched or graded). Frozen settings, Nov 16 games, every scored player, closing lines, `bt2.js` off and on:
+  1. PASS = the points number is closer with the lines on than off at BOTH pre-game stages (before lineups `rep`, and
+     tip-off `0`). Then version 20 is published that day.
+  2. A secondary stat (rebounds, assists, threes) is judged on all four nights together at the two pre-game stages: if
+     it is not closer with the line on, its share is set to 0 in the release (off is the published behaviour for that
+     stat; nothing is refitted) and the report says so. The blind night can only take a share away, never add or tune.
+  3. If points are closer at only one of the two stages, or at neither: nothing is published that day; Akara gets the
+     four nights as they are and the decision is taken with him.
+  4. The stages during a game (6:00, 12:00, halftime) are reported, not part of the rule: one night of them is noise.
+- Done on the evening of the yes, before the check: two independent reviewers on the diff with the settings on (engine,
+  app), and a switched-on copy of the build (scratch, not in the repo) run at Pixel 9a size against the real feeds of
+  Nov 16 across two tips (the sheet's "THE BOOKS' LINE INSIDE THE NUMBER", the Edges sentence, the kept lines).
 
 - THE CANDIDATE SETTINGS (frozen on Nov 16 after three nights; the fourth night, Nov 16, is their blind check):
   `lineWPts=0.75,lineWReb=0.6,lineWAst=0.45,lineW3=0.45,lineFar=300,lineNear=60,lineLive=48`. As shipped all four
