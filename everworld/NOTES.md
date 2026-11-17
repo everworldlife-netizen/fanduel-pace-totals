@@ -1590,7 +1590,7 @@ graded" below; this section is the build.
      and Settings sentences speak of the line only while it is in use.
   6. A made-threes row that cannot be reconciled by arithmetic (the number is a middle and moves in whole steps: 25 of
      7,000 rows). → the row says "(A number this small moves in steps.)".
-  7. Kept lines were dropped after two days while a night can be graded up to four days late. → kept four days.
+  7. Kept lines were dropped after two days while a night can be graded days late. → kept five days (third review).
   8. The shot counts and usage on the sheet do not move with the line. → a line under SHOT PROFILE says they are the
      app's own read.
   Left as it is, and why: the "top scorer has changed hands" card compares the number shown at the tip with the number
@@ -1599,6 +1599,17 @@ graded" below; this section is the build.
   the app's own number the pull made the miss worse from 18:00: n 14 and n 44) is a lead, not a finding.
   Tests after it: engine 103 checks, app 55, GG 8, 10, 15. Broken copies (`node tools/mut20.js engine|app`): engine 20
   of 20 caught, app 22 of 22 caught.
+- THE THIRD REVIEW (Nov 17, 04:00 to 04:35 UTC, narrow, on the second round of fixes): nothing that breaks the app at
+  load or on a common path (both suites also passed on a copy with the eight release values written in and
+  `LINE_SHIPPED = true`: 103 and 55). Four low findings, fixed: (1) a change the engine holds (a line above about 2.3
+  times the app's own number or under a third of it: a reserve the books know will start) got the "small number"
+  excuse → the engine marks it (`lineIn.held`) and the row says "A line this far from the app's own number is not
+  followed all the way"; "so the number shown is" is printed only where the plain sum gives the number; (2) the
+  LEARNED chip and the per-minute sentence still gave the app's own amounts unworded → the chip drops its amount and
+  the sentence says "in the app's own number", amounts in minutes are left alone, and the wording applies only where a
+  line really moved the number (the sheet's own test, 0.05); (3) kept lines lived a day less than the learning looks
+  back → five days; (4) cards made before a late server clock stayed without the line for five minutes → they are
+  made again on the next pass. Numbers unchanged (three nights to the last digit).
 - FIRST VERSION (Nov 16, before the reviews; kept for the record, its numbers are NOT those of the build): the shown
   number was moved toward the line by the share and every night multiplied (rounding carried), `lineLive` 48, the
   share by minutes to the tip at the moment of the projection. Three nights, off → on: before lineups points
