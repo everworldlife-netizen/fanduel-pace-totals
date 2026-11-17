@@ -1505,55 +1505,89 @@ graded" below; this section is the build.
 - THE CANDIDATE SETTINGS (frozen on Nov 16 after three nights; the fourth night, Nov 16, is their blind check):
   `lineWPts=0.75,lineWReb=0.6,lineWAst=0.45,lineW3=0.45,lineFar=300,lineNear=60,lineLive=48`. As shipped all four
   shares and `lineLive` are 0: the engine, the app and every number are those of version 19.
-- Engine (`cs/build/engine.js`): inputs `o.lines` (the raw rows, or the app's kept table `{ 'pid:stat': { pid, stat, line,
-  books } }`) and `o.toTip` (minutes to the scheduled tip when the lines were read). Before the tip the share of a stat
-  is its weight times a ramp: 0 at `lineFar` minutes out, full from `lineNear` minutes in. After the tip the share fades
-  to 0 over `lineLive` game minutes and the line is read as "what he has + the line's share of the time left" (the same
-  idea as the projected margin in version 18). For a player with a consensus line, the number as it would be shown is
-  moved toward the line by the share and EVERY simulated night is scaled with it (only what is still to come; rounding
-  carries its remainder so the average moves exactly), so the ladders, the 9-in-10 number, FanDuel's menu and the picks
-  all follow. Team totals, minutes and players with no line are untouched. `p.lineIn[stat] = { line, books, share, from, to }`.
-- App: the last look at the books' lines before a tip is kept for the day (`pl:<date>`, the middle line per player and
-  stat; a failed read keeps the last good look; never rewritten once the game is on) and handed to the engine with the
-  minutes to the tip; the player sheet gets "THE BOOKS' LINE INSIDE THE NUMBER" (what the line is, how much of it is in,
-  the number without and with it) and the Edges screen says why few edges remain. All of it shows only when the engine
-  used a line, so nothing is visible while the shares are 0.
-- Lab (`bt2.js --lines closing|<minutes> --tune ...` hands the recorded lines and their distance to the tip to the
-  engine; `v19-03-fd.js --tune ...` does the same for the FanDuel grading). Three nights, 22 games, EVERY scored player
-  (those with no line count unchanged), average miss off → on. In-sample for the settings; the held-out numbers by
-  stat are in "Night 3 graded" (points 2.7 and 3.9% on lined players, rebounds 2.5%).
-
-  | stage | points | rebounds | assists | threes |
-  |---|---|---|---|---|
-  | before lineups, closing lines | 4.998 → 4.864 (−2.7%) | 1.935 → 1.908 (−1.4%) | 1.398 → 1.388 | 1.061 → 1.054 |
-  | tip-off, closing lines | 4.981 → 4.859 (−2.4%) | 1.941 → 1.901 (−2.1%) | 1.385 → 1.371 | 1.036 → 1.032 |
-  | 6:00 (points and rebounds shares only) | 4.659 → 4.621 | 1.851 → 1.820 | | |
-  | 12:00 | 4.228 → 4.174 | 1.751 → 1.725 | | |
-  | halftime | 3.450 → 3.403 | 1.364 → 1.360 | | |
-  | before lineups, lines about 1.5 h before the tip (share by the ramp) | 4.998 → 4.907 | 1.935 → 1.907 | | |
-  | lines about 3 h before | 4.998 → 4.930 | 1.935 → 1.924 | | |
-  | lines about 5.5 h before | 4.998 → 4.990 | | | |
-
-  Night by night the points number is closer on all three nights before lineups, at tip-off, at 12:00 and at halftime
-  (at 6:00 two nights closer, one level). Fading over 12 or 24 game minutes was no better than over 48.
-- What it does to the plays at FanDuel's prices (22 games): the plays the engine likes by 3+ points drop from 266 to 81
-  points marks and from 75 to 19 points main lines, and what is left sits around level instead of clearly below it;
-  with the 0.45 share on threes the liked threes marks go from −42% ± 8 a play to −9% ± 13 (the threes chances were the
-  engine's clearest fault at long prices). The engine's "liked by 10+" group shrinks from 181 marks to 51 to 84:
-  whatever it was, it does not survive the line going in.
-- Tests: engine 98 checks (the new one: the number lands three quarters of the way, the simulations and the chance on
-  the line follow, the 9-in-10 number follows, PTS+REB+AST stays the sum, stats at share 0 and players with no line
-  do not move, the ramp by time to the tip, live reading and fade, never below what he has); eight broken copies of the
-  engine each fail. App 46 checks (off: lines kept, no number moves, nothing on screen; on: lined players three
-  quarters of the way, the sheet text, the Edges line, the lines kept into the game and 38% at halftime); five broken
-  copies of the app side each fail. GG Winner suites unchanged (10, 8, 15). With the shares at 0 the replay of the
-  three nights is the published engine's to the last digit.
-- TO PUBLISH ON AKARA'S YES: (1) blind check on Nov 16 with the frozen settings (tomorrow morning's routine does it);
-  (2) set the seven TUNE values in `engine.js`, `APP_VERSION` 20, `ca-shell-v20`; (3) update `LINE_NOTE`, `FD_NOTE` and
-  the findings with the numbers of all nights; (4) every suite, an independent review of the diff, `mkrelease`,
-  `publish.sh`, live check. The Edges screen will show few pre-game edges after it: say so in the report.
-- Still open after it: FanDuel-first picks (the picks still compare with the middle line of all books), the ESPN note
-  wording (doubtful 0 of 4 played, probable 8 of 9, questionable 9 of 27), a running total for the came-true record.
+- HOW IT WORKS NOW (after the evening's reviews; the first version is described under "First version" below).
+  Engine (`cs/build/engine.js`): inputs `o.lines` (raw book rows, or the app's kept table
+  `{ 'pid:stat': { pid, stat, line, books, n, toTip } }`) and `o.toTip` (minutes before the scheduled tip at which the
+  lines were READ; a kept line's own `toTip` wins). The share of a stat = its weight × the age ramp (0 when the line was
+  read `lineFar` = 300 minutes or more before the tip, full from `lineNear` = 60 minutes in; a look of unknown age counts
+  for nothing; the ramp holds during the game too) × the live fade (1 before the tip, `1 − el/lineLive` during the game,
+  nothing from 36:00, in overtime or at the final) × a taper where next to nothing is still to come (none under a quarter
+  of a unit, full from three quarters). A share under 2% is not used. A line needs two books posting it (`n`) and must
+  be between 0 and 100. For a lined stat the AVERAGE of what is still to come moves by share × (the line − the number
+  the app alone would show); during a game the line is read as "what he has + the line × time left / 48". The factor is
+  held between a half and double. `rescaleRate` then changes the RATE of every simulated night (thinning when the factor
+  is under 1: exactly the right number of units kept, each with the same chance; extra units when it is above 1, given
+  to nights with weight rho × the night's own total + (1 − rho) × the average, rho = the share of the spread beyond
+  chance) from a private seeded stream, so "at least one more" moves too, neighbouring marks keep apart, and no other
+  player or team number changes. The ladders, the range, the 9-in-10 number, FanDuel's menu and the picks all read the
+  changed nights. `p.lineIn[stat] = { line, books, share, from, now, to }`: `from` is the app's own shown number, `now`
+  the line as read at this moment, `to` the shown number as it BECAME. Explanations (`why`, chips, `shift`, usage-shift
+  alerts, "from here he projects") are worked out from the app's own numbers, and every amount a reason states is
+  multiplied by (1 − share): what is really left of it in the number on the card. The fade warning measures from the
+  shown number, as its text says. Team totals, minutes and players with no line are untouched.
+  `consensusLines` now leaves out a "points" row that is a first-quarter line (two books file theirs under "points":
+  833 of 1,873 recorded points lines carry one; with it the middle sat one line low in 87 of 8,048 keys) and returns `n`
+  (books posting). This one changes the published picks a little even with every share at 0.
+- App: the last look before a tip is kept under the GAME'S OWN day, `pl:<day>` =
+  `{ [game id]: { m: { 'pid:stat': [line, books on it, books posting, seen at (server ms)] } } }`. Every line carries the
+  time it was last seen; a look with fewer lines keeps the others with their older time (the feed drops and returns
+  players: 21 of 113 recorded consecutive looks lost lines); storage is read again before each write (two open copies).
+  No look is kept once the newest board row is not "not started", from a board on its saved copy, later than ten minutes
+  after the scheduled tip (the lines on offer may be in-game lines), without the server's time (the first pre-game
+  projection waits up to 2.5 s for it), or for a game with no tip time. `keptLines(g)` hands the engine each line with
+  its own age. The phone's own accuracy table replays last night WITH the kept lines (it grades what was on screen);
+  the lessons still learn from the app's own number (`worker.js`). The sheet's section lists only stats the line really
+  moved ("the books' line is X; the app alone says Y. The line counts for Z%, so the number shown is W"; during a game:
+  "at the pace of the books' line before the tip (X) he would finish near N"). The Edges sentence shows only while a
+  game still to come has a points share of 50% or more. A phone that first opens after the tip has no look: its numbers
+  are the app's own for that game.
+- THE EVENING'S REVIEWS (Nov 17, 01:00 to 03:00 UTC): two independent reviewers, engine and app, on the first version with
+  the settings on. What they found and what was done (all before any Nov 16 result existed in the lab):
+  1. HIGH, engine: from about 30:00 the factor (target − has) / (shown − has) exploded where the shown number sat just
+     above what he has, and switched on and off between moments (36:00: chance on the book line 0.17 → 0.30 where 0.12
+     came true). → the factor now comes from the AVERAGE still to come, is held to [0.5, 2], comes in smoothly, and the
+     share is gone by 36:00 (`lineLive` 48 → 36: at 30:00 the line no longer helped, at 36:00 it hurt).
+  2. HIGH, engine and app: the share ignored how old the kept look was (a look from 11:00 went in at 70% once the game
+     started; a failed read near the tip left the morning look at full share). → the age of each line decides.
+  3. MEDIUM: the sheet printed a target, not the number (threes: 33 of 153 cards said it moved when it had not).
+     → `to` is the number as it became; unmoved stats are not listed.
+  4. MEDIUM: multiplying whole counts left "at least one more" where it was (41 threes ladders with two neighbouring
+     marks at the same chance). → the change of rate.
+  5. MEDIUM/LOW: usage-shift alerts and reasons were driven by the line's pull. → the app's own numbers, amounts scaled.
+  6. LOW (serious if it fires): the first-quarter rows in the middle line. → left out; two books needed.
+  7. App: a shorter look wiped the others; lines were read by the day on screen (a projection finishing after the day
+     arrow was tapped rewrote the report card and saved edges that were never shown); a look could be kept after the
+     tip from a frozen board; two open copies overwrote each other; a phone clock hours off moved the share; a row
+     could print "0%"; "in the morning none does" was wrong for early tips and western time zones; older texts were
+     made untrue (the plus-edge definition, the Scorers screen, the phone's own table). → all fixed, each with a check.
+  8. Left as it is, on purpose: the shot attempts on the sheet (FGA, 3PA, FTA) are the app's own read and do not move
+     with the line; a made-threes night can exceed its attempts night in a single simulation (nothing reads them
+     together); before the tip the engine call costs about a quarter more time with 26 lined players (one sort and one
+     pass per lined stat).
+  Tests after the fixes: engine 103 checks, app 54 (the 9 about this feature: as shipped; switched on; during a game;
+  the kept look; no look when it must not; the day arrow; the sheet's rows; the phone's own grading; dated keys).
+  Broken copies: 19 of the engine (all caught but one that duplicates another safeguard: a player who is done has
+  nothing still to come) and 18 of the app (16 caught; the two not caught are doubled by a second guard).
+- FIRST VERSION (Nov 16, before the reviews; kept for the record, its numbers are NOT those of the build): the shown
+  number was moved toward the line by the share and every night multiplied (rounding carried), `lineLive` 48, the
+  share by minutes to the tip at the moment of the projection. Three nights, off → on: before lineups points
+  4.998 → 4.864, rebounds 1.935 → 1.908, assists 1.398 → 1.388, threes 1.061 → 1.054; tip-off 4.981 → 4.859,
+  1.941 → 1.901, 1.385 → 1.371, 1.036 → 1.032; 12:00 4.228 → 4.174; halftime 3.450 → 3.403. At FanDuel's prices the
+  liked points marks fell from 266 to 81 and the liked threes marks went from −42% ± 8 to −9% ± 13 a play (with the
+  corrected method that last one is −31% ± 11 on 283 marks: the first version's figure rested on the multiplying
+  fault, see 4).
+- TO PUBLISH (Akara said yes): (1) `tools/nightly.sh 2026-11-16`, then `tools/blind20.sh 2026-11-16` and the pass rule
+  above; (2) the second review pass's findings fixed; (3) the eight TUNE values in `engine.js` (a secondary stat that
+  fails rule 2 gets 0), `LINE_SHIPPED = true` in both test files, `APP_VERSION` 20, `ca-shell-v20`; (4) `LINE_NOTE`,
+  `FD_NOTE`, `SURE_LAB` and the accuracy findings with the numbers of all four nights (a "New in version 20" finding;
+  the note under the tables says the books' player lines are not in them; finding 5 says "game lines", not "book
+  information"); (5) every suite, `mkrelease`, `publish.sh`, live check at Pixel width with the real feeds (serve a
+  Date header a few hours ahead to see a fresh look in the morning), baseline copy, PR body; (6) the report: few
+  pre-game plus edges remain; threes marks at long prices stay the weak spot.
+- Still open after it: FanDuel-first picks (the picks still compare with the middle line of all books), shrinking each
+  mark's chance toward the books' own no-vig chance (threes first), the ESPN note wording (doubtful 0 of 4 played,
+  probable 8 of 9, questionable 9 of 27), a running total for the came-true record, an even count of books takes the
+  upper middle line.
 
 ### The books' player lines: the one source the numbers do not use yet (started Nov 13, evening)
 
