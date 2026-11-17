@@ -219,11 +219,15 @@ for (const [k, x] of Object.entries(state.glogs)) if (x && x.games && x.games[0]
 // live means live: a new projection for every new play (or new lineup, line or status news), and none when nothing has happened
 const playKey = s.phase === 'live' ? [plays.length, s.period, s.clock, s.vs, s.hs, JSON.stringify(getOverrides()), Object.keys(gameLogs).length, avail ? `${avail.in.length}/${avail.out.length}/${avail.confirmed}` : '', props.length, market ? market.total : '', settings.sims, settings.minP].join(':') : null;
 if (playKey && before && before.playKey === playKey && Date.now() - before.at < 90000) return before;
-// the books' player lines for the number itself (kept from the last look before the tip), and how far off the tip is
+// the books' player lines for the number itself: the last look before the tip, each line with the time it was seen (the
+// share the engine gives a line goes by how long before the tip it was seen, so the server's time is waited for, briefly)
+let lines = null;
+if (s.phase !== 'final') {
+if (s.phase === 'pre' && clockOff == null) { try { await Promise.race([clockSync(), new Promise((r) => setTimeout(r, 2500))]); } catch { /* no clock: no look is kept this time */ } }
 try { rememberLines(g, s, props); } catch (e) { console.warn('lines', e); }
-const lines = keptLines(g);
-const toTip = s.phase === 'pre' && g.datetime ? Math.max(0, (Date.parse(g.datetime) - (Date.now() + (clockOff || 0))) / 60000) : 0;
-const res = await runProjection({ game: g, plays, logs, priors: state.priors, injuries: state.injuries, nsims: settings.sims, props, seed: g.id, minP: settings.minP, overrides: getOverrides(), lines, toTip,
+try { lines = keptLines(g); } catch (e) { lines = null; console.warn('lines', e); }
+}
+const res = await runProjection({ game: g, plays, logs, priors: state.priors, injuries: state.injuries, nsims: settings.sims, props, seed: g.id, minP: settings.minP, overrides: getOverrides(), lines,
 market, teams: state.teamsDb, gameLogs, avail, patterns: patternsNow() });
 if (s.phase === 'live' && before && before.proj) noteMoves(g, before.proj, res.proj);
 state.proj.set(g.id, { ...res, at: Date.now(), playKey, feed: DB.feed[g.id] || 'databallr' });
@@ -277,30 +281,61 @@ const m = tipMap(); let changed = false;
 for (const p of P.players) { const v = Math.round(p.proj.pts * 10) / 10; if (m[p.pid] !== v) { m[p.pid] = v; changed = true; } }
 if (changed) { try { DB.store.set(tipKey(), m); } catch { /* storage full or blocked */ } }
 }
-// ------------------------------------------------------------------ the books' player lines, kept for the game (v20 candidate)
-// The last look at the books' lines before a tip (the middle line of all books, per player and stat) is kept for the day. The
-// engine can put a share of it inside each number before the tip and what is left of that share during the game; it does
-// nothing with it while its shares are 0 (as shipped). { [game id]: { at, m: { 'player:stat': [line, books] } } }
-const plKey = () => `pl:${state.date}`;
-let plCache = null, plDay = '';
-function pregameLines() { if (!plCache || plDay !== state.date) { plDay = state.date; try { plCache = DB.store.get(plKey()); } catch { plCache = null; } if (!plCache || typeof plCache !== 'object' || Array.isArray(plCache)) plCache = {}; } return plCache; }
-function rememberLines(g, s, props) {
-// (only before the tip, and only for the day on screen: a projection of another day's game can finish after the user has tapped back)
-if (s.phase !== 'pre' || String(g.date || state.date).slice(0, 10) !== state.date) return;
-const m = {};
-for (const c of Object.values(E.consensusLines(props || []))) if (c && c.line > 0 && ['pts', 'reb', 'ast', 'fg3m'].includes(c.stat)) m[`${c.pid}:${c.stat}`] = [c.line, c.books];
-if (!Object.keys(m).length) return; // the lines did not load this time: the last good look stays
-const P = pregameLines(), before = P[g.id];
-if (before && JSON.stringify(before.m) === JSON.stringify(m)) return;
-P[g.id] = { at: Date.now() + (clockOff || 0), m };
-try { DB.store.set(plKey(), P); } catch { /* storage full or blocked */ }
+// ------------------------------------------------------------------ the books' player lines, kept for the game (v20)
+// The last look at the books' lines before a tip is kept on the phone under the GAME'S OWN day, every line with the time it
+// was last seen: pl:<day> = { [game id]: { m: { 'player:stat': [line, books on that line, books posting, seen at (server ms)] } } }.
+// The engine puts a share of each line inside the number, by how long before the tip the line was seen; it does nothing
+// with them while its shares are 0.
+const plKey = (day) => `pl:${day}`;
+const PL_STATS = ['pts', 'reb', 'ast', 'fg3m'];
+const plCache = new Map(); // day -> that day's record as last read or written here
+const gameDay = (g) => String((g && g.date) || '').slice(0, 10);
+function plRead(day, fresh) {
+if (!fresh && plCache.has(day)) return plCache.get(day);
+let P = null;
+try { P = DB.store.get(plKey(day)); } catch { P = null; }
+if (!P || typeof P !== 'object' || Array.isArray(P)) P = {};
+plCache.set(day, P);
+return P;
 }
-/** The kept lines of a game in the shape the engine reads ({ 'player:stat': { pid, stat, line, books } }), or null. */
+const plRowOk = (v) => Array.isArray(v) && +v[0] > 0 && +v[0] < 100 && Number.isFinite(+v[3]) && +v[3] > 0;
+function rememberLines(g, s, props) {
+const day = gameDay(g), tip = Date.parse(g.datetime);
+if (s.phase !== 'pre' || !/^\d{4}-\d\d-\d\d$/.test(day) || !Number.isFinite(tip)) return;
+// no look without the server's time (a phone's own clock can be hours off, and the share goes by the look's age)
+if (clockOff == null) { clockSync(); return; }
+const now = Date.now() + clockOff;
+// no look once the ball may be up: the newest row on the board decides (the row handed in can be minutes old), a board
+// running on its saved copy has frozen statuses, and ten minutes past the scheduled time the lines on offer may already be
+// in-game lines (a real tip comes about ten minutes after the scheduled one)
+const fresh = state.slate.find((x) => x.id === g.id);
+if ((fresh && st(fresh).phase !== 'pre') || DB.slateSource() === 'saved' || now > tip + 10 * 60000) return;
+const seen = {};
+for (const c of Object.values(E.consensusLines(props || []))) if (c && PL_STATS.includes(c.stat) && c.line > 0 && c.line < 100) seen[`${c.pid}:${c.stat}`] = [c.line, c.books, c.n, now];
+if (!Object.keys(seen).length) return; // the lines did not load this time: the last good look stays
+// start from what is on the phone, not from memory (another open copy of the app may have kept a later look); a line that
+// is missing from this look stays, with its own older time (the feed drops and returns players between looks)
+const P = plRead(day, true), before = P[g.id] && P[g.id].m && typeof P[g.id].m === 'object' && !Array.isArray(P[g.id].m) ? P[g.id].m : {};
+const m = {};
+for (const [k, v] of Object.entries(before)) if (plRowOk(v)) m[k] = v;
+for (const [k, v] of Object.entries(seen)) m[k] = v;
+P[g.id] = { m };
+try { DB.store.set(plKey(day), P); } catch { /* storage full or blocked: the look lives until the app is closed */ }
+}
+/** The kept lines of a game in the shape the engine reads ({ 'player:stat': { pid, stat, line, books, n, toTip } }), or null.
+* toTip = how many minutes before the scheduled tip that line was last seen. */
 function keptLines(g) {
-const rec = pregameLines()[g.id];
-if (!rec || !rec.m || typeof rec.m !== 'object') return null;
+const tip = Date.parse(g && g.datetime);
+if (!Number.isFinite(tip)) return null; // no tip time: no age, no share
+const rec = plRead(gameDay(g))[g.id];
+if (!rec || !rec.m || typeof rec.m !== 'object' || Array.isArray(rec.m)) return null;
 const out = {};
-for (const [k, v] of Object.entries(rec.m)) { const [pid, stat] = k.split(':'); if (Array.isArray(v) && v[0] > 0) out[k] = { pid: +pid, stat, line: v[0], books: v[1] || 1 }; }
+for (const [k, v] of Object.entries(rec.m)) {
+if (!plRowOk(v)) continue;
+const [pid, stat] = k.split(':');
+if (!PL_STATS.includes(stat) || !Number.isFinite(+pid)) continue;
+out[k] = { pid: +pid, stat, line: +v[0], books: +v[1] || 1, n: +v[2] || +v[1] || 1, toTip: (tip - +v[3]) / 60000 };
+}
 return Object.keys(out).length ? out : null;
 }
 // ------------------------------------------------------------------ edge record (pick ledger)
@@ -631,11 +666,11 @@ const snapKey = (d) => `psnap:${d}`;
 let snapDay = ''; // the day whose copy is known to be complete (so a refresh does not read it back every time)
 // A copy is stamped with the server's time, not the phone's: a phone whose clock runs a day slow would otherwise stamp a table
 // that already holds last night's games as "saved before last night's first tip". Until the server's time is known no copy is saved.
-let clockOff = null, clockAsked = false;
+let clockOff = null, clockAsked = null;
 function clockSync() {
-if (clockOff != null || clockAsked) return;
-clockAsked = true;
-DB.serverNow().then((t) => { if (t != null) { clockOff = t - Date.now(); snapSave(); } }).catch(() => {}).finally(() => { clockAsked = false; });
+if (clockOff != null) return Promise.resolve();
+if (!clockAsked) clockAsked = DB.serverNow().then((t) => { if (t != null) { clockOff = t - Date.now(); snapSave(); } }).catch(() => {}).finally(() => { clockAsked = null; });
+return clockAsked;
 }
 function snapSave() {
 try {
@@ -741,7 +776,10 @@ let av = null;
 try { av = await DB.lineupFor(g); } catch { av = null; }
 // without the posted lineup the replay would be filed under the wrong stage: leave the game for another day
 if (!av) { failed++; continue; }
-jobs.push({ rows: act.rows, logs, market: mkt && mkt.total ? mkt : null, avail: av, cps: CPS.map((k) => gameAt(g, plays, k)) });
+// (v20) and the books' lines the phone had kept for this game: the accuracy table grades the number that was on screen
+let kept = null;
+try { kept = keptLines(g); } catch { kept = null; }
+jobs.push({ rows: act.rows, logs, market: mkt && mkt.total ? mkt : null, avail: av, lines: kept, cps: CPS.map((k) => gameAt(g, plays, k)) });
 } catch (e) { failed++; console.warn('learn', g.id, e); }
 }
 // a game that could not be read (feed down, plays short of the final, no lineup) is tried again on the next two days;
@@ -1249,20 +1287,25 @@ const bits = [];
 if (s.phase === 'live' && tip != null && Math.abs(p.proj.pts - tip) >= 0.5) bits.push(`<li class="${p.proj.pts > tip ? 'up' : 'down'}"><span aria-hidden="true">${p.proj.pts > tip ? '▲' : '▼'}</span><span>Since tip-off his points projection has moved from ${tip.toFixed(1)} to <b>${p.proj.pts.toFixed(1)}</b>.<span class="so">${p.proj.pts > tip ? 'That helps picks on him.' : 'Any edge shown is measured from the new, lower number.'}</span></span></li>`);
 if (p.mean && p.mean.pts - p.proj.pts >= 0.4) bits.push(`<li class="info"><span aria-hidden="true">📍</span><span><b>${p.proj.pts.toFixed(1)}</b> is where he most often finishes from here. A few big finishes pull the plain average up to ${p.mean.pts.toFixed(1)}, so we show the number he lands on most.</span></li>`);
 if (mv) bits.push(`<li class="${mv.d > 0 ? 'up' : 'down'}"><span aria-hidden="true">${mv.d > 0 ? '▲' : '▼'}</span><span>Just now: ${mv.d > 0 ? '+' : '−'}${Math.abs(mv.d).toFixed(1)} points on his projection (${esc(mv.why)}).</span></li>`);
-if (p.shift && s.phase === 'live' && Math.abs(p.shift.rem - p.shift.baseRem) >= 1.5) { const d = p.shift.rem - p.shift.baseRem; bits.push(`<li class="${d > 0 ? 'up' : 'down'}"><span aria-hidden="true">⚡</span><span>From here he projects for ${p.shift.rem.toFixed(1)} more points. On a normal night it would be about ${p.shift.baseRem.toFixed(1)}.<span class="so">${Math.abs(p.shift.dMin) >= Math.abs(p.shift.dRate) ? `Mostly minutes: ${p.shift.remMin.toFixed(1)} left to play vs his usual ${p.shift.usualRem.toFixed(1)}.` : 'Mostly his share of the shots and how the game is going.'}</span></span></li>`); }
+if (p.shift && s.phase === 'live' && Math.abs(p.shift.rem - p.shift.baseRem) >= 1.5) { const d = p.shift.rem - p.shift.baseRem; bits.push(`<li class="${d > 0 ? 'up' : 'down'}"><span aria-hidden="true">⚡</span><span>${lineShown(p.lineIn && p.lineIn.pts) ? `From here the app's own read is ${p.shift.rem.toFixed(1)} more points` : `From here he projects for ${p.shift.rem.toFixed(1)} more points`}. On a normal night it would be about ${p.shift.baseRem.toFixed(1)}.<span class="so">${Math.abs(p.shift.dMin) >= Math.abs(p.shift.dRate) ? `Mostly minutes: ${p.shift.remMin.toFixed(1)} left to play vs his usual ${p.shift.usualRem.toFixed(1)}.` : 'Mostly his share of the shots and how the game is going.'}</span></span></li>`); }
 return `<div class="nowbox"><div class="nb-num"><span class="led">${half(p.proj.pts)}</span><small>projected points</small></div>
 <div class="nb-range">${rg ? `Likely finish <b>${rg[0]} to ${rg[1]}</b><small>8 games in 10 land in this range</small>` : ''}</div></div>
 ${sureHTML(p, s.phase === 'pre')}
 ${lineInHTML(p, s.phase === 'pre')}
 ${bits.length ? `<h3>WHAT CHANGED</h3><ul class="why">${bits.join('')}</ul>` : ''}`;
 }
-// measured on the recorded nights (tools/propgrade.js, tools/bt2.js --lines): update with every night graded
-const LINE_NOTE = 'In the last hours before a tip the books\' line has been the closer of the two, so more of it goes into the number as the tip nears; in the morning none does. On 22 recorded games points landed 2.7 to 3.9% closer with it inside, rebounds 2.5% closer.';
-/** What the books' line did to each number it is inside of (only when the engine used it). */
+// measured on the recorded nights (tools/blind20.sh, tools/propgrade.js): update with every night graded
+const LINE_NOTE = 'How much the books\' line counts goes by how fresh it is: nothing when it was last seen five hours or more before the tip, the full share (points 75%, rebounds 60%, assists and threes 45%) inside the last hour. Once the game is on the share shrinks, and it is gone by the end of the third quarter. Measured on 22 recorded games: before a game the points number landed 2.5% closer with the line inside and rebounds 2% closer; assists and threes about level.';
+const lineShown = (x) => x && Number.isFinite(x.from) && Number.isFinite(x.to) && Number.isFinite(x.share) && Math.round(x.share * 100) >= 1 && Math.abs(x.to - x.from) >= 0.05;
+/** What the books' line did to each number it is inside of (only the stats it really moved). */
 function lineInHTML(p, pre) {
 const L = p.lineIn;
 if (!L) return '';
-const rows = CARD_STATS.filter(([k]) => L[k]).map(([k, lbl]) => `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: the books' line is <b>${L[k].line}</b>. <b>${Math.round(L[k].share * 100)}%</b> of it is inside the number${pre ? '' : ', for the time left'}: the app alone had ${L[k].from.toFixed(1)}, with the line it is ${L[k].to.toFixed(1)}.</span></li>`);
+const rows = CARD_STATS.filter(([k]) => lineShown(L[k])).map(([k, lbl]) => {
+const x = L[k], sh = Math.round(x.share * 100);
+// before the tip the line is the books' number for the whole game; during a game it is read as what he has plus the line's pace for the time left
+return `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: ${pre ? `the books' line is <b>${x.line}</b>` : `at the pace of the books' line before the tip (${x.line}) he would finish near <b>${Number.isFinite(x.now) ? x.now.toFixed(1) : x.line}</b>`}; the app alone says ${x.from.toFixed(1)}. The line counts for <b>${sh}%</b>${pre ? '' : ' now'}, so the number shown is <b>${x.to.toFixed(1)}</b>.</span></li>`;
+});
 if (!rows.length) return '';
 return `<h3>THE BOOKS' LINE INSIDE THE NUMBER</h3><ul class="why">${rows.join('')}</ul><p class="small muted" style="font-weight:700;margin:8px 0 0">${LINE_NOTE}</p>`;
 }
@@ -1406,14 +1449,14 @@ let html = (alerts.length ? `<div class="section-title" style="margin-top:4px">�
 <label class="toggle"><input type="checkbox" data-act="skipblow" ${settings.skipBlowouts ? 'checked' : ''} aria-label="Skip blowouts"><span></span></label></div>`;
 html += progressHTML();
 // what the edges shown on this phone have really done (v19): an edge is the app's read against the line, not a promise
-{ const R = ledgerStats(); html += `<div class="card small" style="margin-top:10px;font-weight:700">📒 ${R.n ? `Edges graded on this phone so far: <b>${R.n}</b>, came in <b>${Math.round((100 * R.hit) / R.n)}%</b> (the app said ${Math.round(100 * R.said)}%).${R.n < 60 ? ' Too few to judge yet.' : ''}` : 'Every edge shown here is saved and graded when its game ends.'} An edge is the app's read against the books' line, not a promise: at a sportsbook's prices a play has to come in more often than its price needs. The full record is in Settings.${[...state.proj.values()].some((x) => x && x.proj && x.proj.players.some((q) => q.lineIn)) ? ' Close to a tip most of the books\' line is inside each number, so few plus edges remain before a game.' : ''}</div>`; }
+{ const R = ledgerStats(); html += `<div class="card small" style="margin-top:10px;font-weight:700">📒 ${R.n ? `Edges graded on this phone so far: <b>${R.n}</b>, came in <b>${Math.round((100 * R.hit) / R.n)}%</b> (the app said ${Math.round(100 * R.said)}%).${R.n < 60 ? ' Too few to judge yet.' : ''}` : 'Every edge shown here is saved and graded when its game ends.'} An edge is the app's read against the books' line, not a promise: at a sportsbook's prices a play has to come in more often than its price needs. The full record is in Settings.${[...state.proj.values()].some((x) => x && x.proj && x.proj.state && x.proj.state.phase === 'pre' && x.proj.players.some((q) => q.lineIn && q.lineIn.pts && q.lineIn.pts.share >= 0.5)) ? ' In the last hours before a tip the books\' own line counts for most of a points number, so few plus edges are left before a game; more show once it is on.' : ''}</div>`; }
 if (state.hiddenShaky) html += `<div class="card small" style="margin-top:10px;font-weight:700;background:#3b2a12">⚠️ ${state.hiddenShaky} pick${state.hiddenShaky > 1 ? 's' : ''} hidden: player status not confirmed (back-to-back rest, questionable, or missed last game). Open the game, check X, and tap PLAYING to unlock.</div>`;
 if (!picks.length) return html + (state.busy || state.progress ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div></div>' : emptyHTML('No plus edges yet', 'Picks show when a player is projected ahead of the line: 60%+ to clear a book line with value, or 75%+ on a model rung.'));
 const value = picks.filter((k) => k.kind === 'line'), safe = picks.filter((k) => k.kind !== 'line');
 if (value.length) html += `<div class="stack">${value.slice(0, 25).map((k, i) => pickCard(k, i + 1)).join('')}</div>`;
 if (safe.length) html += `<div class="section-title">🛡️ SAFE LADDER <span class="count">no book line yet: 75%+ rungs</span></div><div class="stack">${safe.sort((a, b) => b.prob - a.prob).slice(0, 25).map((k) => pickCard(k)).join('')}</div>`;
 html += `<div class="legend"><span class="lg edge">Strong edge</span><span class="lg rise">Rising</span><span class="lg fade">Fading</span><span class="lg noplay">No play</span></div>`;
-html += `<p class="updated">Every pick is projected ahead of its line. Plus edges = our projection beats the DataBallr book line and our chance to clear it beats the book's no-vig chance. Safe ladder = highest rung still 75%+.</p>`;
+html += `<p class="updated">Every pick is projected ahead of its line. Plus edges = the number shown is ahead of the books' line and our chance to clear it is higher than the chance the books' own prices give it. Safe ladder = highest rung still 75%+.</p>`;
 return html;
 }
 
@@ -1484,7 +1527,7 @@ let html = `<div class="section-title" style="margin-top:4px">🏆 TOP SCORERS <
 html += progressHTML();
 if (!rows.length) return html + (state.busy || state.progress ? '<div class="stack" style="margin-top:14px"><div class="skeleton"></div><div class="skeleton"></div></div>' : emptyHTML('No projections yet', 'Top scorers show once tonight\'s games load.'));
 if (open.length) {
-html += `<div class="card small" style="font-weight:700">Ranked by projected points for the whole game. It counts his minutes, role, matchup, pace, foul trouble, blowout risk, and how he scores by quarter, score and crunch time. ${anyLive ? 'Live games update with every refresh.' : ''}</div>`;
+html += `<div class="card small" style="font-weight:700">Ranked by projected points for the whole game. It counts his minutes, role, matchup, pace, foul trouble, blowout risk, and how he scores by quarter, score and crunch time; from five hours before a tip until the end of the third quarter the books' own points line counts too. ${anyLive ? 'Live games update with every refresh.' : ''}</div>`;
 html += `<div class="stack">${open.slice(0, 15).map((r, i) => scorerCard(r, i + 1)).join('')}</div>`;
 const races = state.slate.filter((g) => st(g).phase !== 'final').map((g) => { const pr = state.proj.get(g.id); return pr && pr.proj ? gameRaceCard(g, st(g), pr.proj) : ''; }).filter(Boolean);
 if (races.length) html += `<div class="section-title">🥇 WHO LEADS EACH GAME <span class="count">chance to be the game's top scorer</span></div><div class="stack">${races.join('')}</div>`;
@@ -1524,7 +1567,7 @@ const G = { pre: 'pre', q1: 's12', half: 's24', q3: 's36', late: 's42' };
 const rows = CP2.map(([k, l]) => { const x = sum.acc[G[k]]; return x && x.g >= 1 && x.n >= 8 ? `<tr><td>${l}</td><td><b>${(x.pts / x.n).toFixed(2)}</b></td><td>${(x.reb / x.n).toFixed(2)}</td><td>${(x.ast / x.n).toFixed(2)}</td><td>${x.g ? Math.round((100 * x.top3) / x.g) + '%' : '–'}</td></tr>` : ''; }).join('');
 if (rows) mine = `<div class="small" style="font-weight:800;margin:14px 0 4px">On this phone since ${new Date(PAT_FROM + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}: ${learnedGames()} games graded</div>
 <table class="mtable acc2"><tr><th></th><th>PTS miss</th><th>REB</th><th>AST</th><th>Top scorer in our top 3</th></tr>${rows}</table>
-<div class="small muted" style="margin-top:6px">Each finished game is replayed with the season stats this phone saved before that game tipped, so the app is graded on what it knew at the time. Everyone who played 10+ minutes counts, and a player the app had no number for counts as a full miss. A night with no saved copy from before tip-off is left out.</div>`;
+<div class="small muted" style="margin-top:6px">Each finished game is replayed with the season stats this phone saved before that game tipped and the books' lines it had kept for it, so the app is graded on what it knew at the time. Everyone who played 10+ minutes counts, and a player the app had no number for counts as a full miss. A night with no saved copy from before tip-off is left out.</div>`;
 }
 return `<div class="section-title">🎯 ACCURACY REPORT</div>
 <div class="card">
