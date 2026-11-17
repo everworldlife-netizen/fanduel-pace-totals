@@ -1564,8 +1564,10 @@ graded" below; this section is the build.
      with the line; a made-threes night can exceed its attempts night in a single simulation (nothing reads them
      together); before the tip the engine call costs about a quarter more time with 26 lined players (one sort and one
      pass per lined stat).
-  Tests after the fixes: engine 103 checks, app 54 (the 9 about this feature: as shipped; switched on; during a game;
-  the kept look; no look when it must not; the day arrow; the sheet's rows; the phone's own grading; dated keys).
+  Tests after the fixes: engine 103 checks, app 53 (8 about this feature: as shipped; switched on; during a game; the
+  kept look; no look when it must not; the day arrow; the sheet's rows; the phone's own grading; and the dated-keys
+  check now covers `pl:`). GG Winner 8, 10, 15. The app suite now takes about 13 minutes: run it in the background.
+  Its waits follow the app (a fixed five-second wait in an older check failed once on a busy machine).
   Broken copies: 19 of the engine (all caught but one that duplicates another safeguard: a player who is done has
   nothing still to come) and 18 of the app (16 caught; the two not caught are doubled by a second guard).
 - FIRST VERSION (Nov 16, before the reviews; kept for the record, its numbers are NOT those of the build): the shown
