@@ -440,6 +440,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     // a look three hours old counts for half of that; one from more than five hours before the tip for nothing at all
     const mid = await lineBoot('pre', { lead: 180 }); await sleep(3200);
     assert.ok(/The line counts for 38%, so the number shown is/.test(await sheetOf(mid, gid, pid)), 'a three-hour-old look is not at half the share');
+    assert.ok(!/books' own line counts for most/.test((await mid.go('#/edges', 400)).textContent), 'the Edges screen says the line counts for most of a points number while it counts for 38%');
     const far = await lineBoot('pre', { lead: 400 }); await sleep(3200);
     assert.ok(Object.keys(plOf(far)).length === FX.length, 'an early look was not kept');
     assert.ok(!SECTION.test(await sheetOf(far, gid, pid)), 'a look from 400 minutes before the tip is inside the number');
@@ -512,7 +513,8 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.strictEqual(saved.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept from a board running on its saved copy');
     await none(saved, 'saved board');
     // the server's time cannot be read: the phone's own clock decides nothing, and the cards are not held up
-    const noClock = await lineBoot('pre', { hook: (w) => { w.fetch = async () => { throw new Error('network is off in tests'); }; } }); await sleep(4200);
+    // (the phone's own clock says it is 30 minutes before the tip: without the server's word that is not believed)
+    const noClock = await lineBoot('pre', { hook: (w) => { w.fetch = async () => { throw new Error('network is off in tests'); }; const real = w.Date.now.bind(w.Date), off = LTIP - 30 * 60000 - real(); w.Date.now = () => real() + off; } }); await sleep(4200);
     assert.strictEqual(noClock.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept by the phone\'s own clock');
     await none(noClock, 'no server clock');
     // a game row without a tip time: no age, so no share
@@ -526,10 +528,31 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     }
     assert.strictEqual(hardOf(lateTip, held, saved, noClock, noTip).length, 0, hardOf(lateTip, held, saved, noClock, noTip).slice(0, 3).join(' | '));
   });
+  await test('the sheet\'s rows about the books\' line: only stats the line really moved, never "0%", never a missing number, and during a game the line is read as a pace', async () => {
+    const vm = require('vm');
+    const src = read('app.js');
+    const pick = (re) => { const m = src.match(re); assert.ok(m, `not found in app.js: ${re}`); return m[0]; };
+    const ctx = vm.createContext({});
+    vm.runInContext([pick(/^const CARD_STATS = .*$/m), pick(/^const LINE_NOTE = .*$/m), pick(/^const lineShown = .*$/m), pick(/^function lineInHTML\(p, pre\) \{[\s\S]*?^\}$/m)].join('\n') + '\nthis.lineInHTML = lineInHTML;', ctx);
+    const text = (L, pre) => ctx.lineInHTML({ lineIn: L }, pre).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    const row = (o) => ({ line: 22.5, books: 3, share: 0.75, from: 20, now: 22.5, to: 21.9, ...o });
+    assert.strictEqual(text(null, true), ''); assert.strictEqual(text({}, true), '');
+    assert.ok(/PTS: the books' line is 22\.5 ; the app alone says 20\.0\. The line counts for 75% , so the number shown is 21\.9 \./.test(text({ pts: row() }, true)), text({ pts: row() }, true));
+    // a stat the line did not move, a share that would print as 0%, and a row with a missing number are left out; with nothing left there is no section
+    assert.strictEqual(text({ pts: row({ to: 20.02 }) }, true), '');
+    assert.strictEqual(text({ pts: row({ share: 0.004 }) }, true), '');
+    for (const bad of [{ to: undefined }, { from: NaN }, { share: undefined }, { to: null, from: null }]) assert.strictEqual(text({ pts: row(bad) }, true), '', JSON.stringify(bad));
+    const two = text({ pts: row({ to: 20.01 }), reb: row({ line: 6.5, share: 0.6, from: 5, now: 6.5, to: 5.9 }), pra: row() }, true);
+    assert.ok(/REB: the books' line is 6\.5/.test(two) && !/PTS:/.test(two) && !/PRA|PTS\+REB/.test(two), two);
+    // during a game: what he has plus the line's pace for the time left, said as where he would finish
+    const live = text({ pts: row({ line: 19.5, share: 0.25, from: 26.7, now: 29.8, to: 27.5 }) }, false);
+    assert.ok(/PTS: at the pace of the books' line before the tip \(19\.5\) he would finish near 29\.8 ; the app alone says 26\.7\. The line counts for 25% now, so the number shown is 27\.5 \./.test(live), live);
+    for (const t of [two, live, text({ pts: row() }, true)]) { assert.ok(!/undefined|NaN|null/.test(t), t); assert.strictEqual(banned(t).length, 0); assert.ok(/gone by the end of the third quarter/.test(t)); }
+  });
   await test('a game gets its kept lines whatever day is on screen: a projection that finishes after the day arrow was tapped still has them, and saves the numbers that were shown', async () => {
     let gate = null, waiting = 0;
     const A = await lineBoot('pre', { hook: (w) => { const av = w.DB.availability; w.DB.availability = async (g) => { if (gate) { waiting++; await gate.p; } return av(g); }; } }); await sleep(3200);
-    const gid = FX[0].g.id, call0 = JSON.parse(A.w.localStorage.getItem('calls:v1'))[gid], led0 = A.w.localStorage.getItem('ledger:v1');
+    const gid = FX[0].g.id, call0 = JSON.parse(A.w.localStorage.getItem('calls:v1'))[gid], led0 = JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]').map((r) => r[0]).sort();
     await A.go('#/games', 300);
     let open; gate = { p: new Promise((r) => { open = r; }) };
     later(A, 6); A.w.document.getElementById('refreshBtn').click();
@@ -545,7 +568,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     for (const q of after) assert.ok(q.lines && Object.keys(q.lines).length >= 8, 'a projection that finished after the day changed ran without the game\'s kept lines');
     const call1 = JSON.parse(A.w.localStorage.getItem('calls:v1'))[gid];
     for (const [pid, x] of Object.entries(call0.p)) if (call1.p[pid]) assert.ok(Math.abs(call1.p[pid][3] - x[3]) <= 0.31, `the report card's points for ${x[0]} went from ${x[3]} to ${call1.p[pid][3]} when the day arrow was tapped`);
-    assert.strictEqual(A.w.localStorage.getItem('ledger:v1'), led0, 'edges that were never on screen were saved');
+    assert.deepStrictEqual(JSON.parse(A.w.localStorage.getItem('ledger:v1') || '[]').map((r) => r[0]).sort(), led0, 'edges that were never on screen were saved');
     assert.strictEqual(hardOf(A).length, 0, hardOf(A).slice(0, 3).join(' | '));
   });
   await test('a saved call waits for a final box that adds up, also for a game with no saved edges', async () => {
@@ -662,6 +685,37 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.ok(sn.t && sn.t.teams && Object.keys(sn.t.teams).length >= 20 && sn.at > 0 && sn.tAt > 0, 'the copy has no team table');
     assert.strictEqual(sn.p[Object.keys(CUR)[0]].length, SNAP_F.length);
     assert.ok(JSON.stringify(sn).length < 70000, `the copy takes ${JSON.stringify(sn).length} characters of the phone's storage`);
+  });
+  await test('the phone\'s own accuracy table grades the number that was on screen: last night is replayed with the books\' lines the phone had kept; the lessons still learn from the app\'s own number', async () => {
+    // a player of the first game with a line far above the app's own number, seen 30 minutes before the tip; nothing kept for the second game
+    const EV = require(path.join(BUILD, 'engine.js'));
+    const fx = FX[0], base = EV.projectGame({ ...fx.base, game: { ...fx.g, status_state: 'scheduled', period: 0, time: '', visitor_team_score: 0, home_team_score: 0 }, plays: [], nsims: 300, seed: fx.g.id, patterns: EV.patBeta(null) });
+    const star = base.players.filter((q) => q.mean.pts >= 14)[0];
+    const keptFor = { [fx.g.id]: { m: { [`${star.pid}:pts`]: [Math.round(star.proj.pts) + 14.5, 3, 3, TIP - 30 * 60000] } } };
+    const night = async (withLines, tune) => {
+      const sent = [];
+      const R = await morningAfter((w) => {
+        w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000));
+        if (withLines) w.localStorage.setItem(`pl:${DAY}`, JSON.stringify(keptFor));
+        if (tune) Object.assign(w.Engine.TUNE, tune);
+        const post = w.Worker.prototype.postMessage;
+        w.Worker.prototype.postMessage = function (m) { if (m && m.payload && m.payload.grade) sent.push(...m.payload.grade); return post.call(this, m); };
+      });
+      return { ...R, sent };
+    };
+    const ON = { lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2 };
+    const a = await night(true, ON), b = await night(false, ON);
+    const job = (R, id) => R.sent.find((j) => +j.cps[0].game.id === +id);
+    assert.ok(job(a, fx.g.id) && job(a, FX[1].g.id), 'last night was not replayed');
+    const L = job(a, fx.g.id).lines;
+    assert.ok(L && L[`${star.pid}:pts`] && Math.abs(L[`${star.pid}:pts`].toTip - 30) < 0.01 && L[`${star.pid}:pts`].n === 3, `the replay was handed ${JSON.stringify(L)}`);
+    assert.strictEqual(job(a, FX[1].g.id).lines, null, 'a game with no kept look was replayed with lines');
+    assert.strictEqual(job(b, fx.g.id).lines, null);
+    // the table (how the full app did) moved with the line; what the lessons learned (their sums) did not
+    assert.ok(a.sum && b.sum && a.sum.acc && b.sum.acc && a.sum.acc.pre.n === b.sum.acc.pre.n && a.sum.acc.pre.n >= 20, 'the two nights were not graded alike');
+    assert.ok(Math.abs(a.sum.acc.pre.pts - b.sum.acc.pre.pts) > 1, `a line 14 points above a scorer's number left the phone's points miss where it was (${a.sum.acc.pre.pts.toFixed(2)} and ${b.sum.acc.pre.pts.toFixed(2)})`);
+    const lessons = (R) => JSON.stringify(Object.fromEntries(Object.entries(R.sum).filter(([k]) => k !== 'acc' && k !== 'team')));
+    assert.strictEqual(lessons(a), lessons(b), 'the lessons learned from a number with the books\' line inside');
   });
   await test('the morning after, finished games are replayed with the copy saved before tip-off, not with today\'s table', async () => {
     const { M, rec, sum, graded } = await morningAfter((w) => w.localStorage.setItem(`psnap:${DAY}`, copyOf(TIP - 3600000)));

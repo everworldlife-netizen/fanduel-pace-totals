@@ -910,6 +910,15 @@ test('the books\' line and small counts: a pull upward raises the chance of "at 
     const D = run(fx, 0, { lines: down, toTip: 5 });
     for (const p of shooters) { const q = getP(D, p); assert.ok(q.mean.fg3m < p.mean.fg3m && E.probAtLeast(q._sims.fg3m, 1) < E.probAtLeast(p._sims.fg3m, 1) && E.probAtLeast(q._sims.fg3m, 1) > 0.2); }
   });
+  // next to nothing still to come: a line does not make a night. Under a quarter of a made three to come the line is not used
+  // at all; from a quarter to three quarters its share comes in smoothly (so nothing switches on or off between two moments)
+  withTune(LINE_REL, () => {
+    const tiny = base.players.filter((p) => p.mean.fg3m < 0.22 && p.mean.min > 4), part = base.players.filter((p) => p.mean.fg3m > 0.32 && p.mean.fg3m < 0.72);
+    assert.ok(tiny.length >= 1 && part.length >= 1, `the fixture has ${tiny.length} players with next to no threes and ${part.length} with a few`);
+    const P = run(fx, 0, { lines: [...tiny, ...part].flatMap((p) => ou2(p.pid, 'threes', 1.5)), toTip: 5 });
+    for (const p of tiny) { const q = getP(P, p); assert.ok(!q.lineIn || !q.lineIn.fg3m, `${p.name}: ${p.mean.fg3m.toFixed(2)} threes to come and the line went in`); assert.strictEqual(q.mean.fg3m, p.mean.fg3m); }
+    for (const p of part) { const q = getP(P, p), want = 0.45 * (p.mean.fg3m - 0.25) / 0.5; assert.ok(q.lineIn && q.lineIn.fg3m && Math.abs(q.lineIn.fg3m.share - want) < 0.002, `${p.name}: ${p.mean.fg3m.toFixed(2)} threes to come, share ${q.lineIn && q.lineIn.fg3m ? q.lineIn.fg3m.share : 'none'}, expected ${want.toFixed(3)}`); }
+  });
   // the rate change itself: the total lands exactly, nothing falls below the floor, the same stream gives the same nights
   const mk = () => { const u = E.mulberry32(5), a = new Int16Array(2000); for (let i = 0; i < a.length; i++) { let k = 0, p = 1; const l = Math.exp(-1.3 * (0.4 + 1.2 * u())); do { k++; p *= u(); } while (p > l); a[i] = 4 + k - 1; } return a; };
   const tot = (a) => a.reduce((s, v) => s + v - 4, 0);
