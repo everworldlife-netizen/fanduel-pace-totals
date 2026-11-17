@@ -936,7 +936,26 @@ test('the books\' line: explanations, alerts and reasons speak of the app\'s own
       const shifts = (P) => P.alerts.filter((a) => a.type === 'shift').map((a) => ({ ...a, up: { ...a.up, proj: null }, down: a.down ? { ...a.down, proj: null } : null }));
       assert.deepStrictEqual(shifts(B), shifts(A), `a usage-shift alert appeared or changed with the line at ${el}:00`);
       for (const a of B.alerts.filter((x) => x.type === 'shift')) assert.strictEqual(a.up.proj, +getP(B, { pid: a.up.pid }).proj.pts.toFixed(1), 'an alert prints a number that is not the one on the card');
-      for (const p of A.players) { const q = getP(B, p); assert.deepStrictEqual(q.shift, p.shift, `${p.name}: the usage-shift numbers moved with the line`); assert.deepStrictEqual(q.why.filter((x) => x.key !== 'fade'), p.why.filter((x) => x.key !== 'fade'), `${p.name}: a reason changed with the line`); assert.deepStrictEqual(q.chips, p.chips); }
+      // the same reasons in the same words; only the amounts they state shrink, to what is really left of them in the shown number
+      const said = (X) => X.why.filter((x) => x.key !== 'fade').map((x) => [x.icon, x.key || '', x.text]);
+      const amounts = (X) => X.why.filter((x) => x.key !== 'fade').map((x) => (String(x.so || '').match(/[+−]\d+\.\d/g) || []).map((t) => Math.abs(parseFloat(t.replace('−', '-')))));
+      for (const p of A.players) {
+        const q = getP(B, p);
+        assert.deepStrictEqual(q.shift, p.shift, `${p.name}: the usage-shift numbers moved with the line`);
+        if (!q.lineIn) { assert.deepStrictEqual(q.why.filter((x) => x.key !== 'fade'), p.why.filter((x) => x.key !== 'fade'), `${p.name}: a reason changed with no line inside`); assert.deepStrictEqual(q.chips, p.chips); continue; }
+        const a0 = amounts(p), a1 = amounts(q);
+        if (JSON.stringify(said(q)) !== JSON.stringify(said(p))) { // a reason whose amount fell under its own threshold may drop out; none may appear
+          for (const x of said(q)) assert.ok(said(p).some((y) => JSON.stringify(y) === JSON.stringify(x)), `${p.name}: a reason appeared with the line: ${x[2]}`);
+        } else for (let i = 0; i < a0.length; i++) for (let j = 0; j < Math.min(a0[i].length, a1[i].length); j++) assert.ok(a1[i][j] <= a0[i][j] + 0.051, `${p.name}: a reason states ${a1[i][j]} with the line inside and ${a0[i][j]} without`);
+      }
+    }
+    { // before the tip, full share: a points amount stated in a reason is a quarter of what the app alone states
+      const b0 = run(fx, 0), all = b0.players.filter((p) => p.mean.pts >= 6).flatMap((p) => ou2(p.pid, 'points', Math.round(p.proj.pts) + 0.5));
+      const b1 = run(fx, 0, { lines: all, toTip: 5 });
+      const pts = (X) => X.why.map((x) => { const m = String(x.so || '').match(/about ([+−]\d+\.\d) pts/); return m ? [x.key || x.icon, Math.abs(parseFloat(m[1].replace('−', '-')))] : null; }).filter(Boolean);
+      let n = 0;
+      for (const p of b0.players) { const q = getP(b1, p); if (!q.lineIn || !q.lineIn.pts) continue; const m1 = new Map(pts(q)); for (const [k, v] of pts(p)) if (m1.has(k) && v >= 0.8) { n++; assert.ok(Math.abs(m1.get(k) - 0.25 * v) <= 0.11, `${p.name} ${k}: ${v} pts alone, ${m1.get(k)} with three quarters of the line inside`); } }
+      assert.ok(n >= 3, `only ${n} stated amounts could be compared`);
     }
     const base = run(fx, 0), star = base.players.filter((p) => p.mean.pts >= 14)[0], L = Math.round(star.proj.pts) + 6.5;
     const moved = (lines, extra = {}) => getP(run(fx, 0, { lines, toTip: 5, ...extra }), star).lineIn;

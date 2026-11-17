@@ -1392,8 +1392,12 @@ pra: [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
 const sgn1 = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`;
 const pct0 = (x) => `${Math.round(x * 100)}%`;
 /** His projected stat per remaining minute (what one minute more or less is worth). */
-function perMin(c, s) { return c.minProj > 0.5 ? Math.max(c.proj[s] - c.now[s], 0) / c.minProj : 0; }
-function remOf(c, s) { return Math.max(c.proj[s] - c.now[s], 0); }
+// (v20) c.proj is the app's OWN number. Where the books' line is inside the shown number with share w, a reason that moves
+// the app's own number by x moves the shown one by (1 - w) x: c.keep[s] = 1 - w, so every amount a reason states is the
+// amount that is really in the number on the card.
+const keepOf = (c, s) => (c.keep && c.keep[s] != null ? c.keep[s] : 1);
+function perMin(c, s) { return c.minProj > 0.5 ? (Math.max(c.proj[s] - c.now[s], 0) / c.minProj) * keepOf(c, s) : 0; }
+function remOf(c, s) { return Math.max(c.proj[s] - c.now[s], 0) * keepOf(c, s); }
 /** "+1.8 pts, +0.6 reb" for a change of dmin minutes. */
 function minEffect(c, dmin) {
 const parts = [['pts', 'pts'], ['reb', 'reb'], ['ast', 'ast']].map(([s, l]) => [dmin * perMin(c, s), l]).filter(([v]) => Math.abs(v) >= 0.2);
@@ -2575,7 +2579,7 @@ const stints = r.stints || [];
 const lastSt = stints[stints.length - 1];
 const cx = { phase: st.phase, el, left, minProj: minSum / N, minShown: landW && landW.min > 0 ? (1 - landW.min) * (minSum / N) + landW.min * Math.max(mid.min - r.min, 0) : minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
 pace: seasonPace, livePace, mk, b2b: b2b[p.tm], doubt: st.phase === 'pre' ? doubt[r.pid] || null : null, lineup, inList: availIn.has(+r.pid), oppCtx: ctx[p.opp], lgP3: lgZ.three,
-b2b: b2b[p.tm], proj: own, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
+b2b: b2b[p.tm], proj: own, keep: Object.keys(lineIn).length ? Object.fromEntries(Object.entries(lineIn).map(([k, x]) => [k, 1 - x.share])) : null, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
 // vs a normal night from this point: his usual remaining minutes at his usual scoring rate
 const usualRem = st.phase === 'live' ? (p.rotInfo ? p.rotInfo.remMap : (p.mpg * left) / 48) : null;
 const remPts = own.pts - r.pts, remMinP = minSum / N;
