@@ -126,6 +126,7 @@ mktAnchor: 1, mktTotW: 0.9, mktMarU: 1, mktKeep: 0.8, // v18: the projected fina
 winCal: 1, winSd0: 7.5, winSd1: 4, // v18: win chance from the projected final margin and the swing real games have from this minute on (sd = winSd0 x sqrt(share of the game left) + winSd1), crossing over to the count of simulations from 36:00 to 45:00 (0 = count of simulations only)
 lineNoK: 1, lineYesK: 1, lineTeamMin: 6, // v19 candidate, OFF (1 = no change): minutes of a player with no line at any book while lineTeamMin of his teammates have one (see lineK); needs o.lines
 sureQ: 0.92, // v19: the stated chance behind the 9-in-10 number shown on every card (0.92 stated came true 90.4 to 95.7% at every stage on 592 unseen games)
+lineWPts: 0.75, lineWReb: 0.6, lineWAst: 0.45, lineW3: 0.45, lineFar: 300, lineNear: 60, lineLive: 36, lineMinBooks: 2, // v20 (shares of 0 change nothing): the books' consensus line inside a player's number, by stat. A line counts by how long before the tip it was READ (o.toTip, or the line's own toTip): not at all from lineFar minutes out, in full from lineNear minutes in; a look of unknown age does not count. lineLive = game minutes over which the share fades out after the tip (0 = before the tip only). lineMinBooks = books that must post the line. Needs o.lines
 threeFix: 1, // v17: a made shot worth three is a three whatever its wording; missed long shots by distance (0 = the wording only, which missed one three in ten)
 outDone: 1, // v17: a player the user marks OUT during a game gets no more minutes (he was still projected for some), and they go to his teammates
 minXa: 25, minXb: 27, // v17: minutes lessons after halftime cross-fade from the halftime ones to the 30-minute ones between these game minutes (equal = the old switch at 27:00). Eight windows tried on 296 unseen games of 2025-26 and this season's 121: 25 to 27 is the one never worse on either (minutes 1.8 / 3.3 / 4.7% closer at 25:30 / 26:00 / 26:30 on the first set, 0.4 / 0.3 / 0.7% on the second); starting at 24 or 24.5 was 1 to 3% worse on this season's games, ending at 27.5 or 28 was 0.7 to 2% worse at 27:00 on last season's
@@ -155,6 +156,38 @@ t = Math.imul(t ^ (t >>> 15), t | 1);
 t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
 return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
+}
+
+/**
+ * v20: change the RATE of what is still to come in every simulated night by the factor kf, the way a faster or slower night
+ * would. (Multiplying whole counts leaves "at least one more" where it was and gives neighbouring marks the same chance.)
+ *  - kf < 1: the units still to come are thinned: exactly round(kf x all of them) are kept, every unit with the same chance;
+ *  - kf > 1: round((kf - 1) x all of them) units are added, each to a night drawn with weight (rho x the night's own total +
+ *    (1 - rho) x the average night), rho = the share of the spread between nights that is beyond pure chance: where nights
+ *    truly differ the big ones get most of the extra, where they differ only by chance every night has the same shot at it.
+ * The average moves by the factor exactly (to the nearest unit over all nights). `u` is a private random stream: the main
+ * one, and with it every other player and every team number, is untouched. Nothing ever falls below `base`.
+ */
+function rescaleRate(a, base, kf, u) {
+const N = a.length;
+let T = 0, q = 0;
+for (let i = 0; i < N; i++) { const x = a[i] - base; T += x; q += x * x; }
+if (!(T > 0) || !(kf > 0) || kf === 1) return;
+if (kf < 1) {
+let need = Math.round(kf * T), seen = T;
+for (let i = 0; i < N; i++) { const x = a[i] - base; let keep = 0; for (let j = 0; j < x; j++) { if (u() * seen < need) { keep++; need--; } seen--; } a[i] = base + keep; }
+return;
+}
+const m = T / N, v = q / N - m * m, rho = v > m ? (v - m) / v : 0;
+const cum = new Float64Array(N);
+let s = 0;
+for (let i = 0; i < N; i++) { s += rho * (a[i] - base) + (1 - rho) * m; cum[i] = s; }
+for (let e = Math.round((kf - 1) * T); e > 0; e--) {
+const t = u() * s;
+let lo = 0, hi = N - 1;
+while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] > t) hi = mid; else lo = mid + 1; }
+a[lo]++;
+}
 }
 
 function makeSampler(seed) {
@@ -1359,6 +1392,8 @@ pra: [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60],
 const sgn1 = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`;
 const pct0 = (x) => `${Math.round(x * 100)}%`;
 /** His projected stat per remaining minute (what one minute more or less is worth). */
+// (v20) c.proj is the app's OWN number: every reason and every amount below is the app's own read. For a player whose shown
+// number has the books' line inside, the sentences say "the app's own number" where they said "his projection" (ownWords).
 function perMin(c, s) { return c.minProj > 0.5 ? Math.max(c.proj[s] - c.now[s], 0) / c.minProj : 0; }
 function remOf(c, s) { return Math.max(c.proj[s] - c.now[s], 0); }
 /** "+1.8 pts, +0.6 reb" for a change of dmin minutes. */
@@ -1368,6 +1403,17 @@ return parts.length ? parts.map(([v, l]) => `${sgn1(v)} ${l}`).join(', ') : `${s
 }
 const helps = (what) => `Helps his picks: about ${what} on his projection.`;
 const cuts = (what) => `Already taken off his number: about ${what}. Any edge shown is after this.`;
+// (v20) the same reasons for a player with the books' line inside his number: they moved the app's own number, and the line
+// then counts on top (the sheet's "THE BOOKS' LINE INSIDE THE NUMBER" gives both). Nothing is rescaled: the amounts are exact.
+// (an amount in minutes stays as it is: the line never touches minutes. The LEARNED chip drops its points amount, which is the
+// app's own; the sentence under it keeps it, in the app's own words.)
+const ownWords = (items) => items.map((x) => {
+if (!x) return x;
+const y = { ...x };
+if (typeof y.so === 'string') y.so = y.so.replace(/( min)? on his projection\./g, (m, min) => (min ? m : ' on the app\'s own number.')).replace(/Already taken off his number: about ([+−]\d+\.\d min)\./g, 'Already taken off his minutes: about $1.').replace(/Already taken off his number:/g, 'Already taken off the app\'s own number:').replace(/pts on his number\./g, 'pts on the app\'s own number.').replace(/ast for him\./g, 'ast in the app\'s own number.');
+if (typeof y.chip === 'string' && /^LEARNED .* PTS$/.test(y.chip)) y.chip = 'LEARNED';
+return y;
+});
 const lastName = (n) => { const w = String(n).split(' ').filter((x) => !/^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(x)); return w[w.length - 1] || String(n); };
 
 function explain(p, r, c) {
@@ -2252,6 +2298,17 @@ patB[s2] = a && b2 ? a.map((x, i) => (1 - t) * (x || 0) + t * (b2[i] || 0)) : a 
 // line for everyone they expect in tonight's rotation. With his team's lines up (lineTeamMin players or more) and none for
 // him at any book, his minutes are scaled by lineNoK and the team's refill hands them to the others. Before the tip only;
 // a starter named in a posted lineup and a player the user marked IN are left alone.
+// v20 candidate (off as shipped): how much of the books' line goes into each stat right now. Three things decide it: the
+// stat's own weight; how long before the tip the line was READ (the line is no better than our number five hours out and
+// clearly better in the last hour: lineup and injury news goes into it first; a look of unknown age counts for nothing);
+// and, once the game is on, a fade over lineLive game minutes (nothing in overtime, nothing at the final).
+const lineOn = TUNE.lineWPts > 0 || TUNE.lineWReb > 0 || TUNE.lineWAst > 0 || TUNE.lineW3 > 0;
+const lineW = { pts: TUNE.lineWPts, reb: TUNE.lineWReb, ast: TUNE.lineWAst, fg3m: TUNE.lineW3 };
+const lineAge = (lead) => (typeof lead === 'number' && Number.isFinite(lead) ? clamp((TUNE.lineFar - Math.max(lead, 0)) / Math.max(TUNE.lineFar - TUNE.lineNear, 1), 0, 1) : 0);
+const lineFade = !lineOn || !o.lines || st.phase === 'final' ? 0 : st.phase === 'pre' ? 1 : TUNE.lineLive > 0 && st.period <= 4 ? clamp(1 - el / TUNE.lineLive, 0, 1) : 0;
+const lineLeadOf = (x) => (typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? +x : NaN); // minutes before the tip, or not known
+const lineLead = lineLeadOf(o.toTip);
+const lineMap = lineFade > 0 ? (Array.isArray(o.lines) ? consensusLines(o.lines) : o.lines) || {} : null;
 const lineK = {};
 if (st.phase === 'pre' && o.lines && (TUNE.lineNoK !== 1 || TUNE.lineYesK !== 1)) {
 const CL = Array.isArray(o.lines) ? consensusLines(o.lines) : o.lines;
@@ -2441,6 +2498,33 @@ sims.reb[i] = r.reb + R.negbin(p.rate.reb * m * sR * patF.reb.f, TUNE.varReb || 
 sims.ast[i] = r.ast + R.negbin(p.rate.ast * m * sA * patF.ast.f, TUNE.varAst || VAR_K.ast);
 teamPts[p.tm][i] += add;
 }
+// v20 candidate: the books' line inside the number. The number as the app alone would show it (average and middle of the
+// simulations, mixed as the stage asks) is compared with the line, and the AVERAGE of what is still to come moves by the
+// share of that gap. Every simulated night moves with it as a change of rate (rescaleRate), so the chances on every mark and
+// line, the range and the 9-in-10 number stay in step with the number. What he already has is never touched.
+const lineIn = {}, ownRaw = {};
+if (lineMap && !doneFor(p)) for (const k of ['pts', 'reb', 'ast', 'fg3m']) {
+const c = lineMap[r.pid + ':' + k];
+if (!c || typeof c !== 'object' || !(+c.line > 0) || !(+c.line < 100)) continue;
+if (!((c.n != null ? +c.n : +c.books || 1) >= TUNE.lineMinBooks)) continue; // one book alone can be a slip or another market
+const a = sims[k], base = r[k] || 0, line = +c.line;
+let s0 = 0; for (let i = 0; i < N; i++) s0 += a[i];
+const rem = s0 / N - base; // what the app alone has still to come, on average
+// (next to nothing still to come: he is done, or we give him no minutes. A line does not make a night; the share comes in
+// smoothly between a quarter and three quarters of a unit still to come, so nothing switches on or off between two moments)
+const w = lineW[k] * lineFade * lineAge(c.toTip != null ? lineLeadOf(c.toTip) : lineLead) * clamp((rem - 0.25) / 0.5, 0, 1);
+if (!(w >= 0.02)) continue; // a share too small to print is not used at all
+const srt0 = a.slice().sort(); // (a typed array sorts by number)
+let m0 = 0, c0 = 0; for (let q = Math.floor(N * 0.4); q <= Math.min(N - 1, Math.floor(N * 0.6)); q++) { m0 += srt0[q]; c0++; }
+const lw = TUNE.landOn > 0 && left > 0 ? landNow[k] || 0 : 0;
+const shown0 = Math.max(base, (1 - lw) * (s0 / N) + lw * (c0 ? m0 / c0 : s0 / N));
+// before the tip the line is the books' number for the whole game; once the game is on, what he has plus the line's share of the time left
+const lineNow = st.phase === 'pre' ? line : base + line * clamp(left / 48, 0, 1);
+const kfAsked = 1 + (w * (lineNow - shown0)) / rem, kf = clamp(kfAsked, 0.5, 2);
+rescaleRate(a, base, kf, mulberry32(((o.seed || st.id || 7) ^ Math.imul(+r.pid | 0, 0x9e3779b1) ^ Math.imul(k.charCodeAt(0) + k.length, 0x85ebca6b)) >>> 0));
+lineIn[k] = { line, books: +c.books || 1, share: +w.toFixed(3), from: +shown0.toFixed(2), now: +lineNow.toFixed(2), to: null, ...(kf !== kfAsked ? { held: true } : {}) }; // held: the line sat so far off that the change stopped at double or half
+ownRaw[k] = shown0;
+}
 const sdOf = (a) => { let m = 0; for (let i = 0; i < N; i++) m += a[i]; m /= N; let v = 0; for (let i = 0; i < N; i++) v += (a[i] - m) * (a[i] - m); return Math.sqrt(v / N); };
 const pra = new Int16Array(N);
 for (let i = 0; i < N; i++) pra[i] = sims.pts[i] + sims.reb[i] + sims.ast[i];
@@ -2478,6 +2562,10 @@ sure[k] = su;
 const shown = { ...avg };
 const landW = TUNE.landOn > 0 && st.phase !== 'final' && left > 0 ? landNow : null;
 if (landW) for (const k of PAT_STATS) { const lw = landW[k] || 0; if (lw > 0) shown[k] = Math.max(r[k], (1 - lw) * avg[k] + lw * mid[k]); }
+// (v20) what the number became with the line inside; and the app's OWN numbers, which every explanation below speaks of
+// (reasons, "from here he projects", usage shifts): the line's pull has no teammate or minutes story behind it
+for (const k of Object.keys(lineIn)) lineIn[k].to = +shown[k].toFixed(2);
+const own = Object.keys(lineIn).length ? { ...shown, ...ownRaw } : shown;
 const flags = [];
 if (r.pf >= 5) flags.push('foul5');
 else if (r.pf >= 4 && st.period <= 3) flags.push('foul4');
@@ -2501,16 +2589,18 @@ const stints = r.stints || [];
 const lastSt = stints[stints.length - 1];
 const cx = { phase: st.phase, el, left, minProj: minSum / N, minShown: landW && landW.min > 0 ? (1 - landW.min) * (minSum / N) + landW.min * Math.max(mid.min - r.min, 0) : minSum / N, scale: scale[p.tm], pBlow, habit: habits[p.tm], blowP, proof, absentMates: absent.filter((x) => x.team === p.tm),
 pace: seasonPace, livePace, mk, b2b: b2b[p.tm], doubt: st.phase === 'pre' ? doubt[r.pid] || null : null, lineup, inList: availIn.has(+r.pid), oppCtx: ctx[p.opp], lgP3: lgZ.three,
-b2b: b2b[p.tm], proj: shown, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
+b2b: b2b[p.tm], proj: own, now: r, ratePM: p.ratePM, pat: { x: p.pat.x, F: p.pat.F }, sit: p.sit, sitMean: p.sitMean, home: p.tm === h, m0: (p.tm === v ? 1 : -1) * (st.vs - st.hs), period: st.period };
 // vs a normal night from this point: his usual remaining minutes at his usual scoring rate
 const usualRem = st.phase === 'live' ? (p.rotInfo ? p.rotInfo.remMap : (p.mpg * left) / 48) : null;
-const remPts = shown.pts - r.pts, remMinP = minSum / N;
+const remPts = own.pts - r.pts, remMinP = minSum / N;
 const baseRem = usualRem != null ? p.ratePM.pts * usualRem : null;
 cx.shift = usualRem != null ? { usualRem, remMin: remMinP, baseRem, rem: remPts, dMin: (remMinP - usualRem) * p.ratePM.pts, dRate: remPts - remMinP * p.ratePM.pts } : null;
 cx.fade = st.phase === 'live' ? fadeCheck(p, r, cx, shown, patF) : null;
-const ctxItems = contextItems(p, r, cx);
+// (v20) the app's-own wording, for a player whose number a line really moved (the same test as the sheet's section)
+const own1 = Object.values(lineIn).some((x) => Math.abs(x.to - x.from) >= 0.05) ? ownWords : (x) => x;
+const ctxItems = own1(contextItems(p, r, cx));
 const why = done ? [{ icon: '🟥', key: 'done', effect: 'down', text: r.ejected ? 'Ejected: he is done for the night.' : r.pf >= 6 ? 'Fouled out: he is done for the night.' : 'You marked him out: he is done for the night.', so: `His projection is locked at what he has now${r.ejected || r.pf >= 6 ? ', so skip any pick that needs more from him.' : ', and his minutes go to his teammates.'}` }]
-: st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(explain(p, r, cx), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
+: st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(own1(explain(p, r, cx)), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
 if (cx.fade && !done) flags.push('fade');
 if (cx.fade === null && st.phase === 'live' && p.lu && r.min >= 8 && flags.includes('hot') && p.pat.x.pts[PAT_IX.uReal] >= 1) flags.push('realhot');
 results.push({
@@ -2527,7 +2617,7 @@ zones: r.z || {},
 db: { nba_id: p.lp ? p.lp.nba_id || null : null, pos: p.lp ? p.lp.pos || null : null, arch: p.lp ? p.lp.arch || null : null, prof: p.lp ? p.lp.prof || null : null, logs: p.gl },
 sit: p.sitMean ? { f: +p.sitMean.f.toFixed(3), parts: Object.fromEntries(Object.entries(p.sitMean).filter(([k]) => k !== 'f').map(([k, x]) => [k, x == null ? null : +x.toFixed(3)])), ratio: p.sit ? Object.fromEntries(Object.entries(p.sit.ratio).map(([k, x]) => [k, +x.toFixed(3)])) : null, fade: p.sit ? +p.sit.fade.toFixed(3) : null, streak: p.sit ? +p.sit.streak.toFixed(3) : null, star: p.sit && p.sit.star ? p.sit.star.name : null } : null,
 pat: { g: p.pat.g, x: p.pat.x, f: Object.fromEntries(PAT_LEARN.map((s2) => [s2, p.pat.F[s2].f])), parts: patOn ? Object.fromEntries(PAT_LEARN.map((s2) => [s2, p.pat.F[s2].parts])) : null, shift: p.pat.F.pts.shift || 0 },
-sd, range, sure, cal, laddersRaw,
+sd, range, sure, cal, laddersRaw, lineIn: Object.keys(lineIn).length ? lineIn : null,
 live: p.lu ? { onPlays: +p.lu.onPlays.toFixed(1), plays: +p.lu.plays.toFixed(1), xPts: +p.lu.xPts.toFixed(1), playsR: +p.lu.playsR.toFixed(1), onPlaysR: +p.lu.onPlaysR.toFixed(1), minR: +p.lu.minR.toFixed(1) } : null, minPlain: r.min + p.minPlain, usgBase: p.usgBase, ratePM: p.ratePM,
 _sims: sims,
 });
@@ -2664,22 +2754,33 @@ return probAtLeast(arr, t);
 const PROP_MAP = { points: 'pts', rebounds: 'reb', assists: 'ast', threes: 'fg3m', points_rebounds_assists: 'pra' };
 const implied = (o) => (o > 0 ? 100 / (o + 100) : -o / (-o + 100));
 function consensusLines(props) {
-const by = {};
+const by = {}, q1Top = {};
 for (const x of props || []) {
+if (!x || !x.market || x.market.type !== 'over_under') continue;
+if (x.prop_type === 'points_1q') { const l = parseFloat(x.line_value); if (l > 0 && !(q1Top[x.player_id] >= l)) q1Top[x.player_id] = l; continue; }
 const stat = PROP_MAP[x.prop_type];
-if (!stat || !x.market || x.market.type !== 'over_under') continue;
+if (!stat) continue;
 const key = x.player_id + ':' + stat;
 (by[key] = by[key] || []).push(x);
 }
 const out = {};
-for (const [key, xs] of Object.entries(by)) {
-const lines = xs.map((x) => parseFloat(x.line_value)).filter(Number.isFinite).sort((a, b) => a - b);
+for (const [key, xs0] of Object.entries(by)) {
+const [pid, stat] = key.split(':');
+let xs = xs0.filter((x) => Number.isFinite(parseFloat(x.line_value)));
+// (v20) two books file their first-quarter points line under "points" (7.5 beside 24.5; seen in 833 of 1,873 recorded
+// points lines). A points row at or below the player's own first-quarter line, or under half his highest points row, is
+// that other market and is left out of the middle.
+if (stat === 'pts' && xs.length) {
+const top = Math.max(...xs.map((x) => parseFloat(x.line_value))), q1 = q1Top[pid];
+xs = xs.filter((x) => { const l = parseFloat(x.line_value); return !(top >= 3 && l < 0.5 * top) && !(q1 > 0 && l <= q1 + 0.5 && top > q1 + 0.5); });
+}
+const lines = xs.map((x) => parseFloat(x.line_value)).sort((a, b) => a - b);
 if (!lines.length) continue;
 const med = lines[Math.floor(lines.length / 2)];
 const at = xs.filter((x) => parseFloat(x.line_value) === med);
 const fair = mean(at.map((x) => { const io = implied(x.market.over_odds), iu = implied(x.market.under_odds); return io / (io + iu); }));
-const [pid, stat] = key.split(':');
-out[key] = { pid: +pid, stat, line: med, fairOver: fair, books: at.length };
+// books = those posting exactly the middle line; n = every book posting a line for this player and stat
+out[key] = { pid: +pid, stat, line: med, fairOver: fair, books: at.length, n: new Set(xs.map((x) => x.vendor || '?')).size };
 }
 return out;
 }
@@ -2795,4 +2896,4 @@ k.tier = t.tier; k.tierWhy = t.why; k.blowProof = !!p.blowProof; k.chips = (p.ch
 return picks.sort((a, b) => (TIER_RANK[a.tier] - TIER_RANK[b.tier]) || (b.edge ?? 0) - (a.edge ?? 0) || b.prob - a.prob);
 }
 
-/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, bookMenu, menuFor, priceNeeds, pricePays, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, normCdf, }; });
+/** 2-leg plus-edge tickets at a payout multiple (default 3x ≈ +200). */ function buildCombos(picks, opts = {}) { const payout = opts.payout || 3; const be = 1 / payout; const legs = picks.slice().sort((a, b) => b.prob - a.prob).slice(0, 40); const pairs = []; for (let i = 0; i < legs.length; i++) for (let j = i + 1; j < legs.length; j++) { const a = legs[i], b = legs[j]; if (a.pid === b.pid) continue; const same = a.gameId === b.gameId; const joint = a.prob * b.prob * (same ? 0.97 : 1); if (joint < be) continue; pairs.push({ legs: [a, b], joint, ev: joint * payout - 1, sameGame: same }); } pairs.sort((x, y) => (x.sameGame - y.sameGame) || y.ev - x.ev); const max = opts.max || 6; const repeats = pairs.slice(0, max); const once = []; const used = new Set(); for (const c of pairs) { if (c.legs.some((l) => used.has(l.pid))) continue; once.push(c); c.legs.forEach((l) => used.add(l.pid)); if (once.length >= max) break; } return { once, repeats, breakEven: be, payout }; } return { LEAGUE, TUNE, LADDERS, STAT_LABEL, makeSampler, clockSec, elapsedSec, norm, gameState, isBlowout, clockLabel, onBetween, boxFromPlays, logEntry, slimStats, mergePrior, teamContext, slimTeams, gameLineConsensus, slimGameLogs, shotZone, profileOf, coachHabits, projectGame, probAtLeast, probOver, consensusLines, bookMenu, menuFor, priceNeeds, pricePays, rescaleRate, mulberry32, picksForGame, buildCombos, contextItems, edgeTier, TIER_RANK, PAT_STATS, PAT_F, PAT_GROUPS, patFeatures, patEmpty, patAdd, patGrade, patScore, patSolve, patApply, patGroup, patBeta, patMinOnly, rowByName, teamTableFrom, TEAM_PRIOR, liveUsage, PAT_LEARN, PAT_IX, PAT_PRIOR, patPack, patUnpack, playsFromEspn, fadeCheck, liveAlerts, calEmpty, calAdd, calTable, calTableFrom, calP, calProb, calLevel, CAL_STATS, SIT_CATS, scoringEvents, scorerRace, teamStar, sitAgg, sitCurve, sitPriorOf, sitPriorParse, sitProfile, sitFactor, normCdf, }; });

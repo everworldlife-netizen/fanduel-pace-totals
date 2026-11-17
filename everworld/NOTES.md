@@ -43,18 +43,41 @@ about that is measured in "Version 19 (Nov 14)": read it before changing how pic
 - Reporting to Akara: plain words, phone-sized, positive and encouraging, exact before/after numbers with game
   counts, both live links, and the steps to update the app on a phone.
 
-### Where the build stands at this commit (updated 05:00 UTC, Nov 17)
+### Where the build stands at this commit (updated 16:00 UTC, Nov 17)
+
+**PUBLISHED on Nov 17, 2026 at 15:56 UTC: Courtside 20 (`ca-shell-v20`, Space commit `d49d57f`; "Version 20 (Nov 17, 2026)"
+in Settings). Full story: "Version 20 (Nov 17)" below.** What it adds: the books' line inside each number (points 75%,
+rebounds 60%, assists and threes 45% when the line was seen inside the last hour before the tip; nothing five hours out;
+fading out by the end of the third quarter). The blind check on the Nov 16 games passed before it went out (8 games,
+points 4.568 → 4.482 before lineups and 4.562 → 4.485 at tip-off). Akara: "Yes" (Nov 17, 00:55 UTC) and "Publish
+version 20 and stop" (Nov 17, 14:00 UTC).
+
+- `cs/build` = `baseline/cs` = the live files (app.js, data.js, engine.js, sw.js, worker.js went out;
+  `release-2026-11-17/`). The published engine is frozen for the lab in `data/engines/v20/` (v18c = the numbers of 18
+  and 19, the app's own number).
+- Live check after the upload (`tools/livecheck.js`, and the real site at Pixel 9a size with ESPN passed through
+  node): 5 games on the board, version 20, the server clock answered, the books' lines kept for all five games (46 to
+  51 lines each, 5 to 7 books), no page errors, none of the two banned words on any screen; with the clock moved to an
+  hour before the first tip the sheet reads "PTS: the books' line is 26.5; the app alone says 26.0. The line counts
+  for 75%, so the number shown is 26.4." GG Winner untouched (3.11.1).
+- Tests at release: engine 103, app 55, GG 15 / 8 / 10. The first run of `publish.sh` stopped before uploading because
+  one app check failed once (the machine ran about a third slower than the day before and the older checks wait fixed
+  times); the app test now stretches its waits by the machine's measured speed, and `publish.sh` keeps each suite's
+  full output and names a failed check. The next full run and the publish run were clean.
+- **AKARA SAID "STOP" after the publish.** The nightly recording of the books' lines and the morning grading are NOT
+  scheduled any more (the last reminder was switched off, nothing new was scheduled; Nov 17 was not recorded). To
+  start again on his word: `node tools/proprec.js` and `node tools/appsnap.js` through the day, `tools/nightly.sh
+  <date>` the next morning (it grades the app's own number with `data/engines/v18c`; for the published numbers use
+  `ENGINE=data/engines/v20/engine.js` and `bt2.js --lines closing`).
+- Open, in order of worth: (1) at FanDuel's closing prices nothing the app likes is ahead (703 liked marks over four
+  nights: 21.6% came in, the prices needed 26.0%); made-threes marks at long prices are the weak spot (385 liked: said
+  30.7%, 18.4% came in). The lead: shrink each mark's chance toward the no-vig chance of the books' own prices for
+  that mark, threes first. (2) FanDuel-first picks. (3) The ESPN note wording. (4) A running came-true total.
+
+(Below: the state before version 20, kept for the record.)
 
 **PUBLISHED on Nov 14, 2026 at 23:26 UTC: Courtside 19 (`ca-shell-v19`, Space commit `3c3aaa8`). Full story: "Version 19
 (Nov 14)" below.**
-
-**Nov 16: a version 20 candidate (the books' line inside the points and rebounds numbers) is built in `cs/build`, switched
-OFF and NOT published. AKARA SAID YES on Nov 17 at 00:55 UTC: it is published after the blind check on the Nov 16 games
-passes (rule written down before the games ended). THREE REVIEWS were run on the night of the yes (engine and app, then the fixes, then the last fixes) and every finding is fixed: engine 103 checks, app 55, GG 8/10/15, broken copies all caught (`node tools/mut20.js engine|app`). The method and settings were corrected and frozen again at 02:30 UTC, before any Nov 16 result was fetched; what changed after that is wording, storage and timing only (the three-night numbers are the same to the last digit). See "Version 20 candidate (Nov 16)". With the switch off `cs/build`
-gives the numbers of the published 19; the files differ from `baseline/cs` (engine.js, app.js, data.js).** What it adds: the 9-in-10 number on every card, a report
-card that grades what the app said before each tip, FanDuel's own prices on the player sheet. GG Winner is unchanged
-(3.11.1). The nightly recording of the books' lines goes on (see "The books' player lines"): snapshots through the day,
-`tools/nightly.sh <date>` each morning.
 
 (Below: the state as of Nov 13.)
 

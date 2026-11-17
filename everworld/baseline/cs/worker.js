@@ -23,7 +23,9 @@ market: j.market || null, tdOff: !j.market };
 const P = Engine.projectGame({ ...base, patterns: Engine.patMinOnly(payload.patterns || Engine.patBeta(null)) });
 Engine.patGrade(P, j.rows, acc);
 // how the full app (everything it has learned so far) did on this game: the running accuracy report
-if (payload.patterns) Engine.patScore(Engine.projectGame({ ...base, patterns: payload.patterns }), j.rows, acc);
+// (v20: with the books' lines the phone had kept for the game, so it grades the number that was on screen; the lessons
+// above learn from the app's own number, which is what they correct)
+if (payload.patterns) Engine.patScore(Engine.projectGame({ ...base, patterns: payload.patterns, ...(j.lines ? { lines: j.lines } : {}) }), j.rows, acc);
 }
 games++;
 }
