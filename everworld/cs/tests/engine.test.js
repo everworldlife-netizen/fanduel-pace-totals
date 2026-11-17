@@ -875,7 +875,10 @@ test('the books\' line during a game: what he has plus the line\'s share of the 
       const up = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', 99.5), toTip: 5 }), s0), dn = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', 0.5), toTip: 5 }), s0);
       assert.ok(Math.abs(up.mean.pts - 2 * s0.mean.pts) <= 0.02, `a 99.5 line took ${s0.mean.pts.toFixed(2)} to ${up.mean.pts.toFixed(2)}`);
       assert.ok(Math.abs(dn.mean.pts - 0.5 * s0.mean.pts) <= 0.02, `a 0.5 line took ${s0.mean.pts.toFixed(2)} to ${dn.mean.pts.toFixed(2)}`);
-      assert.strictEqual(up.lineIn.pts.to, +up.proj.pts.toFixed(2)); }
+      assert.strictEqual(up.lineIn.pts.to, +up.proj.pts.toFixed(2));
+      // the sheet is told when the change was held, and only then
+      assert.ok(up.lineIn.pts.held === true && dn.lineIn.pts.held === true, 'a held change is not marked');
+      const near = getP(run(fx, 0, { lines: ou2(s0.pid, 'points', Math.round(s0.proj.pts) + 6.5), toTip: 5 }), s0); assert.ok(!('held' in near.lineIn.pts), 'an ordinary line is marked as held'); }
     // every stat with a line, at every stage: the average moves by the share of the gap or less (never more), and the sheet's "to" is the number
     const all = live0.players.filter((p) => p.mean.min > 6).flatMap((p) => [...ou2(p.pid, 'points', Math.max(1.5, Math.round(p.proj.pts) + 3.5)), ...ou2(p.pid, 'rebounds', Math.max(0.5, Math.round(p.proj.reb) + 1.5)), ...ou2(p.pid, 'assists', Math.max(0.5, Math.round(p.proj.ast) + 1.5)), ...ou2(p.pid, 'threes', Math.max(0.5, Math.round(p.proj.fg3m) + 0.5))]);
     let seen = 0;
@@ -949,7 +952,9 @@ test('the books\' line: explanations, alerts and reasons speak of the app\'s own
   withTune(LINE_REL, () => {
     // the same reasons, the same amounts, the same words as the app alone, except that for a player with the line inside they
     // say "the app's own number" where they said "his projection" / "his number" (the amounts are the app's own, exactly)
-    const plain = (so) => String(so || '').replace(/on the app's own number\./g, 'on his projection.').replace(/Already taken off the app's own number:/g, 'Already taken off his number:');
+    const plain = (so) => String(so || '').replace(/pts on the app's own number\. Any edge|pts on the app's own number\.$/g, (m) => m).replace(/Already taken off his minutes:/g, 'Already taken off his number:').replace(/Already taken off the app's own number:/g, 'Already taken off his number:').replace(/ast in the app's own number\./g, 'ast for him.').replace(/on the app's own number\./g, 'on his projection.');
+    const chipPlain = (c) => c.map((x) => ({ ...x, t: x.t.replace(/^LEARNED .* PTS$/, 'LEARNED') }));
+    const movedBy = (q) => !!q.lineIn && Object.values(q.lineIn).some((x) => Math.abs(x.to - x.from) >= 0.05);
     let shifts = 0, ownSaid = 0, lined = 0;
     for (const f of FX) for (const el of [0, 6, 12, 21, 24]) {
       const A = run(f, el);
@@ -964,10 +969,11 @@ test('the books\' line: explanations, alerts and reasons speak of the app\'s own
       for (const p of A.players) {
         const q = getP(B, p), w0 = p.why.filter((x) => x.key !== 'fade'), w1 = q.why.filter((x) => x.key !== 'fade');
         assert.deepStrictEqual(q.shift, p.shift, `${p.name}: the usage-shift numbers moved with the line`);
-        assert.deepStrictEqual(q.chips, p.chips, `${p.name}: a chip changed with the line`);
-        assert.deepStrictEqual(w1.map((x) => ({ ...x, so: plain(x.so) })), w0.map((x) => ({ ...x, so: plain(x.so) })), `${p.name} at ${el}:00: a reason or an amount changed with the line`);
+        if (movedBy(q)) { assert.deepStrictEqual(q.chips, chipPlain(p.chips), `${p.name}: a chip changed with the line`); assert.ok(!q.chips.some((x) => /^LEARNED .* PTS$/.test(x.t)), `${p.name}: the LEARNED chip states the app's own points beside a number with the line inside`); } else assert.deepStrictEqual(q.chips, p.chips, `${p.name}: a chip changed with no line moving his number`);
+        const norm2 = (x) => ({ ...x, chip: x.chip ? x.chip.replace(/^LEARNED .* PTS$/, 'LEARNED') : x.chip, so: plain(x.so).replace(/pts on his number\./g, 'pts on his projection.') });
+        assert.deepStrictEqual(w1.map(norm2), w0.map(norm2), `${p.name} at ${el}:00: a reason or an amount changed with the line`);
         const own = w1.filter((x) => /the app's own number/.test(x.so || '')).length, his = w1.filter((x) => /on his projection\.|taken off his number:|pts on his number\./.test(x.so || '')).length;
-        if (q.lineIn) { lined++; ownSaid += own; assert.strictEqual(his, 0, `${p.name}: a reason says "his projection" while the books' line is inside it`); } else assert.strictEqual(own, 0, `${p.name}: a reason says "the app's own number" with no line inside`);
+        if (movedBy(q)) { lined++; ownSaid += own; assert.strictEqual(his, 0, `${p.name}: a reason says "his projection" while the books' line is inside it`); for (const x of w1) assert.ok(!/min on the app's own number|ast for him\./.test(x.so || ''), `${p.name}: ${x.so}`); } else assert.strictEqual(own, 0, `${p.name}: a reason says "the app's own number" with no line moving his number`);
       }
     }
     assert.ok(shifts >= 1, 'no usage-shift alert in any fixture moment: the alert check checked nothing');

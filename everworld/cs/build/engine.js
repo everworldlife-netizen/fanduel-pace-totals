@@ -1405,7 +1405,15 @@ const helps = (what) => `Helps his picks: about ${what} on his projection.`;
 const cuts = (what) => `Already taken off his number: about ${what}. Any edge shown is after this.`;
 // (v20) the same reasons for a player with the books' line inside his number: they moved the app's own number, and the line
 // then counts on top (the sheet's "THE BOOKS' LINE INSIDE THE NUMBER" gives both). Nothing is rescaled: the amounts are exact.
-const ownWords = (items) => items.map((x) => (x && typeof x.so === 'string' ? { ...x, so: x.so.replace(/on his projection\./g, 'on the app\'s own number.').replace(/Already taken off his number:/g, 'Already taken off the app\'s own number:').replace(/pts on his number\./g, 'pts on the app\'s own number.') } : x));
+// (an amount in minutes stays as it is: the line never touches minutes. The LEARNED chip drops its points amount, which is the
+// app's own; the sentence under it keeps it, in the app's own words.)
+const ownWords = (items) => items.map((x) => {
+if (!x) return x;
+const y = { ...x };
+if (typeof y.so === 'string') y.so = y.so.replace(/( min)? on his projection\./g, (m, min) => (min ? m : ' on the app\'s own number.')).replace(/Already taken off his number: about ([+−]\d+\.\d min)\./g, 'Already taken off his minutes: about $1.').replace(/Already taken off his number:/g, 'Already taken off the app\'s own number:').replace(/pts on his number\./g, 'pts on the app\'s own number.').replace(/ast for him\./g, 'ast in the app\'s own number.');
+if (typeof y.chip === 'string' && /^LEARNED .* PTS$/.test(y.chip)) y.chip = 'LEARNED';
+return y;
+});
 const lastName = (n) => { const w = String(n).split(' ').filter((x) => !/^(jr\.?|sr\.?|ii|iii|iv|v)$/i.test(x)); return w[w.length - 1] || String(n); };
 
 function explain(p, r, c) {
@@ -2512,9 +2520,9 @@ const lw = TUNE.landOn > 0 && left > 0 ? landNow[k] || 0 : 0;
 const shown0 = Math.max(base, (1 - lw) * (s0 / N) + lw * (c0 ? m0 / c0 : s0 / N));
 // before the tip the line is the books' number for the whole game; once the game is on, what he has plus the line's share of the time left
 const lineNow = st.phase === 'pre' ? line : base + line * clamp(left / 48, 0, 1);
-const kf = clamp(1 + (w * (lineNow - shown0)) / rem, 0.5, 2);
+const kfAsked = 1 + (w * (lineNow - shown0)) / rem, kf = clamp(kfAsked, 0.5, 2);
 rescaleRate(a, base, kf, mulberry32(((o.seed || st.id || 7) ^ Math.imul(+r.pid | 0, 0x9e3779b1) ^ Math.imul(k.charCodeAt(0) + k.length, 0x85ebca6b)) >>> 0));
-lineIn[k] = { line, books: +c.books || 1, share: +w.toFixed(3), from: +shown0.toFixed(2), now: +lineNow.toFixed(2), to: null };
+lineIn[k] = { line, books: +c.books || 1, share: +w.toFixed(3), from: +shown0.toFixed(2), now: +lineNow.toFixed(2), to: null, ...(kf !== kfAsked ? { held: true } : {}) }; // held: the line sat so far off that the change stopped at double or half
 ownRaw[k] = shown0;
 }
 const sdOf = (a) => { let m = 0; for (let i = 0; i < N; i++) m += a[i]; m /= N; let v = 0; for (let i = 0; i < N; i++) v += (a[i] - m) * (a[i] - m); return Math.sqrt(v / N); };
@@ -2588,10 +2596,11 @@ const remPts = own.pts - r.pts, remMinP = minSum / N;
 const baseRem = usualRem != null ? p.ratePM.pts * usualRem : null;
 cx.shift = usualRem != null ? { usualRem, remMin: remMinP, baseRem, rem: remPts, dMin: (remMinP - usualRem) * p.ratePM.pts, dRate: remPts - remMinP * p.ratePM.pts } : null;
 cx.fade = st.phase === 'live' ? fadeCheck(p, r, cx, shown, patF) : null;
-const ctxItems = contextItems(p, r, cx);
-const why0 = done ? [{ icon: '🟥', key: 'done', effect: 'down', text: r.ejected ? 'Ejected: he is done for the night.' : r.pf >= 6 ? 'Fouled out: he is done for the night.' : 'You marked him out: he is done for the night.', so: `His projection is locked at what he has now${r.ejected || r.pf >= 6 ? ', so skip any pick that needs more from him.' : ', and his minutes go to his teammates.'}` }]
-: st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(explain(p, r, cx), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
-const why = Object.keys(lineIn).length ? ownWords(why0) : why0;
+// (v20) the app's-own wording, for a player whose number a line really moved (the same test as the sheet's section)
+const own1 = Object.values(lineIn).some((x) => Math.abs(x.to - x.from) >= 0.05) ? ownWords : (x) => x;
+const ctxItems = own1(contextItems(p, r, cx));
+const why = done ? [{ icon: '🟥', key: 'done', effect: 'down', text: r.ejected ? 'Ejected: he is done for the night.' : r.pf >= 6 ? 'Fouled out: he is done for the night.' : 'You marked him out: he is done for the night.', so: `His projection is locked at what he has now${r.ejected || r.pf >= 6 ? ', so skip any pick that needs more from him.' : ', and his minutes go to his teammates.'}` }]
+: st.phase === 'live' ? (cx.fade ? [{ icon: '📉', key: 'fade', effect: 'down', text: cx.fade.text, so: cx.fade.so }] : []).concat(own1(explain(p, r, cx)), ctxItems.filter((x) => x.key !== 'usage' && x.key !== 'role' && x.key !== 'blowproof')) : ctxItems;
 if (cx.fade && !done) flags.push('fade');
 if (cx.fade === null && st.phase === 'live' && p.lu && r.min >= 8 && flags.includes('hot') && p.pat.x.pts[PAT_IX.uReal] >= 1) flags.push('realhot');
 results.push({

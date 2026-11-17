@@ -230,7 +230,8 @@ try { lines = keptLines(g); } catch (e) { lines = null; console.warn('lines', e)
 const res = await runProjection({ game: g, plays, logs, priors: state.priors, injuries: state.injuries, nsims: settings.sims, props, seed: g.id, minP: settings.minP, overrides: getOverrides(), lines,
 market, teams: state.teamsDb, gameLogs, avail, patterns: patternsNow() });
 if (s.phase === 'live' && before && before.proj) noteMoves(g, before.proj, res.proj);
-state.proj.set(g.id, { ...res, at: Date.now(), playKey, feed: DB.feed[g.id] || 'databallr' });
+// (noClock: made before the tip while the server's time was not known, so without a look at the books' lines: made again once it is)
+state.proj.set(g.id, { ...res, at: Date.now(), playKey, feed: DB.feed[g.id] || 'databallr', noClock: s.phase === 'pre' && clockOff == null });
 rememberTip(g, s, res.proj);
 try { rememberCall(g, s, res.proj); } catch (e) { console.warn('report card', e); }
 try {
@@ -308,6 +309,7 @@ if (!fresh && plCache.has(day)) return plCache.get(day);
 let disk = null;
 try { disk = DB.store.get(plKey(day)); } catch { disk = null; }
 const P = plMerge(plCache.get(day), disk);
+if (!plCache.has(day) && plCache.size >= 8) plCache.delete(plCache.keys().next().value); // (a long browse through past days)
 plCache.set(day, P);
 return P;
 }
@@ -682,7 +684,7 @@ let clockOff = null, clockAsked = null, clockOnce = null;
 function clockFirst() { if (!clockOnce) clockOnce = Promise.race([clockSync(), new Promise((r) => setTimeout(r, 2500))]); return clockOnce; }
 function clockSync() {
 if (clockOff != null) return Promise.resolve();
-if (!clockAsked) clockAsked = DB.serverNow().then((t) => { if (t != null) { clockOff = t - Date.now(); snapSave(); } }).catch(() => {}).finally(() => { clockAsked = null; });
+if (!clockAsked) clockAsked = DB.serverNow().then((t) => { if (t != null) { clockOff = t - Date.now(); snapSave(); state.proj.forEach((x) => { if (x && x.noClock) x.redo = true; }); } }).catch(() => {}).finally(() => { clockAsked = null; });
 return clockAsked;
 }
 function snapSave() {
@@ -1325,8 +1327,10 @@ const L = p.lineIn;
 if (!L) return '';
 const rows = CARD_STATS.filter(([k]) => lineShown(L[k])).map(([k, lbl]) => {
 const x = L[k], sh = Math.round(x.share * 100);
+// ("so" only where the plain sum gives the number: a held change, or a small number that moves in whole steps, does not follow it)
+const plainSum = !x.held && Number.isFinite(x.now) && Math.abs(x.to - (x.from + x.share * (x.now - x.from))) <= 0.25;
 // before the tip the line is the books' number for the whole game; during a game it is read as what he has plus the line's pace for the time left
-return `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: ${pre ? `the books' line is <b>${x.line}</b>` : `at the pace of the books' line before the tip (${x.line}) he would finish near <b>${Number.isFinite(x.now) ? x.now.toFixed(1) : x.line}</b>`}; the app alone says ${x.from.toFixed(1)}. The line counts for <b>${sh}%</b>${pre ? '' : ' now'}, so the number shown is <b>${x.to.toFixed(1)}</b>.${Number.isFinite(x.now) && Math.abs(x.to - (x.from + x.share * (x.now - x.from))) > 0.25 ? ' (A number this small moves in steps.)' : ''}</span></li>`;
+return `<li class="info"><span aria-hidden="true">📚</span><span>${lbl}: ${pre ? `the books' line is <b>${x.line}</b>` : `at the pace of the books' line before the tip (${x.line}) he would finish near <b>${Number.isFinite(x.now) ? x.now.toFixed(1) : x.line}</b>`}; the app alone says ${x.from.toFixed(1)}. The line counts for <b>${sh}%</b>${pre ? '' : ' now'}${plainSum ? ', so' : ';'} the number shown is <b>${x.to.toFixed(1)}</b>.${plainSum ? '' : x.held ? ' (A line this far from the app\'s own number is not followed all the way: what is still to come can at most double or halve.)' : x.to < 4 ? ' (A number this small moves in steps.)' : ''}</span></li>`;
 });
 if (!rows.length) return '';
 return `<h3>THE BOOKS' LINE INSIDE THE NUMBER</h3><ul class="why">${rows.join('')}</ul><p class="small muted" style="font-weight:700;margin:8px 0 0">${lineNote()}</p>`;

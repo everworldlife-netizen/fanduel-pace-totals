@@ -415,6 +415,7 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.strictEqual(hardOf(plain, off).length, 0, hardOf(plain, off).slice(0, 3).join(' | '));
   });
   await test('the books\' line inside the number, switched on: lined players move three quarters of the way, the sheet, the card, the report card and the Edges screen agree, and an older look counts for less', async () => {
+    if (!lineOffPts) { const off0 = await lineBoot('pre', { tune: LINE_OFF }); await settled(off0); lineOffPts = await cardPts(off0); } // (when this check is run alone)
     const on = await lineBoot('pre'); await settled(on);
     const onPts = await cardPts(on), kept = plOf(on);
     let moved = 0, still = 0;
@@ -564,6 +565,13 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     const step = text({ fg3m: row({ line: 2.5, share: 0.4, from: 0.3, now: 1.4, to: 1.0 }) }, false);
     assert.ok(/3PM: .*the number shown is 1\.0 \. \(A number this small moves in steps\.\)/.test(step), step);
     assert.ok(!/moves in steps/.test(text({ pts: row() }, true)));
+    // a line so far off that the engine held the change: the row does not pretend the plain sum gives the number, and says why
+    const held = text({ pts: row({ line: 34.5, share: 0.75, from: 11.5, now: 34.5, to: 23.1, held: true }) }, true);
+    assert.ok(/PTS: the books' line is 34\.5 ; the app alone says 11\.5\. The line counts for 75% ; the number shown is 23\.1 \. \(A line this far from the app's own number is not followed all the way: what is still to come can at most double or halve\.\)/.test(held) && !/moves in steps|, so the number/.test(held), held);
+    // a big number that does not sit on the plain sum (the number is where his games most often land): no "so", and no excuse that is not true
+    const big = text({ pts: row({ line: 80.5, share: 0.75, from: 60, now: 80.5, to: 74 }) }, true);
+    assert.ok(/The line counts for 75% ; the number shown is 74\.0 \./.test(big) && !/moves in steps|not followed all the way|, so the number/.test(big), big);
+    assert.ok(/The line counts for 75% , so the number shown is 21\.9 \./.test(text({ pts: row() }, true)));
     // the note under the rows follows the engine's own settings (a share taken away at the release is not printed)
     const note = () => ctx.lineNote();
     assert.ok(/the full share \(points 75%, rebounds 60%, assists and threes 45%\) inside the last hour/.test(note()), note());
@@ -592,6 +600,20 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
     assert.strictEqual(B.w.__clockWaits, 1, `the 2.5 s wait for the clock ran ${B.w.__clockWaits} times over three passes`);
     assert.strictEqual(B.w.localStorage.getItem(`pl:${LDAY}`), null, 'a look was kept without the server\'s time');
     assert.ok(games(B).length >= 3 * FX.length && games(B).every((q) => !q.lines));
+    // a clock that answers late (after the wait): the first cards came without the books' line, and are made again with it on
+    // the next pass, not five minutes later
+    let answer;
+    const held = new Promise((r) => { answer = r; });
+    const D = await lineBoot('pre', { hook: (w) => { const f = w.fetch; w.fetch = (u, o) => (o && o.method === 'HEAD' ? held.then(() => f(u, o)) : f(u, o)); } }); await settled(D);
+    assert.ok(games(D).length >= FX.length && games(D).every((q) => !q.lines), 'cards had the books\' line before the server\'s time was known');
+    answer(); await sleep(800);
+    later(D, 1); D.w.document.getElementById('refreshBtn').click();
+    const lastOfD = (id) => games(D).filter((q) => +q.game.id === +id).pop();
+    const redone = await until(() => FX.every((fx) => { const q = lastOfD(fx.g.id); return q && q.lines && Object.keys(q.lines).length >= 8; }), 20000);
+    assert.ok(redone, 'a minute after a late clock the cards still have no books\' line (they would wait five minutes)');
+    await until(() => D.w.localStorage.getItem(`pl:${LDAY}`) != null, 5000);
+    assert.ok(D.w.localStorage.getItem(`pl:${LDAY}`) != null);
+    assert.strictEqual(hardOf(D).length, 0, hardOf(D).slice(0, 3).join(' | '));
     // a clock that answers gets its one wait too, and then the look is kept
     const C = await lineBoot('pre'); await settled(C);
     assert.ok(C.w.__clockWaits <= 1 && C.w.localStorage.getItem(`pl:${LDAY}`) != null);
@@ -874,13 +896,13 @@ const banned = (t) => (t.match(/\b(over|under)\b/gi) || []);
       L.setItem(`slate:v6:${back(40)}`, '[]'); L.setItem(`slate:v6:${back(10)}`, '[]'); L.setItem(`slate:v5:${back(4)}`, '[]'); // (v5: saved by the version before)
       L.setItem(`slate:last:${back(3)}`, '[]'); L.setItem(`slate:last:${back(1)}`, '[]');
       L.setItem(`tip:${back(5)}`, '{}'); L.setItem(`tip:${back(1)}`, '{}'); L.setItem(`overrides:${back(9)}`, '{}');
-      L.setItem(`pl:${back(5)}`, '{}'); L.setItem(`pl:${back(3)}`, '{}'); L.setItem(`pl:${back(1)}`, '{}');
+      L.setItem(`pl:${back(7)}`, '{}'); L.setItem(`pl:${back(5)}`, '{}'); L.setItem(`pl:${back(1)}`, '{}');
       L.setItem('glines:111', JSON.stringify({ at: Date.now() - 9 * 86400000, c: {} })); L.setItem('glines:222', JSON.stringify({ at: Date.now() - 3600000, c: {} }));
       L.setItem('ledger:v1', '[]'); L.setItem('settings', '{}');
     });
     const has = (k) => B.w.localStorage.getItem(k) != null;
-    for (const k of [`slate:v6:${back(40)}`, `slate:v5:${back(4)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, `pl:${back(5)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
-    for (const k of [`slate:v6:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, `pl:${back(1)}`, `pl:${back(3)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
+    for (const k of [`slate:v6:${back(40)}`, `slate:v5:${back(4)}`, `slate:last:${back(3)}`, `tip:${back(5)}`, `overrides:${back(9)}`, `pl:${back(7)}`, 'glines:111']) assert.ok(!has(k), `${k} was kept`);
+    for (const k of [`slate:v6:${back(10)}`, `slate:last:${back(1)}`, `tip:${back(1)}`, `pl:${back(1)}`, `pl:${back(5)}`, 'glines:222', 'ledger:v1']) assert.ok(has(k), `${k} was removed`);
   });
   await test('a number of calendar days from today is right in the hour around a daylight-saving change', async () => {
     const vm = require('vm');
