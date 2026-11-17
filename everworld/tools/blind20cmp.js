@@ -7,7 +7,7 @@ const path = require('path');
 const L = require('./lib');
 const [D, FROM] = process.argv.slice(2);
 const rd = (f) => L.readJSON(path.join(L.DATA, 'runs', f));
-const STAGES = [['rep', 'before lineups'], ['0', 'tip-off'], ['6', '6:00'], ['12', '12:00'], ['24', 'halftime']];
+const STAGES = [['rep', 'before lineups'], ['0', 'tip-off'], ['3', '3:00'], ['6', '6:00'], ['12', '12:00'], ['18', '18:00'], ['24', 'halftime'], ['30', '30:00'], ['36', '36:00 (line gone)']];
 const STATS = [['pts', 'points'], ['reb', 'rebounds'], ['ast', 'assists'], ['fg3m', 'threes']];
 function table(title, off, on) {
   console.log(`\n== ${title}: ${off.used} games (average miss, every scored player; off → on)`);

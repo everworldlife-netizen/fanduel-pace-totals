@@ -7,10 +7,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 D=${1:?usage: tools/blind20.sh <date of the blind night> [first recorded night]}
 FROM=${2:-2026-11-13}
-ON="lineWPts=0.75,lineWReb=0.6,lineWAst=0.45,lineW3=0.45,lineFar=300,lineNear=60,lineLive=48"
+ON="lineWPts=0.75,lineWReb=0.6,lineWAst=0.45,lineW3=0.45,lineFar=300,lineNear=60,lineLive=36,lineMinBooks=2"
 OFF="lineWPts=0,lineWReb=0,lineWAst=0,lineW3=0,lineLive=0"
 ENGINE=${ENGINE:-cs/build/engine.js}
-run() { node tools/bt2.js --engine "$ENGINE" --seasons 2027 --from "$1" --to "$2" --no-playoffs --jobs 4 --nsims 500 --lessons builtin --stages rep,0,6,12,24 --lines closing --tune "$3" --out "$4" > "$4.log" 2>&1; }
+run() { node tools/bt2.js --engine "$ENGINE" --seasons 2027 --from "$1" --to "$2" --no-playoffs --jobs 4 --nsims 500 --lessons builtin --stages rep,0,3,6,12,18,24,30,36 --lines closing --tune "$3" --out "$4" > "$4.log" 2>&1; }
 run "$D" "$D" "$OFF" "data/runs/B20-$D-off.json"
 run "$D" "$D" "$ON" "data/runs/B20-$D-on.json"
 run "$FROM" "$D" "$OFF" "data/runs/B20-all-off.json"
